@@ -1,0 +1,48 @@
+.al-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 24px 0;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.al-filters-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-right: 2px;
+}
+
+.al-filters-sep { flex: 1; }
+
+.al-filter-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all .15s;
+
+  &:hover { border-color: var(--accent); color: var(--accent); }
+
+  &--active {
+    background: rgba(0,200,255,.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  &--sev-high.al-filter-btn--active   { background: rgba(239,68,68,.12);  border-color: var(--danger);  color: var(--danger); }
+  &--sev-medium.al-filter-btn--active { background: rgba(245,158,11,.12); border-color: var(--warning); color: var(--warning); }
+}
+.al-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+  margin-top: 12px;
+}
+

@@ -1,0 +1,147 @@
+.net-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-base);
+  overflow: hidden;
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
+}
+.net-topbar {
+  flex-shrink: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 100;
+}
+
+.net-page-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.net-topbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.net-ns-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.net-ns-tab {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+
+  &:hover { color: var(--text-primary); background: var(--bg-elevated); }
+  &.active {
+    color: var(--accent);
+    background: rgba(0, 200, 255, 0.08);
+    border-color: rgba(0, 200, 255, 0.2);
+  }
+}
+
+.net-icon-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+
+  &:hover { color: var(--text-primary); background: var(--bg-elevated); border-color: var(--accent); }
+}
+.net-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+.net-stage-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(0,200,255,0.025) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(124,58,237,0.03) 0%, transparent 50%),
+    var(--bg-base);
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
+
+.net-stage {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+  width: 3000px;
+  height: 3000px;
+}
+.net-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.rn-edge-port {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  fill: var(--text-muted);
+  text-anchor: middle;
+}
+.net-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 10;
+  font-size: 13px;
+
+  &--error { color: var(--danger); }
+}
+
+.net-empty-icon  { font-size: 52px; opacity: 0.15; }
+.net-empty-title { font-size: 15px; font-weight: 500; color: var(--text-secondary); }
+.net-empty-sub   { font-size: 12px; opacity: 0.5; }
+

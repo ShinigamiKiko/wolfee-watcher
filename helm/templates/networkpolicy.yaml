@@ -1,0 +1,84 @@
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-kvisior
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-ui
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace | quote }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9091
+    {{- with .Values.networkPolicy.nodeCIDRs }}
+    - from:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    {{- with .Values.networkPolicy.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- if .Values.traceeBridge.enabled }}
+{{- if not .Values.networkPolicy.nodeCIDRs }}
+{{- fail "networkPolicy.nodeCIDRs is empty: Tracee runs hostNetwork and reaches tracee-bridge:8080 from node IPs, so its traffic would be denied. Set networkPolicy.nodeCIDRs to your node subnet CIDR(s), or set traceeBridge.enabled=false." }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-tracee-bridge
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tracee-bridge
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- with .Values.networkPolicy.nodeCIDRs }}
+    - from:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+    {{- end }}
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8081
+    {{- with .Values.networkPolicy.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- end }}

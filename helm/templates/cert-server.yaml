@@ -1,0 +1,107 @@
+{{- if .Values.certServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-server
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: cert-server
+spec:
+  replicas: {{ .Values.certServer.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cert-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cert-server
+    spec:
+      serviceAccountName: cert-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: cert-server
+          image: "{{ include "kvisior.image" .Values.certServer.image }}"
+          imagePullPolicy: {{ .Values.certServer.image.pullPolicy }}
+          ports:
+            - containerPort: 8090
+              name: http
+              protocol: TCP
+          env:
+            - name: ADDR
+              value: ":8090"
+            - name: CA_CERT_FILE
+              value: /etc/wolfee-watcher/ca/ca.crt
+            - name: CA_KEY_FILE
+              value: /etc/wolfee-watcher/ca/ca.key
+          volumeMounts:
+            - name: ca-secret
+              mountPath: /etc/wolfee-watcher/ca
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.certServer.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: ca-secret
+          secret:
+            secretName: {{ .Values.certServer.caSecretName }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cert-server
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: cert-server
+spec:
+  selector:
+    app.kubernetes.io/name: cert-server
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cert-server-ingress
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cert-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ include "kvisior.namespace" . }}
+      ports:
+        - port: 8090
+          protocol: TCP
+{{- end }}

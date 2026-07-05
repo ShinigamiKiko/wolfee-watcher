@@ -1,0 +1,91 @@
+{{- if .Values.honeyOperator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honey-operator
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: honey-operator
+spec:
+  replicas: {{ .Values.honeyOperator.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: honey-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: honey-operator
+    spec:
+      serviceAccountName: honey-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: honey-operator
+          image: "{{ include "kvisior.image" .Values.honeyOperator.image }}"
+          imagePullPolicy: {{ .Values.honeyOperator.image.pullPolicy }}
+          args:
+            - "--addr"
+            - "0.0.0.0:9095"
+          ports:
+            - name: api
+              containerPort: 9095
+              protocol: TCP
+            - name: health
+              containerPort: 9096
+              protocol: TCP
+          env:
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: KVISIOR_PUSH_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9096
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9096
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.honeyOperator.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: honey-operator
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: honey-operator
+spec:
+  selector:
+    app.kubernetes.io/name: honey-operator
+  ports:
+    - name: api
+      port: 9095
+      targetPort: 9095
+      protocol: TCP
+    - name: health
+      port: 9096
+      targetPort: 9096
+      protocol: TCP
+{{- end }}

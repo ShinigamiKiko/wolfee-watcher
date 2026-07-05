@@ -1,0 +1,298 @@
+global:
+  namespace: wolfee-watcher
+
+  certServerAddr: "http://cert-server.wolfee-watcher.svc.cluster.local:8090"
+
+  postgresDSN: "postgres://wolfee-watcher:wolfee-watcher@postgres.wolfee-watcher.svc.cluster.local:5432/wolfee-watcher?sslmode=disable"
+
+  internalPushSecret: ""
+  internalPushSecretSkipValidation: false
+
+  mtlsRequired: true
+
+  integrations:
+    allowInternal: false
+    allowedCIDRs: ""
+
+namespace:
+  create: true
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  database: wolfee-watcher
+  user: wolfee-watcher
+  password: wolfee-watcher
+
+  serviceCredentials:
+    ui:
+      user: ww_ui
+      password: ww_ui
+    traceeBridge:
+      user: ww_tracee_bridge
+      password: ww_tracee_bridge
+    anomaly:
+      user: ww_anomaly
+      password: ww_anomaly
+  storage:
+    size: "20Gi"
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+centralMigrate:
+  enabled: true
+  image:
+    repository: localhost/wolfee-watcher/central-migrate
+    tag: latest
+    pullPolicy: Never
+  schemaVersion: "0008-honeypot-events"
+  adminBootstrapPassword: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+certServer:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/cert-server
+    tag: latest
+    pullPolicy: Never
+  caSecretName: wolfee-watcher-ca
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+sensor:
+  enabled: true
+  replicaCount: 1
+  role: auto
+  leaseName: sensor-snapshot-leader
+  image:
+    repository: localhost/wolfee-watcher/sensor
+    tag: latest
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+traceeBridge:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/tracee-bridge
+    tag: latest
+    pullPolicy: Never
+  ingestQueueSize: 50000
+  ingestWorkers: 32
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+anomalyDetector:
+  enabled: true
+  replicaCount: 1
+  observationPeriod: "1m"
+  image:
+    repository: localhost/wolfee-watcher/anomaly-detector
+    tag: latest
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+sentryAudit:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/sentry-audit
+    tag: latest
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+scannerAgent:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/scanner-agent
+    tag: latest
+    pullPolicy: Never
+  hostAliases: []
+  bdu:
+    enabled: true
+    archiveURL: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+forensicWatcher:
+  enabled: true
+  image:
+    repository: localhost/wolfee-watcher/forensic-watcher
+    tag: latest
+    pullPolicy: Never
+  logExcludeNamespaces: ""
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+honeyOperator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/honey-operator
+    tag: latest
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+auditRunner:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/audit-runner
+    tag: latest
+    pullPolicy: Never
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+ui:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: localhost/wolfee-watcher/kvisior8
+    tag: latest
+    pullPolicy: Never
+  servicePort: 80
+  secureCookie: "false"
+  ingress:
+    enabled: true
+    className: nginx
+    host: kvisior.example.com
+    annotations: {}
+    tls: []
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+kafka:
+  enabled: true
+  replicaCount: 2
+
+  brokers: "kafka-0.kafka-headless.wolfee-watcher.svc.cluster.local:9092,kafka-1.kafka-headless.wolfee-watcher.svc.cluster.local:9092"
+
+  topic: "tracee-events"
+
+  partitions: 12
+
+  replicationFactor: 2
+
+  minIsr: 1
+
+  retentionHours: 24
+
+  image:
+    repository: apache/kafka
+    tag: "4.2.1"
+    pullPolicy: IfNotPresent
+
+  storage:
+    size: "50Gi"
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+caBootstrap:
+  enabled: false
+  image:
+    repository: localhost/wolfee-watcher/certgen
+    tag: latest
+    pullPolicy: Never
+
+tracee:
+  enabled: true
+  image:
+    repository: aquasec/tracee
+    tag: "0.24.1"
+    pullPolicy: IfNotPresent
+  perfBufferSize: 1024
+  memCacheSize: 512
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ingress-nginx
+  # Node subnet CIDRs. Tracee runs hostNetwork and reaches tracee-bridge:8080
+  # from node IPs, so these must be set when networkPolicy.enabled=true and
+  # traceeBridge.enabled=true — otherwise event ingestion is denied.
+  nodeCIDRs: []
+  extraIngress: []

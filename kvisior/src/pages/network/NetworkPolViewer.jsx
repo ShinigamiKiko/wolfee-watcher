@@ -1,0 +1,111 @@
+import { useState } from 'react';
+import { toYaml, cleanObj } from './networkPolicyUtils';
+
+export function PolViewer({ pol }) {
+  const [yamlOpen, setYamlOpen] = useState(false);
+
+  if (!pol) return (
+    <div className="rn-netpol-empty">
+      <div style={{opacity:.3,fontSize:28}}>⬡</div>
+      <span>Select a policy to inspect</span>
+    </div>
+  );
+
+  const meta    = pol.metadata||{};
+  const spec    = pol.spec||{};
+  const sel     = spec.podSelector?.matchLabels||{};
+  const types   = spec.policyTypes||[];
+  const egress  = spec.egress||[];
+  const ingress = spec.ingress||[];
+  const cleaned = cleanObj(pol);
+  const normalized = {
+    apiVersion: 'networking.k8s.io/v1',
+    kind: 'NetworkPolicy',
+    ...cleaned,
+  };
+  const yaml = toYaml(normalized).trimStart();
+
+  return (
+    <div className="rn-policy-view">
+      <div className="rn-policy-view-hdr">
+        <span className="rn-policy-name">{meta.name}</span>
+        {types.map(t=><span key={t} className={`rn-pol-tag rn-pol-tag--${t.toLowerCase()}`}>{t}</span>)}
+        <div style={{flex:1}}/>
+        <span style={{fontSize:11,color:'var(--text-muted)'}}>{meta.namespace}</span>
+      </div>
+
+      <div className="rn-policy-body">
+        <div className="rn-pol-section">
+          <div className="rn-pol-section-title">Metadata</div>
+          <div className="rn-kv"><span>Name</span><span>{meta.name}</span></div>
+          <div className="rn-kv"><span>Namespace</span><span>{meta.namespace}</span></div>
+          <div className="rn-kv"><span>Policy types</span>
+            <span style={{display:'flex',gap:4}}>
+              {types.map(t=><span key={t} className={`rn-pol-tag rn-pol-tag--${t.toLowerCase()}`}>{t}</span>)}
+            </span>
+          </div>
+        </div>
+
+        <div className="rn-pol-section">
+          <div className="rn-pol-section-title">Pod Selector</div>
+          <div className="rn-ep-card">
+            <div className="rn-ep-icon rn-ep-icon--src">⬡</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="rn-kv"><span>Namespace</span><span>{meta.namespace}</span></div>
+              {Object.entries(sel).length>0
+                ? Object.entries(sel).map(([k,v])=>(
+                    <div key={k} className="rn-kv"><span>Label</span><span style={{color:'var(--accent)'}}>{k}={v}</span></div>
+                  ))
+                : <div className="rn-kv"><span>Selector</span><span style={{color:'var(--text-muted)'}}>{'{}'} (all pods)</span></div>
+              }
+            </div>
+          </div>
+        </div>
+
+        {(egress.length>0||ingress.length>0)&&(
+          <div className="rn-pol-section">
+            <div className="rn-pol-section-title">Rules</div>
+            {egress.map((r,i)=>(
+              <div key={`e${i}`} className="rn-rule-block rn-rule-block--egress">
+                <span className="rn-dir-badge rn-dir-badge--e">Egress</span>
+                {r.to?.map((to,j)=><span key={j} className="rn-rb rn-rb--ip">{to.ipBlock?.cidr||(to.podSelector?JSON.stringify(to.podSelector?.matchLabels||{}):'—')}</span>)}
+                {r.ports?.map((p,j)=><span key={j} className="rn-rb rn-rb--port">{p.port}/{p.protocol||'TCP'}</span>)}
+              </div>
+            ))}
+            {ingress.map((r,i)=>(
+              <div key={`i${i}`} className="rn-rule-block rn-rule-block--ingress">
+                <span className="rn-dir-badge rn-dir-badge--i">Ingress</span>
+                {r.from?.map((fr,j)=><span key={j} className="rn-rb rn-rb--ip">{fr.ipBlock?.cidr||(fr.podSelector?JSON.stringify(fr.podSelector?.matchLabels||{}):'—')}</span>)}
+                {r.ports?.map((p,j)=><span key={j} className="rn-rb rn-rb--port">{p.port}/{p.protocol||'TCP'}</span>)}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="rn-pol-section">
+          <button className={`rn-yaml-toggle${yamlOpen?' open':''}`} onClick={()=>setYamlOpen(o=>!o)}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+            </svg>
+            {yamlOpen?'Hide YAML':'Show YAML'}
+            <span style={{marginLeft:'auto',fontSize:10,color:'var(--text-muted)'}}>networking.k8s.io/v1</span>
+          </button>
+          {yamlOpen&&<pre className="rn-yaml-box">{yaml}</pre>}
+        </div>
+      </div>
+
+      <div className="rn-policy-actions">
+        <button className="rn-btn"
+          onClick={()=>alert(`kubectl apply --dry-run=server\n\n✓ networkpolicy.networking.k8s.io "${meta.name}" configured (dry run)`)}>
+          Dry run
+        </button>
+        <button className="rn-btn rn-btn--copy" onClick={()=>navigator.clipboard?.writeText(yaml)}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+          Copy YAML
+        </button>
+      </div>
+    </div>
+  );
+}

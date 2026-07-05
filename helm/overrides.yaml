@@ -1,0 +1,15 @@
+namespace:
+  create: false
+
+scannerAgent:
+  hostAliases:
+    - ip: "8.6.112.6"
+      hostnames:
+        - "toolbox.anchore.io"
+        - "grype.anchore.io"
+        - "toolbox-data.anchore.io"
+    - ip: "8.47.69.6"
+      hostnames:
+        - "toolbox.anchore.io"
+        - "grype.anchore.io"
+        - "toolbox-data.anchore.io"

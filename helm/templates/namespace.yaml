@@ -1,0 +1,9 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    kubernetes.io/metadata.name: {{ include "kvisior.namespace" . }}
+{{- end }}

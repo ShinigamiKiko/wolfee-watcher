@@ -1,0 +1,94 @@
+{{- if .Values.caBootstrap.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ca-bootstrap
+  namespace: {{ include "kvisior.namespace" . }}
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: hook-succeeded,hook-failed
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-ca-bootstrap
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: hook-succeeded,hook-failed
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-ca-bootstrap
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: hook-succeeded,hook-failed
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-ca-bootstrap
+subjects:
+  - kind: ServiceAccount
+    name: ca-bootstrap
+    namespace: {{ include "kvisior.namespace" . }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ca-bootstrap
+  namespace: {{ include "kvisior.namespace" . }}
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: hook-succeeded
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ca-bootstrap
+    spec:
+      serviceAccountName: ca-bootstrap
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: certgen
+          image: "{{ include "kvisior.image" .Values.caBootstrap.image }}"
+          imagePullPolicy: {{ .Values.caBootstrap.image.pullPolicy }}
+          args:
+            - "-namespace"
+            - {{ include "kvisior.namespace" . | quote }}
+            - "-secret-name"
+            - {{ .Values.certServer.caSecretName | quote }}
+            - "-mode"
+            - "k8s"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- end }}

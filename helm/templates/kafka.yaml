@@ -1,0 +1,211 @@
+{{- if .Values.kafka.enabled }}
+{{- $ns := include "kvisior.namespace" . }}
+{{- $replicas := int (.Values.kafka.replicaCount | default 3) }}
+{{- $voters := list }}
+{{- range $i := until $replicas }}
+{{- $voters = append $voters (printf "%d@kafka-%d.kafka-headless.%s.svc.cluster.local:9093" $i $i $ns) }}
+{{- end }}
+{{- $votersStr := join "," $voters }}
+
+
+{{- /*
+  Kafka KRaft cluster ID. Previously a pre-upgrade hook Job shelled out to a
+  kubectl image to create this Secret — but Bitnami pulled its public images
+  (bitnami/kubectl, then bitnamilegacy/kubectl:latest both 404), so the hook
+  hit ImagePullBackOff and the upgrade failed with DeadlineExceeded. No image
+  needed: reuse the existing cluster ID via lookup, or mint one on first
+  install. resource-policy:keep preserves it across uninstall so reinstalls
+  over existing Kafka data keep the same ID.
+*/}}
+{{- $clusterId := randAlphaNum 22 }}
+{{- $existing := (lookup "v1" "Secret" $ns "kafka-cluster-id") }}
+{{- if $existing }}
+{{-   if hasKey ($existing.data | default dict) "cluster-id" }}
+{{-     $clusterId = index $existing.data "cluster-id" | b64dec }}
+{{-   end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-cluster-id
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  cluster-id: {{ $clusterId | b64enc | quote }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kafka
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: kafka
+  ports:
+    - name: broker
+      port: 9092
+      protocol: TCP
+    - name: controller
+      port: 9093
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kafka
+spec:
+  selector:
+    app.kubernetes.io/name: kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+      protocol: TCP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kafka
+data:
+  server.properties: |
+    process.roles=broker,controller
+    controller.listener.names=CONTROLLER
+    listeners=PLAINTEXT://:9092,CONTROLLER://:9093
+    listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+    inter.broker.listener.name=PLAINTEXT
+    controller.quorum.voters={{ $votersStr }}
+    log.dirs=/var/lib/kafka/data
+    auto.create.topics.enable=true
+    num.partitions={{ .Values.kafka.partitions | default 6 }}
+    default.replication.factor={{ .Values.kafka.replicationFactor | default 3 }}
+    offsets.topic.replication.factor={{ .Values.kafka.replicationFactor | default 3 }}
+    transaction.state.log.replication.factor={{ .Values.kafka.replicationFactor | default 3 }}
+    transaction.state.log.min.isr={{ .Values.kafka.minIsr | default 2 }}
+    log.retention.hours={{ .Values.kafka.retentionHours | default 48 }}
+    log.segment.bytes=1073741824
+    message.max.bytes=10485760
+    replica.fetch.max.bytes=10485760
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kafka
+spec:
+  serviceName: kafka-headless
+  replicas: {{ .Values.kafka.replicaCount | default 3 }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+  template:
+    metadata:
+      labels:
+        {{- include "kvisior.labels" . | nindent 8 }}
+        app.kubernetes.io/name: kafka
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: kafka
+          image: "{{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}"
+          imagePullPolicy: {{ .Values.kafka.image.pullPolicy }}
+          command:
+            - bash
+            - -c
+            - |
+              set -e
+              NODE_ID="${POD_NAME##*-}"
+              CONF=/tmp/kafka/server.properties
+              mkdir -p /tmp/kafka
+              cp /etc/kafka/cfg/server.properties "$CONF"
+              {
+                echo "node.id=${NODE_ID}"
+                echo "advertised.listeners=PLAINTEXT://${POD_NAME}.kafka-headless.${POD_NAMESPACE}.svc.cluster.local:9092"
+              } >> "$CONF"
+              /opt/kafka/bin/kafka-storage.sh format -t "$CLUSTER_ID" -c "$CONF" --ignore-formatted
+              exec /opt/kafka/bin/kafka-server-start.sh "$CONF"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CLUSTER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-cluster-id
+                  key: cluster-id
+
+          ports:
+            - containerPort: 9092
+              name: broker
+              protocol: TCP
+            - containerPort: 9093
+              name: controller
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.kafka.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+            - name: kafka-cfg
+              mountPath: /etc/kafka/cfg
+              readOnly: true
+      volumes:
+        - name: kafka-cfg
+          configMap:
+            name: kafka-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: kafka
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.kafka.storage.size | default "50Gi" | quote }}
+        {{- if .Values.kafka.storage.storageClass }}
+        storageClassName: {{ .Values.kafka.storage.storageClass | quote }}
+        {{- end }}
+{{- end }}

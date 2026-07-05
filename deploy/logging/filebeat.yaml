@@ -1,0 +1,172 @@
+# Filebeat DaemonSet that ships Wolfee-Watcher container logs to Elasticsearch.
+#
+# The services log ECS-style JSON to stdout/stderr (LOG_FORMAT=json, the
+# default). This DaemonSet tails the node's container logs, decodes that JSON so
+# fields like @timestamp / log.level / message / service.name / alert.severity
+# become top-level document fields, enriches with Kubernetes metadata, and sends
+# everything to Elasticsearch.
+#
+# This is a ready-to-adapt example, not part of the Helm chart. If you already
+# run Elastic Agent / Filebeat / Fluent Bit in the cluster, you don't need it —
+# just point your existing shipper at the wolfee-watcher namespace.
+#
+# Before applying:
+#   1. Create the ES credentials secret (namespace: logging):
+#        kubectl create ns logging
+#        kubectl -n logging create secret generic filebeat-es \
+#          --from-literal=host='https://elasticsearch:9200' \
+#          --from-literal=username='elastic' \
+#          --from-literal=password='<password>'
+#   2. kubectl apply -f deploy/logging/filebeat.yaml
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: filebeat
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: logging
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: logging
+data:
+  filebeat.yml: |
+    filebeat.autodiscover:
+      providers:
+        - type: kubernetes
+          node: ${NODE_NAME}
+          # Only collect the platform's own namespace.
+          templates:
+            - condition:
+                equals:
+                  kubernetes.namespace: wolfee-watcher
+              config:
+                - type: container
+                  paths:
+                    - /var/log/containers/*-${data.kubernetes.container.id}.log
+                  # Services emit one JSON object per line.
+                  json.keys_under_root: true
+                  json.overwrite_keys: true
+                  json.add_error_key: true
+                  json.expand_keys: true
+
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+            - logs_path:
+                logs_path: /var/log/containers/
+
+    output.elasticsearch:
+      hosts: ["${ELASTICSEARCH_HOST}"]
+      username: ${ELASTICSEARCH_USERNAME}
+      password: ${ELASTICSEARCH_PASSWORD}
+      index: "wolfee-watcher-%{+yyyy.MM.dd}"
+
+    setup.template.name: "wolfee-watcher"
+    setup.template.pattern: "wolfee-watcher-*"
+    setup.ilm.enabled: false
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: logging
+  labels:
+    app: filebeat
+spec:
+  selector:
+    matchLabels:
+      app: filebeat
+  template:
+    metadata:
+      labels:
+        app: filebeat
+    spec:
+      serviceAccountName: filebeat
+      terminationGracePeriodSeconds: 30
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:8.15.0
+          args: ["-e", "-c", "/etc/filebeat.yml"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: ELASTICSEARCH_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: filebeat-es
+                  key: host
+            - name: ELASTICSEARCH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: filebeat-es
+                  key: username
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: filebeat-es
+                  key: password
+          securityContext:
+            runAsUser: 0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              memory: 200Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/filebeat.yml
+              readOnly: true
+              subPath: filebeat.yml
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: data
+              mountPath: /usr/share/filebeat/data
+      volumes:
+        - name: config
+          configMap:
+            defaultMode: 0640
+            name: filebeat-config
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: data
+          hostPath:
+            path: /var/lib/filebeat-data
+            type: DirectoryOrCreate

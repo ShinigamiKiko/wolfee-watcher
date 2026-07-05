@@ -1,0 +1,83 @@
+{{- if .Values.auditRunner.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-runner
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: audit-runner
+spec:
+  replicas: {{ .Values.auditRunner.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit-runner
+    spec:
+      serviceAccountName: audit-runner
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: audit-runner
+          image: "{{ include "kvisior.image" .Values.auditRunner.image }}"
+          imagePullPolicy: {{ .Values.auditRunner.image.pullPolicy }}
+          ports:
+            - name: api
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: AUDIT_ADDR
+              value: "0.0.0.0:8080"
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: KVISIOR_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.auditRunner.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-runner
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: audit-runner
+spec:
+  selector:
+    app.kubernetes.io/name: audit-runner
+  ports:
+    - name: api
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+{{- end }}

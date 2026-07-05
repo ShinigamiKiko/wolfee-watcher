@@ -1,0 +1,94 @@
+{{- if .Values.sentryAudit.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-audit
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: sentry-audit
+spec:
+  replicas: {{ .Values.sentryAudit.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sentry-audit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sentry-audit
+    spec:
+      serviceAccountName: sentry-audit
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: sentry-audit
+          image: "{{ include "kvisior.image" .Values.sentryAudit.image }}"
+          imagePullPolicy: {{ .Values.sentryAudit.image.pullPolicy }}
+          ports:
+            - containerPort: 8443
+              name: webhook
+              protocol: TCP
+            - containerPort: 8080
+              name: api
+              protocol: TCP
+          env:
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: KVISIOR_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: KVISIOR_PUSH_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.sentryAudit.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-audit
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: sentry-audit
+spec:
+  selector:
+    app.kubernetes.io/name: sentry-audit
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: 8443
+      protocol: TCP
+    - name: api
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+{{- end }}

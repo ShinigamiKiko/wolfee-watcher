@@ -1,0 +1,27 @@
+@use '../../styles/scss/vars' as *;
+
+$logo-size-sm: 28px;
+$logo-size-md: 36px;
+$logo-size-lg: 64px;
+
+.logo-icon {
+  width: $logo-size-sm;
+  height: $logo-size-sm;
+  background-image: url('./logo.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  flex-shrink: 0;
+
+  &--md {
+    width: $logo-size-md;
+    height: $logo-size-md;
+  }
+
+  &--lg {
+    width: $logo-size-lg;
+    height: $logo-size-lg;
+  }
+}

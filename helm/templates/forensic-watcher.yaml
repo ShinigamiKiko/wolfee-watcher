@@ -1,0 +1,123 @@
+{{- if .Values.forensicWatcher.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: forensic-watcher
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: forensic-watcher
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forensic-watcher
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forensic-watcher
+        app: forensic-watcher
+    spec:
+      serviceAccountName: forensic-watcher
+      hostPID: false
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+      containers:
+        - name: forensic-watcher
+          image: "{{ include "kvisior.image" .Values.forensicWatcher.image }}"
+          imagePullPolicy: {{ .Values.forensicWatcher.image.pullPolicy }}
+          args:
+            - "-addr=0.0.0.0:9090"
+            - "-containerd-root=/host-containerd"
+            - "-pod-logs-root=/host-pod-logs"
+          ports:
+            - name: api
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: KVISIOR_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+            - name: LOG_EXCLUDE_NAMESPACES
+              value: {{ .Values.forensicWatcher.logExcludeNamespaces | default "" | quote }}
+          volumeMounts:
+            - name: containerd-root
+              mountPath: /host-containerd
+              readOnly: true
+            - name: containerd-run
+              mountPath: /run/containerd
+              readOnly: true
+              mountPropagation: HostToContainer
+            - name: pod-logs
+              mountPath: /host-pod-logs
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+              scheme: HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.forensicWatcher.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: containerd-root
+          hostPath:
+            path: /var/lib/containerd
+            type: Directory
+        - name: containerd-run
+          hostPath:
+            path: /run/containerd
+            type: Directory
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forensic-watcher
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: forensic-watcher
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: forensic-watcher
+  ports:
+    - name: api
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+{{- end }}

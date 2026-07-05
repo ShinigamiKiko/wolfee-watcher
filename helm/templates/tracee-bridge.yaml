@@ -1,0 +1,113 @@
+{{- if .Values.traceeBridge.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tracee-bridge
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: tracee-bridge
+spec:
+  replicas: {{ .Values.traceeBridge.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tracee-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tracee-bridge
+    spec:
+      serviceAccountName: tracee-bridge
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      initContainers:
+        {{- include "kvisior.waitForDeps" . | nindent 8 }}
+        {{- include "kvisior.waitForSchema" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.traceeBridge) | nindent 8 }}
+      containers:
+        - name: bridge
+          image: "{{ include "kvisior.image" .Values.traceeBridge.image }}"
+          imagePullPolicy: {{ .Values.traceeBridge.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: tracee
+              protocol: TCP
+            - containerPort: 8081
+              name: api
+              protocol: TCP
+          env:
+            - name: BRIDGE_ADDR
+              value: "0.0.0.0:8080"
+            - name: POSTGRES_DSN
+              value: {{ include "kvisior.serviceDSN" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.traceeBridge) | quote }}
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: TRACEE_INGEST_QUEUE_SIZE
+              value: {{ .Values.traceeBridge.ingestQueueSize | default 50000 | quote }}
+            - name: TRACEE_INGEST_WORKERS
+              value: {{ .Values.traceeBridge.ingestWorkers | default 8 | quote }}
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.brokers | quote }}
+            - name: KAFKA_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+            - name: KAFKA_TOPIC_PARTITIONS
+              value: {{ .Values.kafka.partitions | quote }}
+            - name: KAFKA_TOPIC_REPLICATION
+              value: {{ .Values.kafka.replicationFactor | quote }}
+            - name: KVISIOR_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: COMPONENTS
+              value: {{ .Values.traceeBridge.components | default "" | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.traceeBridge.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracee-bridge
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: tracee-bridge
+spec:
+  selector:
+    app.kubernetes.io/name: tracee-bridge
+  ports:
+    - name: tracee
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: api
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+{{- end }}

@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package wolfeewatcher;
+
+option go_package = "github.com/wolfee-watcher/kvisior/api/wolfeewatcher;wolfeewatcher";
+
+service PushService {
+  rpc PushEvents(stream PushEventsRequest) returns (PushAck);
+  rpc PushAuditEvents(stream PushAuditRequest) returns (PushAck);
+  rpc PushSensorSnapshot(SensorSnapshotRequest) returns (PushAck);
+  rpc PushAnomalyEvents(stream PushAnomalyRequest) returns (PushAck);
+}
+
+message PushEventsRequest {
+  repeated bytes events = 1;
+}
+
+message PushAuditRequest {
+  repeated bytes events = 1;
+}
+
+message SensorSnapshotRequest {
+  bytes snapshot = 1;
+}
+
+message PushAnomalyRequest {
+  repeated bytes events = 1;
+}
+
+message PushAck {
+  uint32 accepted = 1;
+}

@@ -1,0 +1,133 @@
+{{- if .Values.ui.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kvisior-ui
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kvisior-ui
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kvisior-ui
+    spec:
+      serviceAccountName: kvisior
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      initContainers:
+        {{- include "kvisior.waitForDeps" . | nindent 8 }}
+        {{- include "kvisior.waitForSchema" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.ui) | nindent 8 }}
+      containers:
+        - name: ui
+          image: "{{ include "kvisior.image" .Values.ui.image }}"
+          imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: KVISIOR_ADDR
+              value: ":8080"
+            - name: POSTGRES_DSN
+              value: {{ include "kvisior.serviceDSN" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.ui) | quote }}
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+            - name: KVISIOR_SECURE_COOKIE
+              value: {{ .Values.ui.secureCookie | default "false" | quote }}
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.brokers | quote }}
+            - name: KAFKA_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kvisior-ui
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kvisior-ui
+spec:
+  selector:
+    app.kubernetes.io/name: kvisior-ui
+  ports:
+    - name: http
+      port: {{ .Values.ui.servicePort }}
+      targetPort: 8080
+      protocol: TCP
+{{- if .Values.ui.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kvisior-ui
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    {{- if .Values.ui.ingress.denyInternalPaths }}
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location ~* ^/internal(/|$) {
+        return 403;
+      }
+    {{- end }}
+    {{- with .Values.ui.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ui.ingress.className }}
+  {{- if .Values.ui.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ui.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ui.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kvisior-ui
+                port:
+                  number: {{ .Values.ui.servicePort }}
+{{- end }}
+{{- end }}

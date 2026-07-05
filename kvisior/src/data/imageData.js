@@ -1,0 +1,46 @@
+export const IMAGE_CVES = {
+  'quay.io/auth/gateway': [
+    { id:'CVE-2024-3094',  sev:'sev-critical', cvss:10.0, epss:'94.21%', comp:'xz-utils 5.6.0',   fix:'5.6.1' },
+    { id:'CVE-2023-44487', sev:'sev-critical', cvss:7.5,  epss:'91.08%', comp:'nghttp2 1.57.0',   fix:'1.58.0' },
+    { id:'CVE-2023-4911',  sev:'sev-high',     cvss:7.8,  epss:'78.43%', comp:'glibc 2.37',       fix:'2.38' },
+    { id:'CVE-2024-0553',  sev:'sev-high',     cvss:7.5,  epss:'32.17%', comp:'gnutls 3.8.2',     fix:'3.8.3' },
+    { id:'CVE-2023-52425', sev:'sev-high',     cvss:7.5,  epss:'18.90%', comp:'expat 2.5.0',      fix:'2.6.0' },
+    { id:'CVE-2024-2236',  sev:'sev-high',     cvss:7.0,  epss:'11.55%', comp:'libgcrypt 1.10.2', fix:'1.10.3' },
+    { id:'CVE-2024-0567',  sev:'sev-medium',   cvss:5.9,  epss:'4.82%',  comp:'gnutls 3.8.2',     fix:'3.8.3' },
+    { id:'CVE-2023-5981',  sev:'sev-medium',   cvss:5.9,  epss:'3.61%',  comp:'gnutls 3.8.2',     fix:'3.8.3' },
+    { id:'CVE-2023-3446',  sev:'sev-low',      cvss:3.7,  epss:'1.24%',  comp:'openssl 3.1.2',    fix:'3.1.4' },
+    { id:'CVE-2024-1048',  sev:'sev-low',      cvss:3.3,  epss:'0.43%',  comp:'grub2 2.06',       fix:'None' },
+  ],
+  'docker.io/library/nginx': [
+    { id:'CVE-2023-44487', sev:'sev-high',   cvss:7.5, epss:'91.08%', comp:'nghttp2 1.57.0', fix:'1.58.0' },
+    { id:'CVE-2024-24989', sev:'sev-high',   cvss:7.5, epss:'55.30%', comp:'nginx 1.25.3',   fix:'1.25.4' },
+    { id:'CVE-2024-0567',  sev:'sev-medium', cvss:5.9, epss:'4.82%',  comp:'gnutls 3.8.2',   fix:'Available' },
+    { id:'CVE-2023-3817',  sev:'sev-medium', cvss:5.3, epss:'2.10%',  comp:'openssl 3.1.1',  fix:'3.1.3' },
+    { id:'CVE-2024-1048',  sev:'sev-low',    cvss:3.3, epss:'0.43%',  comp:'grub2 2.06',     fix:'None' },
+  ],
+  'gcr.io/payments/api': [
+    { id:'CVE-2024-0450',  sev:'sev-medium', cvss:6.2, epss:'8.74%', comp:'python 3.12.0', fix:'3.12.2' },
+    { id:'CVE-2023-40217', sev:'sev-medium', cvss:5.3, epss:'5.19%', comp:'python 3.12.0', fix:'3.12.1' },
+    { id:'CVE-2023-5752',  sev:'sev-medium', cvss:4.3, epss:'2.88%', comp:'pip 23.3',      fix:'23.3.2' },
+    { id:'CVE-2024-1244',  sev:'sev-low',    cvss:3.1, epss:'0.31%', comp:'setuptools 68', fix:'69.0' },
+  ],
+  'legacy-registry.io/api': [
+    { id:'CVE-2023-38408', sev:'sev-high',     cvss:9.8, epss:'97.62%', comp:'openssh 8.0',   fix:'9.3p2' },
+    { id:'CVE-2021-4034',  sev:'sev-critical', cvss:7.8, epss:'97.14%', comp:'polkit 0.117',  fix:'None' },
+    { id:'CVE-2022-0847',  sev:'sev-critical', cvss:7.8, epss:'96.88%', comp:'kernel 3.10',   fix:'None' },
+    { id:'CVE-2023-4911',  sev:'sev-high',     cvss:7.8, epss:'78.43%', comp:'glibc 2.17',    fix:'None' },
+    { id:'CVE-2022-3602',  sev:'sev-high',     cvss:7.5, epss:'41.22%', comp:'openssl 1.1.1', fix:'3.0.7' },
+    { id:'CVE-2023-0464',  sev:'sev-medium',   cvss:5.9, epss:'6.55%',  comp:'openssl 1.1.1', fix:'1.1.1u' },
+  ],
+  'docker.io/redis': [
+    { id:'CVE-2023-41053', sev:'sev-low', cvss:3.3, epss:'1.02%', comp:'redis 7.2.0', fix:'7.2.1' },
+    { id:'CVE-2023-45853', sev:'sev-low', cvss:2.5, epss:'0.18%', comp:'zlib 1.3',    fix:'1.3.1' },
+  ],
+  'gcr.io/infra/agent': [
+    { id:'CVE-2024-1086',  sev:'sev-critical', cvss:7.8, epss:'88.34%', comp:'kernel 5.14', fix:'Patch available' },
+    { id:'CVE-2024-0646',  sev:'sev-high',     cvss:7.8, epss:'62.17%', comp:'kernel 5.14', fix:'Patch available' },
+    { id:'CVE-2023-6531',  sev:'sev-high',     cvss:7.0, epss:'44.90%', comp:'kernel 5.14', fix:'Patch available' },
+    { id:'CVE-2023-51385', sev:'sev-medium',   cvss:6.5, epss:'12.33%', comp:'openssh 9.5', fix:'9.6' },
+    { id:'CVE-2024-1048',  sev:'sev-low',      cvss:3.3, epss:'0.43%',  comp:'grub2 2.06',  fix:'None' },
+  ],
+};

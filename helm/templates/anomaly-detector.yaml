@@ -1,0 +1,97 @@
+{{- if .Values.anomalyDetector.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anomaly-detector
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: anomaly-detector
+spec:
+  replicas: {{ .Values.anomalyDetector.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: anomaly-detector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: anomaly-detector
+    spec:
+      serviceAccountName: anomaly-detector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      initContainers:
+        {{- include "kvisior.waitForSchema" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.anomaly) | nindent 8 }}
+      containers:
+        - name: detector
+          image: "{{ include "kvisior.image" .Values.anomalyDetector.image }}"
+          imagePullPolicy: {{ .Values.anomalyDetector.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: https
+              protocol: TCP
+          env:
+            - name: DETECTOR_ADDR
+              value: "0.0.0.0:8080"
+            - name: POSTGRES_DSN
+              value: {{ include "kvisior.serviceDSN" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.anomaly) | quote }}
+            - name: OBSERVATION_PERIOD
+              value: {{ .Values.anomalyDetector.observationPeriod | quote }}
+            - name: CERT_SERVER_ADDR
+              value: {{ .Values.global.certServerAddr | quote }}
+            - name: MTLS_REQUIRED
+              value: {{ .Values.global.mtlsRequired | quote }}
+            - name: INTEGRATIONS_ALLOW_INTERNAL
+              value: {{ .Values.global.integrations.allowInternal | quote }}
+            - name: INTEGRATIONS_ALLOWED_CIDRS
+              value: {{ .Values.global.integrations.allowedCIDRs | quote }}
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.brokers | quote }}
+            - name: KAFKA_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+            - name: KVISIOR_URL
+              value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ .Values.global.internalPushSecret | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.anomalyDetector.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anomaly-detector
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: anomaly-detector
+spec:
+  selector:
+    app.kubernetes.io/name: anomaly-detector
+  ports:
+    - name: https
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+{{- end }}

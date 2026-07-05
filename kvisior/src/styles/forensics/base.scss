@@ -1,0 +1,126 @@
+.fns-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.fns-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.fns-bc {
+  cursor: pointer;
+  transition: color 0.15s;
+  &:hover { color: var(--accent); }
+  &--active { color: var(--text-primary); cursor: default; }
+}
+
+.fns-bc-sep { color: var(--text-muted); }
+
+.fns-nslist {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.fns-nslist-hdr {
+  margin-bottom: 18px;
+}
+
+.fns-page-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.fns-page-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.fns-ns-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fns-ns-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--bg-elevated);
+  }
+}
+
+.fns-ns-icon { font-size: 20px; color: var(--text-muted); }
+
+.fns-ns-info { flex: 1; }
+
+.fns-ns-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fns-ns-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.fns-ns-stats {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.fns-ns-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.fns-ns-stat-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  &--red { color: var(--danger); }
+}
+
+.fns-ns-stat-lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fns-ns-arrow { color: var(--text-muted); font-size: 14px; }
+

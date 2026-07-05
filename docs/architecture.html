@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolfee-Watcher — схема взаимодействия компонентов</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e;
+    --c-ui:#a371f7; --c-store:#3fb950; --c-pipe:#f0883e; --c-agent:#58a6ff;
+    --c-plat:#db6d28; --c-ext:#8b949e;
+    --e-proxy:#a371f7; --e-push:#58a6ff; --e-kafka:#f0883e; --e-pg:#3fb950;
+    --e-cert:#6e7681; --e-k8s:#39c5cf; --e-webhook:#f85149; --e-https:#d2a8ff;
+  }
+  :root[data-theme="light"]{
+    --bg:#ffffff; --panel:#f6f8fa; --panel2:#ffffff; --border:#d0d7de;
+    --text:#1f2328; --muted:#636c76;
+    --c-ui:#8250df; --c-store:#1a7f37; --c-pipe:#bc4c00; --c-agent:#0969da;
+    --c-plat:#bc4c00; --c-ext:#6e7781;
+    --e-proxy:#8250df; --e-push:#0969da; --e-kafka:#bc4c00; --e-pg:#1a7f37;
+    --e-cert:#57606a; --e-k8s:#1b7c83; --e-webhook:#cf222e; --e-https:#a371f7;
+  }
+  :root[data-theme="light"] .node{box-shadow:0 1px 2px rgba(31,35,40,.12);}
+  :root[data-theme="light"] .node:hover{box-shadow:0 6px 16px rgba(31,35,40,.16);}
+  :root[data-theme="light"] .node.dragging{box-shadow:0 12px 28px rgba(31,35,40,.22);}
+  :root[data-theme="light"] .node.active{box-shadow:0 0 0 2px var(--text),0 6px 16px rgba(31,35,40,.2);}
+  .theme-btn{position:absolute;top:16px;right:20px;width:36px;height:36px;border-radius:8px;
+    background:var(--panel2);border:1px solid var(--border);color:var(--text);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s;}
+  .theme-btn:hover{border-color:var(--muted);}
+  .theme-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;}
+  .theme-btn .ic-moon{display:none;}
+  :root[data-theme="light"] .theme-btn .ic-sun{display:none;}
+  :root[data-theme="light"] .theme-btn .ic-moon{display:inline;}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    transition:background .2s,color .2s;}
+  header{padding:18px 70px 18px 24px;border-bottom:1px solid var(--border);background:var(--panel);position:relative;}
+  header h1{margin:0;font-size:20px;font-weight:650;}
+  header p{margin:4px 0 0;color:var(--muted);font-size:13px;}
+  .wrap{display:flex;gap:0;height:calc(100vh - 78px);}
+  .stage-wrap{flex:1;overflow:auto;position:relative;}
+  :root{--grid:rgba(255,255,255,.04);}
+  :root[data-theme="light"]{--grid:rgba(20,28,40,.06);}
+  #stage{position:relative;width:1500px;height:920px;margin:14px auto;
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:20px 20px;}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;}
+  .node{position:absolute;width:160px;min-height:56px;border-radius:11px;
+    background:var(--panel2);
+    background:color-mix(in srgb, var(--gc, var(--border)) 14%, var(--panel2));
+    border:1px solid var(--border);
+    border:1px solid color-mix(in srgb, var(--gc, var(--border)) 42%, var(--border));
+    border-left:4px solid var(--gc, var(--border));
+    padding:8px 11px;z-index:2;cursor:grab;touch-action:none;
+    user-select:none;-webkit-user-select:none;
+    transition:transform .12s,box-shadow .12s,opacity .15s;
+    box-shadow:0 1px 3px rgba(0,0,0,.35);}
+  .node:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.5);}
+  .node.dragging{cursor:grabbing;transition:none;z-index:6;transform:none;
+    box-shadow:0 12px 30px rgba(0,0,0,.65);opacity:1;}
+  .node.dragging:hover{transform:none;}
+  body.dragging-active{user-select:none;-webkit-user-select:none;cursor:grabbing;}
+  .node .t{font-weight:650;font-size:13px;line-height:1.2;display:flex;align-items:center;gap:7px;}
+  .node .t::before{content:"";width:8px;height:8px;border-radius:50%;flex:none;
+    background:var(--gc,var(--muted));
+    box-shadow:0 0 7px color-mix(in srgb, var(--gc,transparent) 65%, transparent);}
+  .node .s{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.25;}
+  .node.g-ui{border-left-color:var(--c-ui)}
+  .node.g-store{border-left-color:var(--c-store)}
+  .node.g-pipe{border-left-color:var(--c-pipe)}
+  .node.g-agent{border-left-color:var(--c-agent)}
+  .node.g-plat{border-left-color:var(--c-plat)}
+  .node.g-ext{border-left-color:var(--c-ext);border-style:dashed;background:var(--panel)}
+  .dim{opacity:.16}
+  .node.active{box-shadow:0 0 0 2px var(--text),0 6px 18px rgba(0,0,0,.6)}
+  .node.hub{width:190px;border-width:1.5px;
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--c-ui) 55%,transparent),
+               0 0 28px color-mix(in srgb,var(--c-ui) 38%,transparent),
+               0 6px 18px rgba(0,0,0,.45);}
+  .node.hub .t{font-size:13.5px;}
+  .zone{position:absolute;z-index:0;border-radius:18px;pointer-events:none;
+    background:rgba(127,127,127,.04);border:1px solid rgba(127,127,127,.13);
+    background:color-mix(in srgb,var(--zc) 8%, transparent);
+    border:1px solid color-mix(in srgb,var(--zc) 28%, transparent);}
+  .zone-label{position:absolute;top:10px;left:15px;font-size:10.5px;font-weight:700;
+    letter-spacing:.7px;text-transform:uppercase;color:var(--muted);
+    color:color-mix(in srgb,var(--zc) 65%, var(--text));}
+  .anchor{pointer-events:all;cursor:grab;}
+  .anchor:hover{stroke-width:3px;}
+  body.dragging-active .anchor{cursor:grabbing;}
+  .side{width:300px;border-left:1px solid var(--border);background:var(--panel);
+    padding:16px;overflow:auto;}
+  .side h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 0 10px}
+  .legend-item{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;
+    cursor:pointer;font-size:12.5px;user-select:none;}
+  .legend-item:hover{background:var(--panel2)}
+  .legend-item.off{opacity:.38}
+  .legend-item .ln{width:26px;height:0;border-top:3px solid;border-radius:2px;flex:none}
+  .detail{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
+  .detail.empty{color:var(--muted);font-size:12.5px}
+  .detail .dt{font-size:15px;font-weight:650;margin-bottom:2px}
+  .detail .dsub{font-size:11.5px;color:var(--muted);margin-bottom:10px}
+  .detail .dd{font-size:12.5px;line-height:1.5;color:#c9d1d9}
+  .detail ul{margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.55}
+  .hint{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
+  .reset-btn{margin-top:16px;width:100%;padding:8px 10px;border-radius:7px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--border);color:var(--text);
+    font-size:12.5px;font-family:inherit;transition:background .15s,border-color .15s;}
+  .reset-btn:hover{background:var(--border);border-color:var(--muted);}
+  .edge-label{font-size:9.5px;fill:var(--muted);}
+  text.edge-label{paint-order:stroke;stroke:var(--bg);stroke-width:3px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Wolfee-Watcher — схема взаимодействия компонентов</h1>
+  <p>Платформа безопасности Kubernetes (стиль StackRox). Перетаскивайте компоненты мышью, чтобы менять схему. Кликните на компонент, чтобы подсветить его связи. Кликайте по легенде, чтобы скрыть/показать типы связей.</p>
+  <button id="themeToggle" class="theme-btn" aria-label="Переключить тему" title="Переключить тему">
+    <svg class="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="7" y2="7"/><line x1="17" y1="17" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="7" y2="17"/><line x1="17" y1="7" x2="19.1" y2="4.9"/></svg>
+    <svg class="ic-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4 6.2 6.2 0 0 0 20 14.5z"/></svg>
+  </button>
+</header>
+<div class="wrap">
+  <div class="stage-wrap">
+    <div id="stage">
+      <svg class="edges" id="svg"></svg>
+    </div>
+  </div>
+  <aside class="side">
+    <h2>Типы связей</h2>
+    <div id="legend"></div>
+    <div class="detail empty" id="detail">Наведите или кликните на компонент, чтобы увидеть описание.</div>
+    <button id="resetLayout" class="reset-btn">↺ Сбросить расположение</button>
+    <div class="hint">Зоны сами подстраиваются под компоненты при перетаскивании. <b>Клик</b> по компоненту закрепляет подсветку и показывает якоря на его стрелках: <b>тяните</b> якорь (он прилипает к сетке), <b>двойной клик по линии</b> добавляет ещё один якорь, <b>двойной клик по якорю</b> удаляет его — так стрелку можно вести ломаной в обход блоков. Раскладка (позиции, изгибы, тема) <b>сохраняется автоматически</b>; «Сбросить расположение» возвращает всё к исходному.<br><br>Всё разворачивается через Helm в namespace <code>wolfee-watcher</code>. Между Go-сервисами — обязательный mTLS (<code>pkg/mtls</code>), сертификаты выдаёт <code>cert-server</code> (связи скрыты по умолчанию — включите в легенде).</div>
+  </aside>
+</div>
+
+<script>
+const W=158, H=58, HW=W/2, HH=H/2;
+const GRID=20;
+
+// ---- описания типов связей ----
+const TYPES = {
+  https:   {label:"Браузер → UI (HTTPS / Ingress)", color:"var(--e-https)"},
+  proxy:   {label:"Обратный прокси UI → бэкенды", color:"var(--e-proxy)", dash:"7 5"},
+  push:    {label:"mTLS push/pull (/internal/*)", color:"var(--e-push)"},
+  kafka:   {label:"Kafka (topic tracee-events)", color:"var(--e-kafka)"},
+  pg:      {label:"PostgreSQL", color:"var(--e-pg)"},
+  webhook: {label:"Webhook событий", color:"var(--e-webhook)"},
+  k8s:     {label:"Управление через K8s API", color:"var(--e-k8s)", dash:"2 4"},
+  cert:    {label:"Выдача сертификатов (mTLS)", color:"var(--e-cert)", dash:"4 4", offDefault:true},
+};
+
+// ---- узлы ----
+const NODES = [
+  {id:"browser", x:600, y:24,  g:"ext",   t:"Браузер / Оператор", s:"UI пользователь",
+    d:"Веб-интерфейс безопасности. Заходит через Ingress (kvisior8.*.nip.io) или port-forward на kvisior-ui."},
+  {id:"kvisior", x:600, y:150, g:"ui",    t:"kvisior-ui (Central)", s:"React UI + Go backend",
+    d:"Центральный узел платформы: отдаёт React-дашборд, проксирует запросы ко всем сервисам, принимает данные агентов через /internal/push|pull, раздаёт правила алертов и пишет всё в PostgreSQL. Потребляет Kafka, ведёт журнал алертов (/internal/alert-log).",
+    li:["Reverse-proxy: /api,/scanner,/sensor,/sentry,/anomaly,/honey,/audit","Ingestion: /internal/push|pull/* (auth по internalPushSecret)","Consumer Kafka + хранение истории в Postgres"]},
+  {id:"certserver", x:170, y:150, g:"plat", t:"cert-server", s:"Issuer mTLS-сертификатов",
+    d:"Динамически выдаёт TLS-сертификаты всем Go-сервисам (mTLS-меш, TLS 1.3, ротация). Нужен только Secret wolfee-watcher-ca (CA cert+key). Без него поды не стартуют (mTLS обязателен)."},
+  {id:"migrate", x:1080, y:150, g:"plat", t:"central-migrate (Job)", s:"Владелец схемы БД",
+    d:"Helm-хук post-install/upgrade. Применяет всю DDL-схему (central/internal/schema), сидит admin-аккаунт UI и создаёт по одной login-роли на сервис с least-privilege грантами. Сервисы сами CREATE TABLE не делают."},
+  {id:"postgres", x:1100, y:430, g:"store", t:"PostgreSQL", s:"postgres:16-alpine",
+    d:"Хранилище состояния. Прямой доступ только у kvisior (Central), tracee-bridge и anomaly-detector — каждый под своей least-privilege ролью. Схему создаёт central-migrate."},
+  {id:"kafka", x:790, y:560, g:"store", t:"Kafka", s:"topic: tracee-events",
+    d:"Шина событий ядра. tracee-bridge публикует события tracee, anomaly-detector и kvisior их потребляют."},
+  {id:"tracee", x:430, y:980, g:"pipe", t:"tracee (DaemonSet)", s:"привилегированный eBPF, hostPID",
+    d:"aquasec/tracee. eBPF-сенсор ядра на каждом узле: системные вызовы, доступ к /etc/shadow, /run/secrets и т.п. Отправляет события webhook'ом в tracee-bridge."},
+  {id:"bridge", x:560, y:780, g:"pipe", t:"tracee-bridge", s:"приём → Kafka + история",
+    d:"Принимает webhook-события от tracee (/tracee/event), публикует их в Kafka, пишет историю в Postgres. UI проксирует /api/ → tracee-bridge:8081 (запросы к событиям).",
+    li:["Webhook-приём от tracee","Producer в Kafka tracee-events","Sink истории в PostgreSQL"]},
+  {id:"anomaly", x:880, y:780, g:"pipe", t:"anomaly-detector", s:"поведенческие baselines",
+    d:"Потребляет tracee-events из Kafka, строит baseline за период наблюдения (~10 дней), детектит аномалии/recon-активность, обогащает и хранит в Postgres. UI проксирует /anomaly/. Шлёт алерты в Central."},
+  {id:"sentry", x:110, y:340, g:"agent", t:"sentry-audit", s:"K8s audit webhook",
+    d:"Приёмник audit-webhook Kubernetes. Разбирает audit-события API-сервера и пушит их в Central (/internal/push/audit). UI проксирует /sentry/. БД-доступа не имеет."},
+  {id:"forensic", x:110, y:470, g:"agent", t:"forensic-watcher", s:"DaemonSet: файлы + логи",
+    d:"DaemonSet на каждом узле. Отслеживает изменения файлов в containerd-слоях (диффы) и собирает node-local логи контейнеров (/var/log/pods), пушит в Central (/internal/push/forensic, /logs). БД-доступа нет."},
+  {id:"sensor", x:110, y:600, g:"agent", t:"sensor", s:"снимок кластера",
+    d:"Собирает снимок состояния кластера (с leader election), кэширует и пушит в Central (/internal/push/snapshot-cache). UI проксирует /sensor/. БД-доступа нет."},
+  {id:"scanner", x:110, y:730, g:"agent", t:"scanner-agent", s:"сканер уязвимостей",
+    d:"Сканирует образы через grype с обогащением NVD/EPSS/KEV/BDU(ФСТЭК). Тянет Harbor-креды из Central (/internal/pull/integration), пушит результаты (/internal/push/scan). UI проксирует /scanner/.",
+    li:["grype + NVD/EPSS/KEV/БДУ","Harbor-креды из Central","Результаты сканов в Central"]},
+  {id:"auditrunner", x:320, y:340, g:"agent", t:"audit-runner", s:"запуск аудит-джобов",
+    d:"Запускает аудит-задания в кластере (через K8s API) и пушит результаты прогонов в Central (/internal/push/audit-run). UI проксирует /audit/."},
+  {id:"honeyop", x:320, y:480, g:"agent", t:"honey-operator", s:"оператор honeypot'ов",
+    d:"Разворачивает и наблюдает honeypot-поды через K8s API, собирает срабатывания и форвардит их в Central (KVISIOR_PUSH_URL). UI проксирует /honey/."},
+  {id:"honeypot", x:320, y:620, g:"agent", t:"honeypot", s:"python honeypots",
+    d:"Ловушки (python honeypots), которые разворачивает honey-operator. Логируют попытки доступа атакующих."},
+  {id:"harbor", x:110, y:880, g:"ext", t:"Harbor / Registry", s:"внешний реестр образов",
+    d:"Внешний реестр контейнеров. scanner-agent тянет оттуда образы для сканирования, используя креды из Central."},
+  {id:"grypedb", x:320, y:880, g:"ext", t:"Grype Vuln DB", s:"внешняя БД уязвимостей",
+    d:"База уязвимостей grype, которую scanner-agent скачивает/обновляет (требует исходящего доступа)."},
+];
+
+// ---- связи ----
+const EDGES = [
+  {f:"browser", t:"kvisior", type:"https", l:"HTTPS"},
+
+  // UI reverse-proxy
+  {f:"kvisior", t:"bridge", type:"proxy", l:"/api"},
+  {f:"kvisior", t:"scanner", type:"proxy", l:"/scanner"},
+  {f:"kvisior", t:"sensor", type:"proxy", l:"/sensor"},
+  {f:"kvisior", t:"sentry", type:"proxy", l:"/sentry"},
+  {f:"kvisior", t:"anomaly", type:"proxy", l:"/anomaly"},
+  {f:"kvisior", t:"honeyop", type:"proxy", l:"/honey"},
+  {f:"kvisior", t:"auditrunner", type:"proxy", l:"/audit"},
+
+  // agents push/pull (mTLS internal)
+  {f:"sentry", t:"kvisior", type:"push", l:"push audit"},
+  {f:"forensic", t:"kvisior", type:"push", l:"push forensic/logs"},
+  {f:"sensor", t:"kvisior", type:"push", l:"push snapshot"},
+  {f:"scanner", t:"kvisior", type:"push", l:"push scan / pull harbor"},
+  {f:"auditrunner", t:"kvisior", type:"push", l:"push audit-run"},
+  {f:"honeyop", t:"kvisior", type:"push", l:"push honeypot hits"},
+  {f:"anomaly", t:"kvisior", type:"push", l:"alert-log / rules"},
+  {f:"bridge", t:"kvisior", type:"push", l:"alert-log / rules"},
+
+  // event pipeline
+  {f:"tracee", t:"bridge", type:"webhook", l:"webhook"},
+  {f:"bridge", t:"kafka", type:"kafka", l:"produce"},
+  {f:"kafka", t:"anomaly", type:"kafka", l:"consume"},
+  {f:"kafka", t:"kvisior", type:"kafka", l:"consume"},
+
+  // postgres
+  {f:"kvisior", t:"postgres", type:"pg"},
+  {f:"bridge", t:"postgres", type:"pg"},
+  {f:"anomaly", t:"postgres", type:"pg"},
+  {f:"migrate", t:"postgres", type:"pg", l:"schema/roles"},
+
+  // honeypot mgmt
+  {f:"honeyop", t:"honeypot", type:"k8s", l:"deploy/watch"},
+
+  // external
+  {f:"scanner", t:"harbor", type:"push", l:"pull images"},
+  {f:"scanner", t:"grypedb", type:"push", l:"vuln DB"},
+
+  // cert issuance (off by default)
+  {f:"certserver", t:"kvisior", type:"cert"},
+  {f:"certserver", t:"bridge", type:"cert"},
+  {f:"certserver", t:"anomaly", type:"cert"},
+  {f:"certserver", t:"sensor", type:"cert"},
+  {f:"certserver", t:"sentry", type:"cert"},
+  {f:"certserver", t:"scanner", type:"cert"},
+  {f:"certserver", t:"forensic", type:"cert"},
+  {f:"certserver", t:"auditrunner", type:"cert"},
+  {f:"certserver", t:"honeyop", type:"cert"},
+];
+
+const stage=document.getElementById('stage');
+const svg=document.getElementById('svg');
+const detail=document.getElementById('detail');
+const nodeMap={};
+const disabled=new Set();
+Object.entries(TYPES).forEach(([k,v])=>{if(v.offDefault)disabled.add(k)});
+let activeNode=null, hoverNode=null, dragAnchor=null;
+
+// arrow markers per color
+const NS="http://www.w3.org/2000/svg";
+const defs=document.createElementNS(NS,"defs");
+const colorList=[...new Set(Object.values(TYPES).map(t=>t.color))];
+colorList.forEach((c,i)=>{
+  const m=document.createElementNS(NS,"marker");
+  m.setAttribute("id","arr"+i);m.setAttribute("viewBox","0 0 10 10");
+  m.setAttribute("refX","9");m.setAttribute("refY","5");
+  m.setAttribute("markerWidth","5");m.setAttribute("markerHeight","5");
+  m.setAttribute("orient","auto-start-reverse");
+  const p=document.createElementNS(NS,"path");
+  p.setAttribute("d","M0,0 L10,5 L0,10 z");p.setAttribute("fill",c);
+  m.appendChild(p);defs.appendChild(m);
+});
+svg.appendChild(defs);
+function markerId(color){return "arr"+colorList.indexOf(color)}
+
+// --- радиальная раскладка: kvisior в центре, остальные по кругу ---
+const LAYOUT={
+  kvisior:[750,460],
+  browser:[750,100],
+  tracee:[985,124], bridge:[1188,194], anomaly:[1332,300], kafka:[1397,427],
+  postgres:[1375,559], migrate:[1269,677], certserver:[1092,766],
+  honeypot:[869,814], honeyop:[631,814], scanner:[408,766],
+  grypedb:[231,677], harbor:[125,559], sensor:[103,427],
+  forensic:[168,300], auditrunner:[312,194], sentry:[515,124],
+};
+NODES.forEach(n=>{ if(LAYOUT[n.id]){ n.x=LAYOUT[n.id][0]; n.y=LAYOUT[n.id][1]; } });
+NODES.forEach(n=>{ n._x0=n.x; n._y0=n.y; });   // дефолтные позиции (для «Сбросить»)
+loadState();                                   // восстановить сохранённую раскладку, если есть
+
+// --- цвет группы для заливки узла ---
+const GC={ui:'var(--c-ui)',agent:'var(--c-agent)',pipe:'var(--c-pipe)',
+          store:'var(--c-store)',plat:'var(--c-plat)',ext:'var(--c-ext)'};
+
+// --- зоны: динамически охватывают свои компоненты ---
+const ZONES=[
+  {label:'Клиент',                zc:'var(--c-ext)',   members:['browser']},
+  {label:'Central · ядро',        zc:'var(--c-ui)',    members:['kvisior']},
+  {label:'Агенты безопасности',   zc:'var(--c-agent)', members:['sentry','auditrunner','forensic','honeyop','sensor','honeypot','scanner']},
+  {label:'Внешние сервисы',       zc:'var(--c-ext)',   members:['harbor','grypedb']},
+  {label:'Конвейер событий',      zc:'var(--c-pipe)',  members:['tracee','bridge','anomaly']},
+  {label:'Хранилище и платформа', zc:'var(--c-store)', members:['kafka','postgres','migrate','certserver']},
+];
+ZONES.forEach(z=>{
+  const d=document.createElement('div');
+  d.className='zone';
+  d.style.setProperty('--zc', z.zc);
+  d.innerHTML=`<span class="zone-label">${z.label}</span>`;
+  stage.appendChild(d);
+  z.el=d;
+});
+function zoneBounds(z){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  z.members.forEach(id=>{ const n=nodeMap[id]; if(!n)return;
+    const left=n.x-HW, top=n.y-HH;          // как позиционируется узел
+    const w=n._w||W, h=n._h||H;             // фактические размеры блока (учитывают хаб/перенос строк)
+    minX=Math.min(minX,left); maxX=Math.max(maxX,left+w);
+    minY=Math.min(minY,top);  maxY=Math.max(maxY,top+h);
+  });
+  if(minX===Infinity) return null;
+  const padX=26, padTop=40, padBot=24;       // сверху больше — под подпись зоны
+  return {x:minX-padX, y:minY-padTop, w:(maxX-minX)+padX*2, h:(maxY-minY)+padTop+padBot};
+}
+function layoutZones(){
+  ZONES.forEach(z=>{ const b=zoneBounds(z); if(!b)return;
+    z.el.style.left=b.x+'px'; z.el.style.top=b.y+'px';
+    z.el.style.width=b.w+'px'; z.el.style.height=b.h+'px';
+  });
+}
+
+// render nodes
+NODES.forEach(n=>{
+  nodeMap[n.id]=n;
+  const el=document.createElement('div');
+  el.className='node g-'+n.g + (n.id==='kvisior'?' hub':'');
+  el.style.setProperty('--gc', GC[n.g]||'var(--border)');
+  el.style.left=(n.x-HW)+'px';
+  el.style.top=(n.y-HH)+'px';
+  el.innerHTML=`<div class="t">${n.t}</div><div class="s">${n.s}</div>`;
+  el.addEventListener('click',e=>{e.stopPropagation();selectNode(n.id)});
+  el.addEventListener('mouseenter',()=>{ showDetail(n); if(!dragging){hoverNode=n.id; if(!activeNode)drawEdges();} });
+  el.addEventListener('mouseleave',()=>{ if(!dragging){hoverNode=null; if(!activeNode)drawEdges();} });
+  n.el=el;
+  stage.appendChild(el);
+});
+
+// ---- drag & drop компонентов ----
+let dragging=null, dragMoved=false, suppressClick=false, startCX=0, startCY=0, origX=0, origY=0;
+
+stage.addEventListener('pointerdown', e=>{
+  const el=e.target.closest('.node'); if(!el) return;
+  const n=NODES.find(x=>x.el===el); if(!n) return;
+  suppressClick=false;
+  dragging=n; dragMoved=false;
+  startCX=e.clientX; startCY=e.clientY; origX=n.x; origY=n.y;
+  el.classList.add('dragging');
+  document.body.classList.add('dragging-active');
+});
+
+document.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const dx=e.clientX-startCX, dy=e.clientY-startCY;
+  if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+  let nx=origX+dx, ny=origY+dy;
+  nx=Math.max(HW, Math.min(stage.clientWidth-HW, nx));   // не вылезать за пределы холста
+  ny=Math.max(HH, Math.min(stage.clientHeight-HH, ny));
+  dragging.x=nx; dragging.y=ny;
+  dragging.el.style.left=(nx-HW)+'px';
+  dragging.el.style.top=(ny-HH)+'px';
+  layoutZones();                                          // зоны следуют за компонентами
+  drawEdges();                                            // связи следуют за узлом
+});
+
+document.addEventListener('pointerup', ()=>{
+  if(!dragging) return;
+  dragging.el.classList.remove('dragging');
+  document.body.classList.remove('dragging-active');
+  if(dragMoved){ suppressClick=true; saveState(); }   // после перетаскивания не выделять + сохранить
+  dragging=null;
+});
+
+// перехватываем клик-после-перетаскивания на фазе капчи, чтобы не сработали select/clear
+stage.addEventListener('click', e=>{
+  if(suppressClick){ e.stopPropagation(); suppressClick=false; }
+}, true);
+
+// сброс расположения к исходному
+document.getElementById('resetLayout').addEventListener('click', ()=>{
+  NODES.forEach(n=>{
+    n.x=n._x0; n.y=n._y0;
+    n.el.style.left=(n.x-HW)+'px';
+    n.el.style.top=(n.y-HH)+'px';
+  });
+  EDGES.forEach(e=>{ delete e.wps; });   // сбросить и якоря стрелок
+  layoutZones();
+  drawEdges();
+  try{ localStorage.removeItem('ww-layout'); }catch(e){}   // забыть сохранённую раскладку
+});
+
+// ---- якоря стрелок: тащить / добавлять / удалять (со снапом к сетке) ----
+function startAnchorDrag(ev, ed, i, autoCp){
+  ev.stopPropagation();
+  if(autoCp && (!ed.wps || !ed.wps.length)){           // первый якорь создаём из авто-точки
+    ed.wps=[{x:Math.round(autoCp.x/GRID)*GRID, y:Math.round(autoCp.y/GRID)*GRID}];
+    i=0;
+  }
+  dragAnchor={ed,i};
+  document.body.classList.add('dragging-active');
+}
+function distToSeg(p,a,b){
+  const vx=b.x-a.x, vy=b.y-a.y, wx=p.x-a.x, wy=p.y-a.y;
+  const c1=vx*wx+vy*wy; if(c1<=0) return Math.hypot(p.x-a.x,p.y-a.y);
+  const c2=vx*vx+vy*vy; if(c2<=c1) return Math.hypot(p.x-b.x,p.y-b.y);
+  const t=c1/c2; return Math.hypot(p.x-(a.x+t*vx), p.y-(a.y+t*vy));
+}
+function addAnchor(ev, ed){
+  ev.stopPropagation(); ev.preventDefault();
+  const a=nodeMap[ed.f], b=nodeMap[ed.t];
+  const r=stage.getBoundingClientRect();
+  const x=Math.round((ev.clientX-r.left)/GRID)*GRID;
+  const y=Math.round((ev.clientY-r.top )/GRID)*GRID;
+  if(!ed.wps) ed.wps=[];
+  const rt=edgeRoute(ed,a,b);
+  let best=0,bestD=Infinity;                            // вставить в ближайший сегмент маршрута
+  for(let i=0;i<rt.full.length-1;i++){
+    const d=distToSeg({x,y},rt.full[i],rt.full[i+1]);
+    if(d<bestD){bestD=d;best=i;}
+  }
+  ed.wps.splice(rt.wps?best:0, 0, {x,y});
+  drawEdges(); saveState();
+}
+function removeAnchor(ev, ed, i){
+  ev.stopPropagation();
+  if(ed.wps){ ed.wps.splice(i,1); if(!ed.wps.length) delete ed.wps; }
+  drawEdges(); saveState();
+}
+document.addEventListener('pointermove', e=>{
+  if(!dragAnchor) return;
+  const r=stage.getBoundingClientRect();
+  let x=e.clientX-r.left, y=e.clientY-r.top;
+  x=Math.max(0, Math.min(stage.clientWidth,  x));
+  y=Math.max(0, Math.min(stage.clientHeight, y));
+  x=Math.round(x/GRID)*GRID; y=Math.round(y/GRID)*GRID; // прилипание к сетке
+  dragAnchor.ed.wps[dragAnchor.i]={x,y};
+  drawEdges();
+});
+document.addEventListener('pointerup', ()=>{
+  if(!dragAnchor) return;
+  dragAnchor=null;
+  suppressClick=true;
+  document.body.classList.remove('dragging-active');
+  drawEdges(); saveState();
+});
+
+// ---- сохранение/восстановление раскладки (позиции + изгибы) ----
+function saveState(){
+  try{
+    const st={nodes:{},edges:{}};
+    NODES.forEach(n=>st.nodes[n.id]=[Math.round(n.x),Math.round(n.y)]);
+    EDGES.forEach((e,i)=>{ if(e.wps&&e.wps.length) st.edges[i]=e.wps.map(p=>[Math.round(p.x),Math.round(p.y)]); });
+    localStorage.setItem('ww-layout', JSON.stringify(st));
+  }catch(e){}
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem('ww-layout'); if(!raw) return;
+    const st=JSON.parse(raw);
+    if(st.nodes) NODES.forEach(n=>{ const p=st.nodes[n.id]; if(p){ n.x=p[0]; n.y=p[1]; } });
+    if(st.edges) EDGES.forEach((e,i)=>{ const w=st.edges[i]; if(w) e.wps=w.map(p=>({x:p[0],y:p[1]})); });
+  }catch(e){}
+}
+
+// border intersection point of a box centered at node toward (tx,ty)
+function border(n,tx,ty){
+  const dx=tx-n.x, dy=ty-n.y;
+  if(dx===0&&dy===0)return{x:n.x,y:n.y};
+  const sx=dx!==0?(HW)/Math.abs(dx):Infinity;
+  const sy=dy!==0?(HH)/Math.abs(dy):Infinity;
+  const s=Math.min(sx,sy);
+  return{x:n.x+dx*s, y:n.y+dy*s};
+}
+
+// гладкая кривая (Catmull-Rom → Bézier) через набор точек
+function smoothPath(pts){
+  if(pts.length===2) return `M${pts[0].x},${pts[0].y} L${pts[1].x},${pts[1].y}`;
+  let d=`M${pts[0].x},${pts[0].y}`;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||pts[i+1];
+    const c1x=p1.x+(p2.x-p0.x)/6, c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6, c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+// маршрут связи: через якоря (wps) или авто-изгиб
+function edgeRoute(ed,a,b){
+  const wps=(ed.wps&&ed.wps.length)?ed.wps:null;
+  if(wps){
+    const p1=border(a,wps[0].x,wps[0].y);
+    const p2=border(b,wps[wps.length-1].x,wps[wps.length-1].y);
+    const full=[p1,...wps,p2];
+    return {full, d:smoothPath(full), wps, autoCp:null};
+  }
+  const p1=border(a,b.x,b.y), p2=border(b,a.x,a.y);
+  const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2;
+  const nx=-(p2.y-p1.y),ny=(p2.x-p1.x);
+  const len=Math.hypot(nx,ny)||1, off=22;
+  const cp={x:mx+nx/len*off, y:my+ny/len*off};
+  return {full:[p1,cp,p2], d:`M${p1.x},${p1.y} Q${cp.x},${cp.y} ${p2.x},${p2.y}`, wps:null, autoCp:cp};
+}
+function addAnchorHandle(x,y,color,onDown,onDbl){
+  const h=document.createElementNS(NS,"circle");
+  h.setAttribute("class","anchor edge");
+  h.setAttribute("cx",x); h.setAttribute("cy",y); h.setAttribute("r","6");
+  h.setAttribute("fill",color); h.setAttribute("stroke","var(--bg)"); h.setAttribute("stroke-width","2");
+  h.addEventListener('pointerdown', onDown);
+  if(onDbl) h.addEventListener('dblclick', onDbl);
+  svg.appendChild(h);
+}
+function drawEdges(){
+  [...svg.querySelectorAll('path.edge,text.edge-label,circle.anchor')].forEach(e=>e.remove());
+  const hl=activeNode||hoverNode;
+  EDGES.forEach(ed=>{
+    if(disabled.has(ed.type))return;
+    const a=nodeMap[ed.f], b=nodeMap[ed.t];
+    const rt=edgeRoute(ed,a,b);
+    const ty=TYPES[ed.type];
+    const connected = hl && (ed.f===hl||ed.t===hl);
+    const pinned = activeNode && (ed.f===activeNode||ed.t===activeNode);
+    const path=document.createElementNS(NS,"path");
+    path.setAttribute("class","edge");
+    path.setAttribute("d",rt.d);
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke",ty.color);
+    path.setAttribute("stroke-linecap","round");
+    path.setAttribute("stroke-linejoin","round");
+    path.setAttribute("stroke-width", connected?"3":"2");
+    if(ty.dash)path.setAttribute("stroke-dasharray",ty.dash);
+    path.setAttribute("marker-end",`url(#${markerId(ty.color)})`);
+    path.setAttribute("opacity", hl ? (connected?"1":"0.07") : "0.5");
+    if(pinned){
+      path.style.pointerEvents='stroke'; path.style.cursor='copy';
+      path.addEventListener('dblclick', ev=>addAnchor(ev,ed));      // двойной клик по линии — добавить якорь
+      path.addEventListener('click', ev=>ev.stopPropagation());     // клик по линии не снимает выделение
+    }
+    svg.appendChild(path);
+    // подпись — у середины маршрута, только для выделенного/наведённого
+    if(ed.l && connected){
+      const m=rt.full[Math.floor(rt.full.length/2)];
+      const tx=document.createElementNS(NS,"text");
+      tx.setAttribute("class","edge-label edge");
+      tx.setAttribute("x",m.x);tx.setAttribute("y",m.y-9);
+      tx.setAttribute("text-anchor","middle");
+      tx.textContent=ed.l;
+      svg.appendChild(tx);
+    }
+    // якоря — у связей закреплённого узла
+    if(pinned){
+      if(rt.wps){
+        rt.wps.forEach((wp,i)=>addAnchorHandle(wp.x,wp.y,ty.color,
+          ev=>startAnchorDrag(ev,ed,i), ev=>removeAnchor(ev,ed,i)));   // dbl — удалить якорь
+      }else{
+        addAnchorHandle(rt.autoCp.x,rt.autoCp.y,ty.color,
+          ev=>startAnchorDrag(ev,ed,0,rt.autoCp), null);              // потяни — создать первый якорь
+      }
+    }
+  });
+}
+
+function selectNode(id){
+  activeNode = activeNode===id?null:id;
+  NODES.forEach(n=>{
+    n.el.classList.remove('dim','active');
+    if(activeNode){
+      const linked=EDGES.some(e=>(e.f===activeNode&&e.t===n.id)||(e.t===activeNode&&e.f===n.id)) || n.id===activeNode;
+      if(!linked && !disabledHidesAll(n.id)) n.el.classList.add('dim');
+      else if(!linked) n.el.classList.add('dim');
+    }
+  });
+  if(activeNode)nodeMap[activeNode].el.classList.add('active');
+  if(activeNode)showDetail(nodeMap[activeNode]);
+  drawEdges();
+}
+function disabledHidesAll(){return false}
+
+function showDetail(n){
+  let html=`<div class="dt">${n.t}</div><div class="dsub">${n.s}</div><div class="dd">${n.d}</div>`;
+  if(n.li)html+=`<ul>${n.li.map(x=>`<li>${x}</li>`).join('')}</ul>`;
+  detail.className='detail';
+  detail.innerHTML=html;
+}
+
+stage.addEventListener('click',()=>{if(activeNode){activeNode=null;NODES.forEach(n=>n.el.classList.remove('dim','active'));drawEdges();}});
+
+// legend
+const legend=document.getElementById('legend');
+Object.entries(TYPES).forEach(([k,v])=>{
+  const item=document.createElement('div');
+  item.className='legend-item'+(disabled.has(k)?' off':'');
+  item.innerHTML=`<span class="ln" style="border-top-color:${v.color};${v.dash?'border-top-style:dashed;':''}"></span><span>${v.label}</span>`;
+  item.addEventListener('click',()=>{
+    if(disabled.has(k))disabled.delete(k);else disabled.add(k);
+    item.classList.toggle('off');
+    drawEdges();
+  });
+  legend.appendChild(item);
+});
+
+NODES.forEach(n=>{ n._w=n.el.offsetWidth; n._h=n.el.offsetHeight; });  // запомнить реальные размеры блоков
+layoutZones();
+drawEdges();
+
+// ---- переключение темы ----
+(function(){
+  const root=document.documentElement;
+  const btn=document.getElementById('themeToggle');
+  function setTheme(t){
+    root.setAttribute('data-theme', t);
+    try{ localStorage.setItem('ww-theme', t); }catch(e){}
+    drawEdges();   // перерисовать связи под новые цвета
+  }
+  let saved='dark';
+  try{ saved=localStorage.getItem('ww-theme')||'dark'; }catch(e){}
+  setTheme(saved);
+  btn.addEventListener('click', ()=>{
+    setTheme(root.getAttribute('data-theme')==='light' ? 'dark' : 'light');
+  });
+})();
+</script>
+</body>
+</html>
