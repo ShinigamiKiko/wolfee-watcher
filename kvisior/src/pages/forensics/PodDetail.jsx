@@ -21,6 +21,7 @@ const SYSCALL_NAME_SET = new Set(SYSCALL_GROUPS.flatMap(g => g.items.map(i => i.
 const LSM_NAME_SET     = new Set(LSM_NAMES);
 const TP_NAME_SET      = new Set(TRACEPOINT_NAMES);
 
+const LIVE_ONLY_HINT = 'Недоступно: под удалён из кластера';
 const SEV_RANK = { anomaly: 5, critical: 4, high: 3, medium: 2, low: 1, none: 0, syscall: 0 };
 const FNS_COLUMNS = [
   { key: 'ts',        label: 'Timestamp' },
@@ -58,6 +59,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
 
   const pName = podName(pod);
   const pNS   = podNS(pod);
+  const gone  = pod?._gone === true;
 
   useEffect(() => {
     if (!watching) return;
@@ -92,6 +94,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
   }, [watchedSyscalls.join(','), pNS, pName]);
 
   useEffect(() => {
+    if (gone) return;
     let cancelled = false;
     fetch(`/v1/pod-watch?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, { credentials: 'same-origin' })
       .then(r => {
@@ -101,7 +104,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
       .then(d => { if (!cancelled && d?.syscalls) setWatchedSyscalls(d.syscalls); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [pNS, pName]);
+  }, [pNS, pName, gone]);
 
   const saveWatch = async (next) => {
     setWatchedSyscalls(next);
@@ -257,8 +260,8 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
     const prevBase = `/sensor/api/pods/${pNS}/${pName}/logs?previous=true&sinceSeconds=${sinceSeconds}${qs}`;
     try {
       const [curRes, prevRes] = await Promise.all([
-        fetch(base,     { credentials: 'same-origin' }).catch(() => null),
-        fetch(prevBase, { credentials: 'same-origin' }).catch(() => null),
+        fetch(base, { credentials: 'same-origin' }).catch(() => null),
+        gone ? null : fetch(prevBase, { credentials: 'same-origin' }).catch(() => null),
       ]);
       const parseLines = (json, isPrev) => {
         if (!json) return [];
@@ -307,13 +310,15 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
           <div className="fns-pod-ns">{pNS} /</div>
           <div className="fns-pod-name-row">
             <span className="fns-pod-name">{pName}</span>
-            <span className="fns-pod-badge">RUNNING</span>
-            {!watching
+            <span className={`fns-pod-badge${gone ? ' fns-pod-badge--gone' : ''}`}>
+              {gone ? 'TERMINATED' : 'RUNNING'}
+            </span>
+            {!gone && (!watching
               ? <button className="fns-watch-btn" onClick={doWatch}>Watch</button>
               : <button className="fns-watch-btn fns-watch-btn--active" onClick={doUnwatch}>
                   ⚠ Anomaly Watch <span className="fns-watch-x">✕</span>
                 </button>
-            }
+            )}
           </div>
           {containers.length > 1 && (
             <div className="fns-cs">
@@ -349,9 +354,11 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
               </div>
             )}
           </div>
-          <button className="fns-btn fns-btn--upper" disabled={upperLoading} onClick={doUpperDir}>
-            {upperLoading ? '⏳…' : '↓ Upper Dir'}
-          </button>
+          {!gone && (
+            <button className="fns-btn fns-btn--upper" disabled={upperLoading} onClick={doUpperDir}>
+              {upperLoading ? '⏳…' : '↓ Upper Dir'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -362,19 +369,23 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
           <button className={`fns-ctab${contentTab==='syscalls'?' active':''}`}
             onClick={() => setContentTab('syscalls')}>Binary Calls</button>
           <button className={`fns-ctab${contentTab==='fsdiff'?' active':''}`}
+            disabled={gone} title={gone ? LIVE_ONLY_HINT : undefined}
             onClick={() => { setContentTab('fsdiff'); if (watching) fetchDiff(); }}>
             FS Diff {watching && <span className="fns-ctab-dot"/>}
             {diff.length > 0 && <span className="fns-ctab-cnt">{diff.length}</span>}
           </button>
           <button className={`fns-ctab${contentTab==='watch-syscall'?' active':''}`}
+            disabled={gone} title={gone ? LIVE_ONLY_HINT : undefined}
             onClick={() => setContentTab('watch-syscall')}>
             Syscall Watch
           </button>
           <button className={`fns-ctab${contentTab==='watch-lsm'?' active':''}`}
+            disabled={gone} title={gone ? LIVE_ONLY_HINT : undefined}
             onClick={() => setContentTab('watch-lsm')}>
             LSM Watch
           </button>
           <button className={`fns-ctab${contentTab==='watch-tracepoint'?' active':''}`}
+            disabled={gone} title={gone ? LIVE_ONLY_HINT : undefined}
             onClick={() => setContentTab('watch-tracepoint')}>
             Tracepoint Watch
           </button>
