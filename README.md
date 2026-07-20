@@ -82,6 +82,24 @@ flowchart TB
 `cert-server` issues rotating TLS 1.3 client certs to every Go service; those
 edges are omitted above for readability.
 
+## Features
+
+In addition to Kubernetes audit monitoring, Wolfee-Watcher includes:
+
+- **Honeypots** for recording connections and login attempts.
+- **Container forensics** with file change history, logs, and TAR export.
+- **Syscall monitoring** through Tracee/eBPF, with filters by pod and event.
+- **Tracepoints** for kernel events such as module loading and process switches.
+- **LSM hooks** for monitoring file, process, socket, and BPF operations inside
+  the kernel.
+- **FSTEC BDU mapping** for matching detected CVEs with BDU records.
+
+### FSTEC database
+
+The database is not included in this repository. To enable FSTEC enrichment,
+download the latest database file from the official FSTEC website and make it
+available to `scanner-agent`.
+
 ## Quick start (single-node dev)
 
 ```bash
