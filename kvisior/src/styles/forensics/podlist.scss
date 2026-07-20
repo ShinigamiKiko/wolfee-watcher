@@ -90,6 +90,24 @@
   &--running { background: var(--accent-3); box-shadow: 0 0 5px var(--accent-3); }
   &--pending { background: var(--warning); }
   &--failed  { background: var(--danger); box-shadow: 0 0 5px var(--danger); }
+  &--gone    { background: var(--text-muted); box-shadow: none; }
+}
+
+.fns-prow--gone {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+
+  &:hover { opacity: 0.75; }
+}
+
+.fns-gone-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  white-space: nowrap;
 }
 
 .fns-pname {

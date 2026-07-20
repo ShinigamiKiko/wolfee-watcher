@@ -38,6 +38,12 @@
   background: rgba(16, 185, 129, 0.1);
   color: var(--accent-3);
   border: 1px solid rgba(16, 185, 129, 0.2);
+
+  &--gone {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border-color: var(--border);
+  }
 }
 
 .fns-pod-hdr-right {
@@ -569,6 +575,12 @@
   gap: 6px;
   transition: all .15s;
   &:hover { color: var(--text-primary); }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    &:hover { color: var(--text-muted); }
+  }
   &.active { color: var(--accent); border-bottom-color: var(--accent); }
 }
 
