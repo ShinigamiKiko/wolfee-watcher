@@ -14,15 +14,16 @@ import (
 )
 
 type AlertLog struct {
-	DetType   string `json:"detType"`
-	Source    string `json:"source"`
-	RuleID    string `json:"ruleId,omitempty"`
-	RuleName  string `json:"ruleName"`
-	Severity  string `json:"severity,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	Target    string `json:"target,omitempty"`
-	Syscall   string `json:"syscall,omitempty"`
-	Detail    string `json:"detail,omitempty"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
+	DetType   string    `json:"detType"`
+	Source    string    `json:"source"`
+	RuleID    string    `json:"ruleId,omitempty"`
+	RuleName  string    `json:"ruleName"`
+	Severity  string    `json:"severity,omitempty"`
+	Namespace string    `json:"namespace,omitempty"`
+	Target    string    `json:"target,omitempty"`
+	Syscall   string    `json:"syscall,omitempty"`
+	Detail    string    `json:"detail,omitempty"`
 
 	Persist     bool            `json:"persist,omitempty"`
 	Fingerprint string          `json:"fingerprint,omitempty"`
@@ -39,9 +40,9 @@ const (
 )
 
 type Forwarder struct {
-	url    string
-	secret string
-	hc     *http.Client
+	url     string
+	secret  string
+	hc      *http.Client
 	timeout time.Duration
 
 	q *PushQueue[AlertLog]

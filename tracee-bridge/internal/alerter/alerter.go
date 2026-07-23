@@ -85,17 +85,7 @@ func (a *Alerter) Evaluate(ev *mapper.UIEvent) {
 		if !a.markFresh(fp) {
 			continue
 		}
-		name := r.ID
-		if r.DetType == "Binary" && r.ProcessFilter != "" {
-			name = "Binary: " + r.ProcessFilter
-		} else if r.Syscall != "" && r.Syscall != "*" {
-			prefix := "Syscall"
-			switch r.DetType {
-			case "LSM", "Tracepoint":
-				prefix = r.DetType
-			}
-			name = prefix + ": " + r.Syscall
-		}
+		name := alertName(r)
 		ns := ev.Namespace
 		if ns == "" {
 			ns = "—"
@@ -115,7 +105,7 @@ func (a *Alerter) Evaluate(ev *mapper.UIEvent) {
 			Source:      sourceTag,
 			RuleID:      r.ID,
 			RuleName:    name,
-			Severity:    ev.Severity,
+			Severity:    alertSeverity(r, ev),
 			Namespace:   ns,
 			Target:      pod,
 			Syscall:     ev.Syscall,
@@ -126,6 +116,34 @@ func (a *Alerter) Evaluate(ev *mapper.UIEvent) {
 		}
 		a.fwd.Send(al)
 	}
+}
+
+func alertName(r matcher.Rule) string {
+	if name := strings.TrimSpace(r.Name); name != "" {
+		return name
+	}
+	if r.DetType == "Binary" && r.ProcessFilter != "" {
+		return "Binary: " + r.ProcessFilter
+	}
+	if r.Syscall != "" && r.Syscall != "*" {
+		prefix := "Syscall"
+		switch r.DetType {
+		case "LSM", "Tracepoint":
+			prefix = r.DetType
+		}
+		return prefix + ": " + r.Syscall
+	}
+	return r.ID
+}
+
+func alertSeverity(r matcher.Rule, ev *mapper.UIEvent) string {
+	if severity := strings.TrimSpace(r.Sev); severity != "" {
+		return strings.ToUpper(severity)
+	}
+	if ev == nil {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(ev.Severity))
 }
 
 func (a *Alerter) persistBatch(batch []alertspkg.AlertLog) {

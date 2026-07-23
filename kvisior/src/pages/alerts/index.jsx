@@ -11,6 +11,9 @@ import { RowActions, BucketsPanel, DetailRow, KindReference } from './AlertsUi';
 import { AlertDetail } from './AlertDetail';
 import { AlertsList } from './AlertsList';
 
+const FETCH_LIMIT = 150;
+const MAX_EVENTS = 10000;
+
 function honeypotTs(ts) {
   if (!ts) return new Date().toISOString();
   return /([zZ]|[+-]\d{2}:?\d{2})$/.test(ts) ? ts : ts + 'Z';
@@ -220,7 +223,7 @@ export function Alerts() {
       for (const e of incoming) byId.set(key(e), e);
       const all  = [...byId.values()].sort((a, b) => new Date(b.ts) - new Date(a.ts));
       eventsRef.current = all;
-      return all.slice(0, 5000);
+      return all.slice(0, MAX_EVENTS);
     });
     const withID = incoming.filter(e => e.id);
     if (withID.length) {
@@ -231,7 +234,7 @@ export function Alerts() {
 
   const poll = useCallback(async () => {
     try {
-      const res = await fetch(`/anomaly/api/anomalies?since=${lastIDRef.current}&limit=50`, {
+      const res = await fetch(`/anomaly/api/anomalies?since=${lastIDRef.current}&limit=${FETCH_LIMIT}`, {
         credentials: 'same-origin',
       });
       if (!res.ok) throw new Error(res.status);

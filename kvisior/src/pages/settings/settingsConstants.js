@@ -33,11 +33,20 @@ export const INTEGRATION_DEFS = [
   {
     kind: 'mattermost',
     label: 'Mattermost',
-    desc: 'Post a message via incoming webhook for every anomaly.',
+    desc: 'Send alerts to a Mattermost channel through an incoming webhook.',
     fields: [
-      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://mm.example.com/hooks/xxxx', required: true },
+      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://mm.example.com/hooks/xxxx', secret: true, required: true },
       { key: 'channel',     label: 'Channel override', placeholder: 'sec-alerts' },
       { key: 'username',    label: 'Bot username',     placeholder: 'kvisior8' },
+    ],
+  },
+  {
+    kind: 'discord',
+    label: 'Discord',
+    desc: 'Send alerts to a Discord channel through an incoming webhook.',
+    fields: [
+      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/…', secret: true, required: true },
+      { key: 'username',    label: 'Bot username', placeholder: 'Wolfee-Watcher' },
     ],
   },
   {

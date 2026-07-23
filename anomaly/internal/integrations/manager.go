@@ -53,6 +53,15 @@ func (m *Manager) Test(ctx context.Context, kind string, raw json.RawMessage) er
 			return fmt.Errorf("webhook_url is required")
 		}
 		return newMattermost(c).Test(ctx)
+	case KindDiscord:
+		var c DiscordConfig
+		if err := json.Unmarshal(raw, &c); err != nil {
+			return fmt.Errorf("invalid discord config: %w", err)
+		}
+		if c.WebhookURL == "" {
+			return fmt.Errorf("webhook_url is required")
+		}
+		return newDiscord(c).Test(ctx)
 	case KindHarbor:
 		var c HarborConfig
 		if err := json.Unmarshal(raw, &c); err != nil {

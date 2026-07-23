@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	AnomalyEventTTL = 7 * 24 * time.Hour
+	AnomalyEventTTL = 14 * 24 * time.Hour
 
 	AnomalySilentTTL        = 24 * time.Hour
 	AnomalyCleanupInterval  = 5 * time.Minute
