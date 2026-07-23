@@ -43,6 +43,10 @@ spec:
               value: {{ .Values.global.mtlsRequired | quote }}
             - name: INTERNAL_PUSH_SECRET
               value: {{ .Values.global.internalPushSecret | quote }}
+            - name: INTEGRATIONS_ALLOW_INTERNAL
+              value: {{ .Values.global.integrations.allowInternal | quote }}
+            - name: INTEGRATIONS_ALLOWED_CIDRS
+              value: {{ .Values.global.integrations.allowedCIDRs | quote }}
             - name: KVISIOR_SECURE_COOKIE
               value: {{ .Values.ui.secureCookie | default "false" | quote }}
             - name: KAFKA_BROKERS

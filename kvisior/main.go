@@ -167,6 +167,7 @@ func main() {
 				go st.RunRetention(ctx)
 
 				go alertspkg.RunCleanup(ctx, pgPool)
+				go alertspkg.RunWebhookDelivery(ctx, pgPool)
 			}
 		}
 	} else {

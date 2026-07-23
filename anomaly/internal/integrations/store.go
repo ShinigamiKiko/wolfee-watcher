@@ -13,6 +13,7 @@ import (
 const (
 	KindJira       = "jira"
 	KindMattermost = "mattermost"
+	KindDiscord    = "discord"
 	KindHarbor     = "harbor"
 )
 
@@ -27,6 +28,11 @@ type JiraConfig struct {
 type MattermostConfig struct {
 	WebhookURL string `json:"webhook_url"`
 	Channel    string `json:"channel,omitempty"`
+	Username   string `json:"username,omitempty"`
+}
+
+type DiscordConfig struct {
+	WebhookURL string `json:"webhook_url"`
 	Username   string `json:"username,omitempty"`
 }
 
@@ -131,10 +137,22 @@ func (s *Store) Delete(ctx context.Context, kind string) error {
 
 func validKind(k string) bool {
 	switch k {
-	case KindJira, KindMattermost, KindHarbor:
+	case KindJira, KindMattermost, KindDiscord, KindHarbor:
 		return true
 	}
 	return false
+}
+
+func (s *Store) DiscordConfig() (DiscordConfig, bool) {
+	r, ok := s.Get(KindDiscord)
+	if !ok || !r.Enabled {
+		return DiscordConfig{}, false
+	}
+	var c DiscordConfig
+	if err := json.Unmarshal(r.Config, &c); err != nil || c.WebhookURL == "" {
+		return DiscordConfig{}, false
+	}
+	return c, true
 }
 
 func (s *Store) JiraConfig() (JiraConfig, bool) {

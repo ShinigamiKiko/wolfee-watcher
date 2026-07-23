@@ -122,7 +122,7 @@ export function AlertLog() {
                 <th>Namespace / Target</th>
                 <th>Syscall</th>
                 <th>Detail</th>
-                <th style={{ textAlign: 'center' }} title="Delivered to Mattermost">Sent</th>
+                <th style={{ textAlign: 'center' }} title="Delivered to an external webhook">Sent</th>
                 <th></th>
               </tr>
             </thead>

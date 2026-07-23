@@ -7,6 +7,8 @@ import (
 
 type Rule struct {
 	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Sev     string `json:"sev"`
 	Enabled bool   `json:"enabled"`
 
 	AlertOnly     bool   `json:"alertOnly"`

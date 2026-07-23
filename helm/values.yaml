@@ -54,7 +54,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0008-honeypot-events"
+  schemaVersion: "0009-alert-webhooks"
   adminBootstrapPassword: ""
   resources:
     requests:

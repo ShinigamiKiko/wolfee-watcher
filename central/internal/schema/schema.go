@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0008-honeypot-events"
+const Version = "0009-alert-webhooks"
 
 var DDL = []string{
 
@@ -34,6 +34,18 @@ var DDL = []string{
 	config      JSONB NOT NULL DEFAULT '{}',
 	updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
+	`CREATE TABLE IF NOT EXISTS alert_deliveries (
+	alert_id        BIGINT      NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+	integration     TEXT        NOT NULL REFERENCES integrations(kind) ON DELETE CASCADE,
+	attempts        INTEGER     NOT NULL DEFAULT 0,
+	delivered_at    TIMESTAMPTZ,
+	next_attempt_at TIMESTAMPTZ,
+	last_error      TEXT,
+	PRIMARY KEY (alert_id, integration)
+)`,
+	`CREATE INDEX IF NOT EXISTS idx_alert_deliveries_retry
+	ON alert_deliveries(next_attempt_at)
+	WHERE delivered_at IS NULL`,
 
 	`CREATE TABLE IF NOT EXISTS runtime_policies (
 	id         TEXT PRIMARY KEY,

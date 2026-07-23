@@ -28,6 +28,7 @@ var Grants = map[string][]TableGrant{
 
 	RoleUI: {
 		{"alerts", "SELECT, INSERT, DELETE"},
+		{"alert_deliveries", "SELECT, INSERT, UPDATE, DELETE"},
 		{"integrations", "SELECT"},
 		{"admin_groups", "SELECT, INSERT, UPDATE, DELETE"},
 		{"admin_users", "SELECT, INSERT, UPDATE, DELETE"},
