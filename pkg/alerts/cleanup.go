@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	AlertsTTL       = 5 * time.Minute
+	AlertsTTL       = 14 * 24 * time.Hour
 	CleanupInterval = 1 * time.Minute
 
 	cleanupLockKey int64 = 0x77770002

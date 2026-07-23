@@ -1,5 +1,16 @@
 # kvisior Helm chart — upgrade 0.2.x → 0.3.0
 
+## Alert webhooks and retention
+
+- Events shown on the Alerts page and persisted rule alerts are retained for
+  up to 14 days. The UI fetches 150 events per request and keeps up to 10,000
+  events in memory.
+- Discord and Mattermost incoming webhooks can be configured under
+  **Settings → Integrations**. Delivery is retried independently for each
+  integration.
+- The schema version is now `0009-alert-webhooks`; rebuild and deploy the
+  `central-migrate` and UI images together.
+
 ## Централизация схемы БД и least-privilege роли (StackRox-style)
 
 В 0.3.0 владение схемой PostgreSQL вынесено в единый компонент:
