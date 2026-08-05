@@ -19,6 +19,7 @@ const (
 )
 
 type IncomingAlert struct {
+	Timestamp   time.Time
 	Source      string
 	DetType     string
 	RuleID      string
@@ -43,11 +44,15 @@ func (s *Store) InsertAlerts(ctx context.Context, alerts []IncomingAlert) error 
 		if len(data) == 0 {
 			data = json.RawMessage(`{}`)
 		}
+		ts := a.Timestamp
+		if ts.IsZero() {
+			ts = time.Now()
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO alerts
-			  (source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-			a.Source, a.DetType, a.RuleID, a.RuleName, a.Severity,
+			  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			ts, a.Source, a.DetType, a.RuleID, a.RuleName, a.Severity,
 			a.Namespace, a.Target, a.Syscall, a.Detail, a.Fingerprint, data); err != nil {
 			return err
 		}

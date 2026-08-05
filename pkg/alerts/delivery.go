@@ -100,11 +100,12 @@ func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDe
 		  JOIN integrations i
 		    ON i.enabled = TRUE
 		   AND i.kind IN ('discord', 'mattermost')
-		   AND a.ts >= i.updated_at
+		   AND NULLIF(i.config->>'webhook_url', '') IS NOT NULL
 		  LEFT JOIN alert_deliveries d
 		    ON d.alert_id = a.id AND d.integration = i.kind
 		 WHERE d.delivered_at IS NULL
 		   AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= NOW())
+		   AND (d.alert_id IS NOT NULL OR a.ts >= i.updated_at)
 		 ORDER BY a.id, i.kind
 		 LIMIT $1`, webhookDeliveryBatch)
 	if err != nil {

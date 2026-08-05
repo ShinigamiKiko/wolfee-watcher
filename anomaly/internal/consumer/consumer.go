@@ -87,10 +87,6 @@ type memfdState struct {
 	pid string
 }
 
-type Notifier interface {
-	Notify(ev *AnomalyEvent)
-}
-
 type Consumer struct {
 	kafka     *kgo.Client
 	pool      *pgxpool.Pool
@@ -103,7 +99,7 @@ type Consumer struct {
 	processed atomic.Int64
 	anomalies atomic.Int64
 
-	lastRecordAt atomic.Int64
+	lastRecordAt  atomic.Int64
 	heartbeatOnce sync.Once
 
 	memfdMu   sync.Mutex
@@ -112,10 +108,7 @@ type Consumer struct {
 	dedupSeen map[string]time.Time
 	debugLogs bool
 	ctx       context.Context
-	notifier  Notifier
 }
-
-func (c *Consumer) SetNotifier(n Notifier) { c.notifier = n }
 
 func (c *Consumer) Close() {
 	c.fwd.Close()

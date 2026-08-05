@@ -101,6 +101,7 @@ func (a *Alerter) Evaluate(ev *mapper.UIEvent) {
 
 		payload, _ := json.Marshal(ev)
 		al := alertspkg.AlertLog{
+			Timestamp:   ev.Ts,
 			DetType:     detType,
 			Source:      sourceTag,
 			RuleID:      r.ID,
@@ -160,14 +161,21 @@ func (a *Alerter) persist(al alertspkg.AlertLog) {
 	defer cancel()
 	_, err := a.pool.Exec(ctx, `
 		INSERT INTO alerts
-		  (source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
+		  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		alertTimestamp(al.Timestamp), al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
 		al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data,
 	)
 	if err != nil {
 		log.Printf("[alerter] fallback persist error: %v", err)
 	}
+}
+
+func alertTimestamp(ts time.Time) time.Time {
+	if ts.IsZero() {
+		return time.Now()
+	}
+	return ts
 }
 
 func (a *Alerter) markFresh(fp string) bool {

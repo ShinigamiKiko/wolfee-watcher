@@ -176,6 +176,7 @@ func (a *Alerter) emit(r auditRule, ev webhook.AuditEvent, fp string) {
 	payload, _ := json.Marshal(ev)
 
 	a.fwd.Send(alertspkg.AlertLog{
+		Timestamp:   ev.Timestamp,
 		DetType:     "Audit",
 		Source:      sourceTag,
 		RuleID:      r.ID,

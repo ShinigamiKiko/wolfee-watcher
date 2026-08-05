@@ -76,6 +76,9 @@ func (s *Store) Load(ctx context.Context) error {
 		r.Config = raw
 		next[r.Kind] = r
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	s.cfg = next
 	s.mu.Unlock()
