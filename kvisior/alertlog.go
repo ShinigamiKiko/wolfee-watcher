@@ -14,15 +14,16 @@ import (
 )
 
 type alertLogReq struct {
-	DetType   string `json:"detType"`
-	Source    string `json:"source"`
-	RuleID    string `json:"ruleId,omitempty"`
-	RuleName  string `json:"ruleName"`
-	Severity  string `json:"severity,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	Target    string `json:"target,omitempty"`
-	Syscall   string `json:"syscall,omitempty"`
-	Detail    string `json:"detail,omitempty"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
+	DetType   string    `json:"detType"`
+	Source    string    `json:"source"`
+	RuleID    string    `json:"ruleId,omitempty"`
+	RuleName  string    `json:"ruleName"`
+	Severity  string    `json:"severity,omitempty"`
+	Namespace string    `json:"namespace,omitempty"`
+	Target    string    `json:"target,omitempty"`
+	Syscall   string    `json:"syscall,omitempty"`
+	Detail    string    `json:"detail,omitempty"`
 
 	Persist     bool            `json:"persist,omitempty"`
 	Fingerprint string          `json:"fingerprint,omitempty"`
@@ -66,7 +67,8 @@ func handleAlertLog(st *store.Store, w http.ResponseWriter, r *http.Request) {
 		logAlert(req)
 		if req.Persist {
 			persist = append(persist, store.IncomingAlert{
-				Source: req.Source, DetType: req.DetType,
+				Timestamp: req.Timestamp,
+				Source:    req.Source, DetType: req.DetType,
 				RuleID: req.RuleID, RuleName: req.RuleName, Severity: req.Severity,
 				Namespace: req.Namespace, Target: req.Target, Syscall: req.Syscall,
 				Detail: req.Detail, Fingerprint: req.Fingerprint, Data: req.Data,

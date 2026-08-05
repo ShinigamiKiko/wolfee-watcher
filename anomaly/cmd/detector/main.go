@@ -101,7 +101,6 @@ func main() {
 
 	bcast := broadcast.New()
 	cons := consumer.New(ctx, strings.Split(*brokers, ","), *topic, pool, base, chk, enr, bcast)
-	cons.SetNotifier(notifierAdapter{mgr: integMgr})
 	srv := server.New(ctx, *addr, pool, base, cons, rec, bcast, integStore, integMgr)
 
 	go func() {
@@ -286,27 +285,6 @@ func podIdentity() string {
 		return host
 	}
 	return "anomaly-detector"
-}
-
-type notifierAdapter struct{ mgr *integrations.Manager }
-
-func (a notifierAdapter) Notify(ev *consumer.AnomalyEvent) {
-	if ev == nil || a.mgr == nil {
-		return
-	}
-	a.mgr.Dispatch(integrations.EventInfo{
-		ID:        ev.ID,
-		Ts:        ev.Ts,
-		Kind:      string(ev.Kind),
-		Namespace: ev.SrcNamespace,
-		Workload:  ev.SrcDeployment,
-		Pod:       ev.SrcPod,
-		Process:   ev.SrcProcess,
-		Detail:    ev.Detail,
-		DstIP:     ev.DstIP,
-		DstPort:   ev.DstPort,
-		Syscall:   ev.Syscall,
-	})
 }
 
 func parseDuration(s string) time.Duration {

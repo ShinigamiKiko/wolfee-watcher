@@ -61,6 +61,7 @@ func (c *Consumer) emit(ctx context.Context, a *AnomalyEvent, extID string) {
 	}
 
 	c.fwd.Send(alertspkg.AlertLog{
+		Timestamp:   a.Ts,
 		DetType:     "Anomaly",
 		Source:      "anomaly-detector",
 		RuleName:    string(a.Kind),
@@ -79,9 +80,6 @@ func (c *Consumer) emit(ctx context.Context, a *AnomalyEvent, extID string) {
 		return
 	}
 	c.bcast.Broadcast(rawWithID)
-	if c.notifier != nil {
-		c.notifier.Notify(a)
-	}
 }
 
 const dedupWindow = 5 * time.Minute

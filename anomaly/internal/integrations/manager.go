@@ -4,22 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 )
-
-type EventInfo struct {
-	ID        string
-	Ts        time.Time
-	Kind      string
-	Namespace string
-	Workload  string
-	Pod       string
-	Process   string
-	Detail    string
-	DstIP     string
-	DstPort   uint32
-	Syscall   string
-}
 
 type Manager struct {
 	store *Store
@@ -27,10 +12,6 @@ type Manager struct {
 
 func NewManager(store *Store) *Manager {
 	return &Manager{store: store}
-}
-
-func (m *Manager) Dispatch(ev EventInfo) {
-	_ = ev
 }
 
 func (m *Manager) Test(ctx context.Context, kind string, raw json.RawMessage) error {
