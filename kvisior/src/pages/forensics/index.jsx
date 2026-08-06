@@ -24,6 +24,7 @@ function anomalyToForensic(a) {
     process:   a.src_process,
     node:      a.src_node,
     container: a.src_container,
+    podIP:     a.src_ip,
     syscall:   isNet ? 'network' : (a.syscall || a.kind),
     cmdline,
     _anomaly:  true,
@@ -55,15 +56,31 @@ export function Forensics() {
 
   const [backfill, setBackfill] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
+  const [activeWatches, setActiveWatches] = useState([]);
   const fetched = useRef(false);
 
   useEffect(() => {
     if (fetched.current) return;
     fetched.current = true;
-    fetch('/v1/binary-backfill', { credentials: 'same-origin' })
+    fetch('/v1/binary-events?limit=10000', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.events) setBackfill(d.events); })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/v1/forensic-watches', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive) setActiveWatches(data.watches || []);
+      } catch {}
+    };
+    load();
+    const t = setInterval(load, 10000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   useEffect(() => {
@@ -126,9 +143,9 @@ export function Forensics() {
         )}
       </div>
 
-      {view === 'ns'     && <NsList namespaces={namespaces} allEvents={binaryEvents} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
-      {view === 'pods'   && <PodList ns={activeNS} pods={pods} allEvents={binaryEvents} getSev={getSev} onSelect={openPod} />}
-      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={binaryEvents} getSev={getSev} onBack={() => goBack('pods')} />}
+      {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} allEvents={binaryEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
+      {view === 'pods'   && <PodList ns={activeNS} pods={pods} allEvents={binaryEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
+      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={binaryEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
 
       {sevModalOpen && <SeverityModal config={config} onSave={save} onClose={() => setSevModalOpen(false)} />}
     </div>

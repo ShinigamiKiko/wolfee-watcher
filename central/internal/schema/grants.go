@@ -44,6 +44,7 @@ var Grants = map[string][]TableGrant{
 		{"violation_acks", "SELECT, INSERT, UPDATE, DELETE"},
 		{"audit_events", "SELECT, INSERT, DELETE"},
 		{"forensic_events", "SELECT, INSERT, DELETE"},
+		{"binary_exec_events", "SELECT, INSERT, DELETE"},
 		{"forensic_watches", "SELECT, INSERT, UPDATE, DELETE"},
 		{"honeypot_hidden_events", "SELECT, INSERT, DELETE"},
 		{"honeypot_events", "SELECT, INSERT, DELETE"},

@@ -69,8 +69,12 @@ func (c *CentralClient) PushEvents(ctx context.Context, ns, pod string, entries 
 	}, nil)
 }
 
-func (c *CentralClient) UpsertWatch(ctx context.Context, ns, pod string) error {
-	return c.do(ctx, http.MethodPost, "/internal/push/forensic-watch?"+nsPodQuery(ns, pod), nil, nil)
+func (c *CentralClient) UpsertWatch(ctx context.Context, ns, pod, source string) error {
+	q := nsPodQuery(ns, pod)
+	if source != "" {
+		q += "&source=" + url.QueryEscape(source)
+	}
+	return c.do(ctx, http.MethodPost, "/internal/push/forensic-watch?"+q, nil, nil)
 }
 
 func (c *CentralClient) DeleteWatch(ctx context.Context, ns, pod string) error {

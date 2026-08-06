@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0009-alert-webhooks"
+const Version = "0010-binary-exec-events"
 
 var DDL = []string{
 
@@ -255,8 +255,10 @@ var DDL = []string{
 	ns         TEXT NOT NULL,
 	pod        TEXT NOT NULL,
 	started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	active     BOOLEAN NOT NULL DEFAULT TRUE
+	active     BOOLEAN NOT NULL DEFAULT TRUE,
+	source     TEXT NOT NULL DEFAULT 'manual'
 )`,
+	`ALTER TABLE forensic_watches ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual'`,
 	`CREATE TABLE IF NOT EXISTS forensic_events (
 	id         BIGSERIAL PRIMARY KEY,
 	ts         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -278,6 +280,28 @@ var DDL = []string{
 	   AND a.op = b.op AND a.snapped_at IS NOT DISTINCT FROM b.snapped_at`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_forensic_events_dedup
 	ON forensic_events(ns, pod, path, op, snapped_at)`,
+
+	`CREATE TABLE IF NOT EXISTS binary_exec_events (
+		id         BIGSERIAL PRIMARY KEY,
+		event_id   TEXT,
+		event_hash TEXT NOT NULL UNIQUE,
+		ts         TIMESTAMPTZ NOT NULL,
+		ns         TEXT NOT NULL,
+		pod        TEXT NOT NULL,
+		pod_uid    TEXT NOT NULL DEFAULT '',
+		pod_ip     TEXT NOT NULL DEFAULT '',
+		container  TEXT NOT NULL DEFAULT '',
+		node       TEXT NOT NULL DEFAULT '',
+		"binary"   TEXT NOT NULL DEFAULT '',
+		process    TEXT NOT NULL DEFAULT '',
+		cmdline    TEXT NOT NULL DEFAULT '',
+		data       JSONB NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_binary_exec_events_lookup
+	ON binary_exec_events(ns, pod, pod_uid, ts DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_binary_exec_events_ts
+	ON binary_exec_events(ts)`,
 
 	`CREATE TABLE IF NOT EXISTS honeypot_hidden_events (
 	namespace  TEXT NOT NULL,

@@ -411,7 +411,7 @@
 
 .fns-etable-hdr {
   display: grid;
-  grid-template-columns: 140px 90px 160px 1fr 140px 90px 70px;
+  grid-template-columns: 140px 90px 160px 1fr 140px 90px 70px 120px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
@@ -428,7 +428,7 @@
 
 .fns-erow {
   display: grid;
-  grid-template-columns: 140px 90px 160px 1fr 140px 90px 70px;
+  grid-template-columns: 140px 90px 160px 1fr 140px 90px 70px 120px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   align-items: center;
@@ -457,6 +457,7 @@
   &--proc { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #a78bfa; }
   &--cid  { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--teal, #2dd4bf); letter-spacing: .03em; }
   &--pid  { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); }
+  &--pod-ip { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); }
   &--sev  { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; overflow: visible; white-space: normal; }
 }
 
@@ -716,4 +717,3 @@
     cursor: not-allowed;
   }
 }
-

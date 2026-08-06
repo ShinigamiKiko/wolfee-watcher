@@ -14,6 +14,8 @@ spec:
       app.kubernetes.io/name: sensor
   template:
     metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundPorts: "9090"
       labels:
         app.kubernetes.io/name: sensor
     spec:

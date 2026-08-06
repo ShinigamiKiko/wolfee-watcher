@@ -438,8 +438,9 @@ func (h *Handler) HandleForensicWatch(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPost:
+		source := r.URL.Query().Get("source")
 		if !h.syncWrite(w, r, "forensic watch", func(ctx context.Context) error {
-			return h.store.UpsertForensicWatch(ctx, ns, pod)
+			return h.store.UpsertForensicWatch(ctx, ns, pod, source)
 		}) {
 			return
 		}

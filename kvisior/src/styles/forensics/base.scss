@@ -81,9 +81,31 @@
 .fns-ns-info { flex: 1; }
 
 .fns-ns-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   font-weight: 700;
+}
+
+.fns-anomaly-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.14), 0 0 8px rgba(245, 158, 11, 0.7);
+  animation: fns-anomaly-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes fns-anomaly-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.72); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fns-anomaly-dot { animation: none; }
 }
 
 .fns-ns-sub {
@@ -123,4 +145,3 @@
 }
 
 .fns-ns-arrow { color: var(--text-muted); font-size: 14px; }
-

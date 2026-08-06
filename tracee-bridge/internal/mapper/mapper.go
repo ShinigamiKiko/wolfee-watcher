@@ -54,6 +54,7 @@ type UIEvent struct {
 	Syscall     string                 `json:"syscall"`
 	Namespace   string                 `json:"namespace"`
 	Pod         string                 `json:"pod"`
+	PodUID      string                 `json:"podUID,omitempty"`
 	Node        string                 `json:"node"`
 	Container   string                 `json:"container"`
 	ContainerID string                 `json:"containerId"`
@@ -89,12 +90,16 @@ func Map(t *TraceeEvent) *UIEvent {
 
 	podName := t.PodName
 	podNS := t.PodNamespace
+	podUID := t.PodUID
 	if t.Kubernetes != nil {
 		if t.Kubernetes.PodName != "" {
 			podName = t.Kubernetes.PodName
 		}
 		if t.Kubernetes.PodNamespace != "" {
 			podNS = t.Kubernetes.PodNamespace
+		}
+		if t.Kubernetes.PodUID != "" {
+			podUID = t.Kubernetes.PodUID
 		}
 	}
 
@@ -230,6 +235,7 @@ func Map(t *TraceeEvent) *UIEvent {
 		Syscall:     t.EventName,
 		Namespace:   podNS,
 		Pod:         podName,
+		PodUID:      podUID,
 		Node:        t.HostName,
 		Container:   containerName,
 		ContainerID: containerID,

@@ -259,6 +259,46 @@ func main() {
 		log.Printf("[kvisior] /v1/binary-backfill enabled (24h in-memory ring)")
 	}
 
+	if st != nil {
+		mux.Handle("/v1/binary-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			events, err := st.QueryBinaryExecEvents(r.Context(), store.BinaryExecQuery{
+				Namespace: r.URL.Query().Get("namespace"),
+				Pod:       r.URL.Query().Get("pod"),
+				PodUID:    r.URL.Query().Get("pod_uid"),
+				Limit:     limit,
+			})
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			if events == nil {
+				events = []json.RawMessage{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"events": events, "total": len(events)})
+		})))
+		log.Printf("[kvisior] /v1/binary-events enabled (24h PostgreSQL history)")
+
+		mux.Handle("/v1/forensic-watches", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			watches, err := st.ListActiveForensicWatches(r.Context())
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"watches": watches})
+		})))
+	}
+
 	mux.Handle("/v1/pod-watch", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")

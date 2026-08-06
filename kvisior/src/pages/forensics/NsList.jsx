@@ -1,4 +1,6 @@
-export function NsList({ namespaces, allEvents, getSev, onSelect, onSeverityOpen }) {
+import { podNS } from '../../utils/format';
+
+export function NsList({ namespaces, pods, allEvents, activeWatches, getSev, onSelect, onSeverityOpen }) {
   const SYSTEM_NS = new Set(['kube-system','kube-public','kube-node-lease','calico-system','cilium','cert-manager','monitoring','ingress-nginx']);
 
   return (
@@ -15,15 +17,20 @@ export function NsList({ namespaces, allEvents, getSev, onSelect, onSeverityOpen
       <div className="fns-ns-grid">
         {namespaces.filter(ns => !SYSTEM_NS.has(ns?.metadata?.name || ns?.name || ns)).map(ns => {
           const nsName = ns?.metadata?.name || ns?.name || ns;
+          const podCount = pods.filter(p => podNS(p) === nsName).length;
           const cutoff = Date.now() - 24 * 60 * 60 * 1000;
           const evts = allEvents.filter(e => e.namespace === nsName && new Date(e.ts).getTime() >= cutoff);
           const critical = evts.filter(e => getSev(e.syscall, e.execpath, e.process) === 'critical').length;
+          const anomalyWatching = activeWatches.some(w => w.namespace === nsName && w.source === 'anomaly');
           return (
             <div key={nsName} className="fns-ns-card" onClick={() => onSelect(nsName)}>
               <div className="fns-ns-icon">⬡</div>
               <div className="fns-ns-info">
-                <div className="fns-ns-name">{nsName}</div>
-                <div className="fns-ns-sub">{evts.length} events</div>
+                <div className="fns-ns-name">
+                  <span>{nsName}</span>
+                  {anomalyWatching && <span className="fns-anomaly-dot" title="Anomaly watch active" aria-label="Anomaly watch active" />}
+                </div>
+                <div className="fns-ns-sub">{podCount} pods</div>
               </div>
               <div className="fns-ns-stats">
                 <div className="fns-ns-stat">

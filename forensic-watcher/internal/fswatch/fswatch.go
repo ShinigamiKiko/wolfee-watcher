@@ -70,7 +70,7 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
-func (w *Watcher) StartWatch(ctx context.Context, ns, pod string) error {
+func (w *Watcher) StartWatch(ctx context.Context, ns, pod, source string) error {
 	key := ns + "/" + pod
 
 	w.mu.Lock()
@@ -88,7 +88,7 @@ func (w *Watcher) StartWatch(ctx context.Context, ns, pod string) error {
 		return err
 	}
 	w.watches[key] = state
-	w.persistWatch(ctx, key, ns, pod)
+	w.persistWatch(ctx, key, ns, pod, source)
 	log.Printf("[fswatch] watching %s (upperDir=%s, baseline=%d files)", key, upperDir, len(entries))
 	return nil
 }
@@ -111,13 +111,13 @@ func (w *Watcher) newWatchState(upperDir, ns, pod string) (*watchState, []FileEn
 	return state, entries, nil
 }
 
-func (w *Watcher) persistWatch(ctx context.Context, key, ns, pod string) {
+func (w *Watcher) persistWatch(ctx context.Context, key, ns, pod, source string) {
 	if w.central == nil {
 		return
 	}
 	opCtx, cancel := context.WithTimeout(ctx, pgOpTimeout)
 	defer cancel()
-	if err := w.central.UpsertWatch(opCtx, ns, pod); err != nil {
+	if err := w.central.UpsertWatch(opCtx, ns, pod, source); err != nil {
 		log.Printf("[fswatch] register watch %s with kvisior: %v", key, err)
 	}
 }

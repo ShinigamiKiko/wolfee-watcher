@@ -182,6 +182,14 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 	if json.Unmarshal(raw, &ev) != nil {
 		return nil
 	}
+	if captureForForensics(stringField(ev, "syscall")) && c.store != nil {
+		wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := c.store.InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
+		cancel()
+		if err != nil {
+			return fmt.Errorf("write binary event: %w", err)
+		}
+	}
 
 	matches := c.matcher.Match(ev)
 	if c.debugLogs && len(matches) > 0 {
@@ -212,6 +220,11 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 		c.pub.Publish(hub.Event{Type: "violation", Data: sseData})
 	}
 	return nil
+}
+
+func stringField(ev map[string]interface{}, key string) string {
+	value, _ := ev[key].(string)
+	return value
 }
 
 func (c *Consumer) refreshRules(ctx context.Context) {
