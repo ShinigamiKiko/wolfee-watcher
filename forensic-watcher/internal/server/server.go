@@ -65,7 +65,7 @@ func (s *Server) Run(ctx context.Context) error {
 			return
 		}
 		log.Printf("[forensic] START watch ns=%s pod=%s", ns, pod)
-		if err := s.watcher.StartWatch(r.Context(), ns, pod); err != nil {
+		if err := s.watcher.StartWatch(r.Context(), ns, pod, r.URL.Query().Get("source")); err != nil {
 			log.Printf("[forensic] START watch error ns=%s pod=%s: %v", ns, pod, err)
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})

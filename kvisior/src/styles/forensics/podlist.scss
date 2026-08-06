@@ -116,6 +116,13 @@
   font-weight: 500;
 }
 
+.fns-pod-ip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .fns-cpills { display: flex; gap: 4px; flex-wrap: wrap; }
 
 .fns-cpill {
@@ -144,4 +151,3 @@
 }
 
 .fns-dim { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-

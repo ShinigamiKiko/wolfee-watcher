@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { podName, podNS, podContainers, relTime } from '../../utils/format';
 
-export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
+export function PodList({ ns, pods, allEvents, activeWatches = [], getSev, onSelect }) {
   const [search, setSearch] = useState('');
 
   const rows = useMemo(() => {
@@ -19,7 +19,17 @@ export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
       const evts = byPod.get(pn) || [];
       const critical = evts.filter(e => getSev(e.syscall, e.execpath, e.process) === 'critical').length;
       const lastSeen = evts.reduce((m, e) => Math.max(m, new Date(e.ts).getTime()), 0);
-      return { pod: p, name: pn, evts, critical, gone, lastSeen, containers: podContainers(p) };
+      return {
+        pod: p,
+        name: pn,
+        evts,
+        critical,
+        gone,
+        lastSeen,
+        containers: podContainers(p),
+        podIP: p?.status?.podIP || p?.status?.podIPs?.[0]?.ip || '',
+        anomalyWatching: activeWatches.some(w => w.namespace === ns && w.pod === pn && w.source === 'anomaly'),
+      };
     };
 
     const live = pods.filter(p => podNS(p) === ns);
@@ -35,7 +45,7 @@ export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
         a.gone - b.gone ||
         b.critical - a.critical ||
         b.evts.length - a.evts.length);
-  }, [ns, pods, allEvents, search, getSev]);
+  }, [ns, pods, allEvents, activeWatches, search, getSev]);
 
   return (
     <div className="fns-podlist">
@@ -49,7 +59,7 @@ export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
       </div>
       <table className="fns-ptable">
         <thead>
-          <tr><th>Pod name</th><th>Containers</th><th>Binaries / 24h</th><th>Critical</th></tr>
+          <tr><th>Pod name</th><th>Pod IP</th><th>Containers</th><th>Binaries / 24h</th><th>Critical</th></tr>
         </thead>
         <tbody>
           {rows.map(r => (
@@ -57,7 +67,8 @@ export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
               <td>
                 <div className="fns-pname-wrap">
                   <div className={`fns-sdot fns-sdot--${r.gone ? 'gone' : 'running'}`} />
-                  <span className="fns-pname">{r.name}</span>
+                   <span className="fns-pname">{r.name}</span>
+                   {r.anomalyWatching && <span className="fns-anomaly-dot" title="Anomaly watch active" aria-label="Anomaly watch active" />}
                   {r.gone && (
                     <span className="fns-gone-badge" title={`Последнее событие: ${new Date(r.lastSeen).toLocaleString('ru-RU')}`}>
                       terminated · {relTime(r.lastSeen)}
@@ -65,6 +76,7 @@ export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
                   )}
                 </div>
               </td>
+              <td><span className="fns-pod-ip">{r.podIP || '—'}</span></td>
               <td>
                 <div className="fns-cpills">
                   {r.containers.length > 0
@@ -86,7 +98,7 @@ export function PodList({ ns, pods, allEvents, getSev, onSelect }) {
               </td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={4} className="fns-empty">No pods found</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={5} className="fns-empty">No pods found</td></tr>}
         </tbody>
       </table>
     </div>

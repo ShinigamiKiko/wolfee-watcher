@@ -54,7 +54,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0009-alert-webhooks"
+  schemaVersion: "0010-binary-exec-events"
   adminBootstrapPassword: ""
   resources:
     requests:

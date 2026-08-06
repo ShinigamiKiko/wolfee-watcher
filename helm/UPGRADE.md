@@ -8,7 +8,7 @@
 - Discord and Mattermost incoming webhooks can be configured under
   **Settings → Integrations**. Delivery is retried independently for each
   integration.
-- The schema version is now `0009-alert-webhooks`; rebuild and deploy the
+- The schema version is now `0010-binary-exec-events`; rebuild and deploy the
   `central-migrate` and UI images together.
 
 ## Централизация схемы БД и least-privilege роли (StackRox-style)

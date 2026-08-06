@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -80,7 +81,11 @@ func (s *Server) handleForensicWatch(w http.ResponseWriter, r *http.Request) {
 		s.proxyToForensicWatcher(w, r, ns, pod, "unwatch/"+ns+"/"+pod, http.MethodDelete)
 		return
 	}
-	s.proxyToForensicWatcher(w, r, ns, pod, "watch/"+ns+"/"+pod, http.MethodPost)
+	path := "watch/" + ns + "/" + pod
+	if source := r.URL.Query().Get("source"); source != "" {
+		path += "?source=" + url.QueryEscape(source)
+	}
+	s.proxyToForensicWatcher(w, r, ns, pod, path, http.MethodPost)
 }
 
 func (s *Server) handleForensicDiff(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +122,12 @@ func (s *Server) proxyToForensicWatcher(w http.ResponseWriter, r *http.Request, 
 	s.mu.RLock()
 	nodeName, ok := s.podNode[ns+"/"+pod]
 	podCount := s.podCount
+	if !ok && !strings.HasPrefix(pod, "h-") {
+		if aliasNode, aliasOK := s.podNode[ns+"/h-"+pod]; aliasOK {
+			pod = "h-" + pod
+			nodeName, ok = aliasNode, true
+		}
+	}
 	s.mu.RUnlock()
 	if !ok {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -129,6 +140,7 @@ func (s *Server) proxyToForensicWatcher(w http.ResponseWriter, r *http.Request, 
 		json.NewEncoder(w).Encode(map[string]any{"error": "pod not found in snapshot"})
 		return
 	}
+	path = replaceForensicPod(path, pod)
 	watcherIP, err := s.findForensicWatcherIP(r.Context(), nodeName)
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -155,6 +167,19 @@ func (s *Server) proxyToForensicWatcher(w http.ResponseWriter, r *http.Request, 
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		log.Printf("[sensor] forensic proxy stream broken: %v", err)
 	}
+}
+
+func replaceForensicPod(path, pod string) string {
+	query := ""
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		query = path[i:]
+		path = path[:i]
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) > 0 {
+		parts[len(parts)-1] = pod
+	}
+	return strings.Join(parts, "/") + query
 }
 
 func copyResponseHeaders(w http.ResponseWriter, resp *http.Response) {

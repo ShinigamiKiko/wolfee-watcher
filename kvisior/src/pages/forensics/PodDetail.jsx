@@ -31,9 +31,10 @@ const FNS_COLUMNS = [
   { key: 'process',   label: 'Process' },
   { key: 'container', label: 'Container ID' },
   { key: 'pid',       label: 'PID' },
+  { key: 'podIP',     label: 'Pod IP' },
 ];
 
-export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
+export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBack }) {
   const [windowH,         setWindowH]         = useState(24);
   const [filterSev,       setFilterSev]       = useState(new Set());
   const [filterBins,      setFilterBins]      = useState(new Set());
@@ -47,6 +48,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
   const [logsLoading,     setLogsLoading]     = useState(false);
   const [logsError,       setLogsError]       = useState(null);
   const [watching,        setWatching]        = useState(false);
+  const [watchSource,     setWatchSource]     = useState(null);
   const [upperLoading,    setUpperLoading]    = useState(false);
   const [diff,            setDiff]            = useState([]);
   const [diffLoading,     setDiffLoading]     = useState(false);
@@ -60,6 +62,12 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
   const pName = podName(pod);
   const pNS   = podNS(pod);
   const gone  = pod?._gone === true;
+
+  useEffect(() => {
+    const active = activeWatches.find(w => w.namespace === pNS && w.pod === pName);
+    setWatching(Boolean(active));
+    setWatchSource(active?.source || null);
+  }, [activeWatches, pNS, pName]);
 
   useEffect(() => {
     if (!watching) return;
@@ -142,13 +150,14 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
   const doWatch = async () => {
     try {
       const res = await fetch(`/sensor/api/forensic/watch/${pNS}/${pName}`, { method: 'POST', credentials: 'same-origin' });
-      if (res.ok) { setWatching(true); setContentTab('fsdiff'); fetchDiff(); }
+      if (res.ok) { setWatching(true); setWatchSource('manual'); setContentTab('fsdiff'); fetchDiff(); }
     } catch {}
   };
   const doUnwatch = async () => {
     try {
       await fetch(`/sensor/api/forensic/watch/${pNS}/${pName}`, { method: 'DELETE', credentials: 'same-origin' });
       setWatching(false);
+      setWatchSource(null);
     } catch {}
   };
 
@@ -214,6 +223,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
       case 'process':   return e.process || '';
       case 'container': return e.containerId || '';
       case 'pid':       return e.pid ?? 0;
+      case 'podIP':     return e.podIP || pod?.status?.podIP || '';
       default:          return new Date(e.ts).getTime() || 0;
     }
   };
@@ -316,7 +326,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
             {!gone && (!watching
               ? <button className="fns-watch-btn" onClick={doWatch}>Watch</button>
               : <button className="fns-watch-btn fns-watch-btn--active" onClick={doUnwatch}>
-                  ⚠ Anomaly Watch <span className="fns-watch-x">✕</span>
+                  {watchSource === 'anomaly' ? '⚠ Anomaly Watch' : 'Watching'} <span className="fns-watch-x">✕</span>
                 </button>
             )}
           </div>
@@ -497,7 +507,7 @@ export function PodDetail({ pod, ns, allEvents, getSev, onBack }) {
             </div>
             {visibleEvents.length === 0
               ? <div className="fns-empty">No events for this window</div>
-              : pagedEvents.map(ev => <EventRow key={ev.id} ev={ev} getSev={getSev} />)
+              : pagedEvents.map(ev => <EventRow key={ev.id} ev={ev} podIP={pod?.status?.podIP} getSev={getSev} />)
             }
           </div>
           <Pager

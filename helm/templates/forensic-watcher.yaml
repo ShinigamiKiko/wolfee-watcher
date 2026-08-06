@@ -17,6 +17,8 @@ spec:
       maxUnavailable: 1
   template:
     metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "9090"
       labels:
         app.kubernetes.io/name: forensic-watcher
         app: forensic-watcher

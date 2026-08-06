@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 const (
 	AuditEventTTL    = 24 * time.Hour
 	ForensicEventTTL = 24 * time.Hour
+	BinaryEventTTL   = 24 * time.Hour
 	ContainerLogTTL  = 24 * time.Hour
 )
 
@@ -144,6 +147,92 @@ type ForensicEntry struct {
 	SnappedAt string `json:"snapped_at"`
 }
 
+type BinaryExecQuery struct {
+	Namespace string
+	Pod       string
+	PodUID    string
+	Limit     int
+}
+
+func (s *Store) InsertBinaryExecEvent(ctx context.Context, raw json.RawMessage) error {
+	var ev map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &ev); err != nil {
+		return fmt.Errorf("binary event JSON: %w", err)
+	}
+	get := func(names ...string) string {
+		for _, name := range names {
+			var value string
+			if data, ok := ev[name]; ok && json.Unmarshal(data, &value) == nil && value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+	parseTime := func(data json.RawMessage) time.Time {
+		var text string
+		if json.Unmarshal(data, &text) == nil {
+			if ts, err := time.Parse(time.RFC3339Nano, text); err == nil {
+				return ts
+			}
+			if ts, err := time.Parse(time.RFC3339, text); err == nil {
+				return ts
+			}
+		}
+		var seconds float64
+		if json.Unmarshal(data, &seconds) == nil && seconds > 0 {
+			return time.Unix(int64(seconds), 0)
+		}
+		return time.Now()
+	}
+
+	ns := get("namespace", "ns")
+	pod := get("pod")
+	if ns == "" || pod == "" {
+		return nil
+	}
+	ts := time.Now()
+	if data, ok := ev["ts"]; ok {
+		ts = parseTime(data)
+	} else if data, ok := ev["timestamp"]; ok {
+		ts = parseTime(data)
+	}
+	hash := sha256.Sum256(raw)
+	eventID := get("id", "event_id", "eventId")
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO binary_exec_events
+		  (event_id, event_hash, ts, ns, pod, pod_uid, pod_ip, container, node, "binary", process, cmdline, data)
+		VALUES (NULLIF($1, ''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		ON CONFLICT (event_hash) DO NOTHING`,
+		eventID, hex.EncodeToString(hash[:]), ts, ns, pod,
+		get("pod_uid", "podUID", "uid"), get("pod_ip", "podIP"),
+		get("container"), get("node"), get("execpath", "binary"),
+		get("process"), get("cmdline"), raw)
+	return err
+}
+
+func (s *Store) QueryBinaryExecEvents(ctx context.Context, q BinaryExecQuery) ([]json.RawMessage, error) {
+	if q.Limit <= 0 || q.Limit > 10000 {
+		q.Limit = 10000
+	}
+	query := `SELECT data FROM binary_exec_events WHERE ts > NOW() - INTERVAL '24 hours'`
+	args := make([]interface{}, 0, 4)
+	if q.Namespace != "" {
+		args = append(args, q.Namespace)
+		query += fmt.Sprintf(" AND ns = $%d", len(args))
+	}
+	if q.Pod != "" {
+		args = append(args, q.Pod)
+		query += fmt.Sprintf(" AND pod = $%d", len(args))
+	}
+	if q.PodUID != "" {
+		args = append(args, q.PodUID)
+		query += fmt.Sprintf(" AND pod_uid = $%d", len(args))
+	}
+	args = append(args, q.Limit)
+	query += fmt.Sprintf(" ORDER BY ts DESC, id DESC LIMIT $%d", len(args))
+	return s.listJSONBlobs(ctx, query, args...)
+}
+
 func (s *Store) InsertForensicEvents(ctx context.Context, ns, pod string, entries []ForensicEntry) error {
 	if len(entries) == 0 {
 		return nil
@@ -192,18 +281,49 @@ func (s *Store) QueryForensicEvents(ctx context.Context, ns, pod string) ([]Fore
 	return entries, rows.Err()
 }
 
-func (s *Store) UpsertForensicWatch(ctx context.Context, ns, pod string) error {
+func (s *Store) UpsertForensicWatch(ctx context.Context, ns, pod, source string) error {
+	if source != "anomaly" {
+		source = "manual"
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO forensic_watches (key, ns, pod, started_at, active)
-		VALUES ($1,$2,$3,NOW(),TRUE)
-		ON CONFLICT (key) DO UPDATE SET active=TRUE, started_at=NOW()`,
-		ns+"/"+pod, ns, pod)
+		INSERT INTO forensic_watches (key, ns, pod, started_at, active, source)
+		VALUES ($1,$2,$3,NOW(),TRUE,$4)
+		ON CONFLICT (key) DO UPDATE SET active=TRUE, started_at=NOW(), source=$4`,
+		ns+"/"+pod, ns, pod, source)
 	return err
 }
 
 func (s *Store) DeleteForensicWatch(ctx context.Context, ns, pod string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM forensic_watches WHERE key=$1`, ns+"/"+pod)
 	return err
+}
+
+type ForensicWatch struct {
+	Namespace string `json:"namespace"`
+	Pod       string `json:"pod"`
+	Source    string `json:"source"`
+}
+
+func (s *Store) ListActiveForensicWatches(ctx context.Context) ([]ForensicWatch, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ns, pod, source
+		FROM forensic_watches
+		WHERE active = TRUE
+		ORDER BY ns, pod`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var watches []ForensicWatch
+	for rows.Next() {
+		var watch ForensicWatch
+		if err := rows.Scan(&watch.Namespace, &watch.Pod, &watch.Source); err != nil {
+			return nil, err
+		}
+		watches = append(watches, watch)
+	}
+	return watches, rows.Err()
 }
 
 type ContainerLogLine struct {
@@ -330,6 +450,7 @@ func (s *Store) sweepIngested(ctx context.Context) {
 	}{
 		{"audit_events", AuditEventTTL},
 		{"forensic_events", ForensicEventTTL},
+		{"binary_exec_events", BinaryEventTTL},
 		{"container_logs", ContainerLogTTL},
 	} {
 		tag, err := s.pool.Exec(ctx,
