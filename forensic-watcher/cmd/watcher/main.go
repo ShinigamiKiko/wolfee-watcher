@@ -64,6 +64,7 @@ func main() {
 	}
 
 	watcher := fswatch.New(nodeName, *containerdRoot, central, client)
+	go watcher.RestoreWatches(ctx)
 
 	if *podLogsRoot != "" {
 		if lc := logcollect.New(*podLogsRoot, nodeName,

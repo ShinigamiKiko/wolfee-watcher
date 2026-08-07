@@ -70,6 +70,24 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
+func (w *Watcher) RestoreWatches(ctx context.Context) {
+	if w.central == nil {
+		return
+	}
+	opCtx, cancel := context.WithTimeout(ctx, pgOpTimeout)
+	watches, err := w.central.PullActiveWatches(opCtx)
+	cancel()
+	if err != nil {
+		log.Printf("[fswatch] restore watches failed: %v", err)
+		return
+	}
+	for _, watch := range watches {
+		if err := w.StartWatch(ctx, watch.Namespace, watch.Pod, watch.Source); err != nil {
+			log.Printf("[fswatch] restore %s/%s skipped: %v", watch.Namespace, watch.Pod, err)
+		}
+	}
+}
+
 func (w *Watcher) StartWatch(ctx context.Context, ns, pod, source string) error {
 	key := ns + "/" + pod
 
