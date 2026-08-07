@@ -161,7 +161,3 @@ to Postgres only as a fallback when Central is down.
 - [`helm/UPGRADE.md`](helm/UPGRADE.md) — upgrade notes
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — build, layout, conventions
 - [`SECURITY.md`](SECURITY.md) — reporting vulnerabilities
-
-## License
-
-[MIT](LICENSE) © Anton Karpov
