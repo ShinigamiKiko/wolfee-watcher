@@ -1,0 +1,29 @@
+{{- if .Values.ui.enabled }}
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: kvisior-ui-http
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-ui
+  portLevelMtls:
+    8080:
+      mode: PERMISSIVE
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: kvisior-ui-http
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  host: kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+{{- end }}

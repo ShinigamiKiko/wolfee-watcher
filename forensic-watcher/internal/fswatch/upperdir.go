@@ -59,6 +59,10 @@ func findUpperDirFromHostMounts(containerID, containerdRoot, snapshotsBase strin
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", procMounts, err)
 	}
+	return findUpperDirFromMountData(containerID, containerdRoot, snapshotsBase, string(data))
+}
+
+func findUpperDirFromMountData(containerID, containerdRoot, snapshotsBase, data string) (string, error) {
 	absSnapshots, err := filepath.Abs(snapshotsBase)
 	if err != nil {
 		return "", fmt.Errorf("abs snapshotsBase: %w", err)
@@ -93,7 +97,7 @@ func findUpperDirFromHostMounts(containerID, containerdRoot, snapshotsBase strin
 		}
 		return "", fmt.Errorf("overlay mount for %s has no upperdir option", containerID[:12])
 	}
-	return "", fmt.Errorf("no overlay mount found for containerID=%s in %s", containerID[:12], procMounts)
+	return "", fmt.Errorf("no overlay mount found for containerID=%s", containerID[:12])
 }
 
 func mountpointMatchesContainer(mountPoint, containerID string) bool {

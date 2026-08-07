@@ -240,6 +240,7 @@ func main() {
 	mux.HandleFunc("/internal/push/forensic", pushWrap(pushH.HandleForensicEvents))
 	mux.HandleFunc("/internal/push/forensic-watch", pushWrap(pushH.HandleForensicWatch))
 	mux.HandleFunc("/internal/pull/forensic", pushWrap(pushH.HandleForensicDiff))
+	mux.HandleFunc("/internal/pull/forensic-watches", pushWrap(pushH.HandleForensicWatchesPull))
 	mux.HandleFunc("/internal/pull/alert-rules", pushWrap(pushH.HandleAlertRules))
 	mux.HandleFunc("/internal/push/logs", pushWrap(pushH.HandleLogs))
 	mux.HandleFunc("/internal/pull/logs", pushWrap(pushH.HandleLogsPull))
@@ -563,6 +564,11 @@ func main() {
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if os.Getenv("POSTGRES_DSN") != "" && st == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"status":"degraded","service":"kvisior","reason":"postgres unavailable"}`))
+			return
+		}
 		w.Write([]byte(`{"status":"ok","service":"kvisior"}`))
 	})
 

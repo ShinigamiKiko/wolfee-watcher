@@ -18,6 +18,12 @@ type CentralClient struct {
 	hc     *http.Client
 }
 
+type ActiveWatch struct {
+	Namespace string `json:"namespace"`
+	Pod       string `json:"pod"`
+	Source    string `json:"source"`
+}
+
 func NewCentralClient() *CentralClient {
 	base := strings.TrimRight(os.Getenv("KVISIOR_URL"), "/")
 	if base == "" {
@@ -79,6 +85,16 @@ func (c *CentralClient) UpsertWatch(ctx context.Context, ns, pod, source string)
 
 func (c *CentralClient) DeleteWatch(ctx context.Context, ns, pod string) error {
 	return c.do(ctx, http.MethodDelete, "/internal/push/forensic-watch?"+nsPodQuery(ns, pod), nil, nil)
+}
+
+func (c *CentralClient) PullActiveWatches(ctx context.Context) ([]ActiveWatch, error) {
+	var out struct {
+		Watches []ActiveWatch `json:"watches"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/internal/pull/forensic-watches", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Watches, nil
 }
 
 func (c *CentralClient) PullDiff(ctx context.Context, ns, pod string) ([]FileEntry, error) {

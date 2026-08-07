@@ -15,6 +15,7 @@ spec:
   template:
     metadata:
       annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "8080"
         traffic.sidecar.istio.io/excludeOutboundPorts: "5432,9092,9095"
       labels:
         app.kubernetes.io/name: kvisior-ui

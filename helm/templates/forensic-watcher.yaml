@@ -55,6 +55,8 @@ spec:
               value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
             - name: INTERNAL_PUSH_SECRET
               value: {{ .Values.global.internalPushSecret | quote }}
+            - name: PROC_MOUNTS
+              value: /host-proc/1/mounts
             - name: LOG_EXCLUDE_NAMESPACES
               value: {{ .Values.forensicWatcher.logExcludeNamespaces | default "" | quote }}
           volumeMounts:
@@ -67,6 +69,9 @@ spec:
               mountPropagation: HostToContainer
             - name: pod-logs
               mountPath: /host-pod-logs
+              readOnly: true
+            - name: host-proc
+              mountPath: /host-proc
               readOnly: true
           readinessProbe:
             httpGet:
@@ -103,6 +108,10 @@ spec:
         - name: pod-logs
           hostPath:
             path: /var/log/pods
+            type: Directory
+        - name: host-proc
+          hostPath:
+            path: /proc
             type: Directory
 ---
 apiVersion: v1
