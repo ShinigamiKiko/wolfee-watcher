@@ -212,6 +212,7 @@ auditRunner:
 ui:
   enabled: true
   replicaCount: 1
+  appVersion: ""
   image:
     repository: localhost/wolfee-watcher/kvisior8
     tag: latest

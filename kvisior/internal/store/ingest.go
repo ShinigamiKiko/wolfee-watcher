@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -233,6 +234,200 @@ func (s *Store) QueryBinaryExecEvents(ctx context.Context, q BinaryExecQuery) ([
 	return s.listJSONBlobs(ctx, query, args...)
 }
 
+type BinaryEventSummary struct {
+	Namespace string    `json:"namespace"`
+	Pod       string    `json:"pod"`
+	Syscall   string    `json:"syscall"`
+	Binary    string    `json:"binary"`
+	Count     int       `json:"count"`
+	LastTS    time.Time `json:"last_ts"`
+}
+
+const cursorOverlap = 128
+
+type ForensicEventQuery struct {
+	Namespace string
+	Pod       string
+	Syscalls  []string
+	SinceID   int64
+	Limit     int
+}
+
+func withRowID(data json.RawMessage, id int64) json.RawMessage {
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return data
+	}
+	out := make([]byte, 0, len(trimmed)+24)
+	out = append(out, '{')
+	out = append(out, fmt.Sprintf(`"_rid":%d`, id)...)
+	if len(trimmed) > 1 && trimmed[1] != '}' {
+		out = append(out, ',')
+	}
+	return append(out, trimmed[1:]...)
+}
+
+type ForensicEventPage struct {
+	Events  []json.RawMessage
+	NextID  int64
+	HasMore bool
+}
+
+const (
+	initialPageLimit    = 5000
+	incrementalPageSize = 500
+	maxPageLimit        = 10000
+)
+
+func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
+	initial := q.SinceID == 0
+	if q.Limit <= 0 {
+		if initial {
+			q.Limit = initialPageLimit
+		} else {
+			q.Limit = incrementalPageSize
+		}
+	}
+	if q.Limit > maxPageLimit {
+		q.Limit = maxPageLimit
+	}
+	if q.Syscalls == nil {
+		q.Syscalls = []string{}
+	}
+	watermark := q.SinceID
+	if initial {
+		if err := s.pool.QueryRow(ctx,
+			`SELECT COALESCE(MAX(id), 0) FROM binary_exec_events WHERE ns=$1 AND pod=$2`,
+			q.Namespace, q.Pod).Scan(&watermark); err != nil {
+			return ForensicEventPage{}, err
+		}
+		if watermark == 0 {
+			return ForensicEventPage{Events: []json.RawMessage{}}, nil
+		}
+	}
+
+	query := `
+		SELECT id, data
+		FROM binary_exec_events
+		WHERE ns = $1
+		  AND pod = $2
+		  AND syscall = ANY($3::text[])
+		  AND id %s $4
+		ORDER BY id %s
+		LIMIT $5`
+	comparison, order := ">", "ASC"
+	bound := watermark
+	if initial {
+		comparison, order = "<=", "DESC"
+	} else {
+		bound -= cursorOverlap
+		if bound < 0 {
+			bound = 0
+		}
+	}
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(query, comparison, order),
+		q.Namespace, q.Pod, q.Syscalls, bound, q.Limit+1)
+	if err != nil {
+		return ForensicEventPage{}, err
+	}
+	defer rows.Close()
+
+	page := ForensicEventPage{Events: make([]json.RawMessage, 0, q.Limit)}
+	for rows.Next() {
+		var id int64
+		var data json.RawMessage
+		if err := rows.Scan(&id, &data); err != nil {
+			return ForensicEventPage{}, err
+		}
+		if len(page.Events) == q.Limit {
+			page.HasMore = true
+			break
+		}
+		page.Events = append(page.Events, withRowID(data, id))
+		if id > page.NextID {
+			page.NextID = id
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ForensicEventPage{}, err
+	}
+	if initial {
+		for i, j := 0, len(page.Events)-1; i < j; i, j = i+1, j-1 {
+			page.Events[i], page.Events[j] = page.Events[j], page.Events[i]
+		}
+		page.NextID = watermark
+		page.HasMore = false
+	} else if page.NextID < q.SinceID {
+		page.NextID = q.SinceID
+	}
+	return page, nil
+}
+
+var AlwaysWatchedSyscalls = []string{"execve", "execveat"}
+
+func isAlwaysWatched(syscall string) bool {
+	for _, sc := range AlwaysWatchedSyscalls {
+		if sc == syscall {
+			return true
+		}
+	}
+	return false
+}
+
+func WatchedSyscalls(selected []string) []string {
+	out := make([]string, 0, len(selected)+len(AlwaysWatchedSyscalls))
+	out = append(out, AlwaysWatchedSyscalls...)
+	return append(out, selected...)
+}
+
+func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSummary, error) {
+	watches, err := s.ListPodWatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	visible := func(item BinaryEventSummary) bool {
+		if isAlwaysWatched(item.Syscall) {
+			return true
+		}
+		for _, sc := range watches[item.Namespace+"/"+item.Pod].Syscalls {
+			if sc == item.Syscall {
+				return true
+			}
+		}
+		return false
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+			ns,
+			pod,
+			COALESCE(syscall, '') AS sc,
+			COALESCE(NULLIF("binary", ''), NULLIF(process, ''), COALESCE(syscall, '')) AS bin,
+			COUNT(DISTINCT (floor(extract(epoch FROM ts) / 300)::bigint, cmdline)),
+			MAX(ts)
+		FROM binary_exec_events
+		WHERE ts > NOW() - INTERVAL '24 hours'
+		GROUP BY ns, pod, sc, bin
+		ORDER BY ns, pod, MAX(ts) DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []BinaryEventSummary
+	for rows.Next() {
+		var item BinaryEventSummary
+		if err := rows.Scan(&item.Namespace, &item.Pod, &item.Syscall, &item.Binary, &item.Count, &item.LastTS); err != nil {
+			return nil, err
+		}
+		if !visible(item) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) InsertForensicEvents(ctx context.Context, ns, pod string, entries []ForensicEntry) error {
 	if len(entries) == 0 {
 		return nil
@@ -443,6 +638,37 @@ func (s *Store) GetSnapshotCache(ctx context.Context, key string) ([]byte, strin
 	return data, etag, nil
 }
 
+const (
+	sweepBatchSize  = 10000
+	sweepMaxBatches = 500
+)
+
+func (s *Store) sweepExpiredRows(ctx context.Context, table string, ttl time.Duration) (int64, error) {
+	interval := fmt.Sprintf("%d seconds", int64(ttl.Seconds()))
+	query := fmt.Sprintf(`
+		DELETE FROM %s
+		WHERE ctid IN (
+			SELECT ctid FROM %s WHERE ts < NOW() - $1::interval LIMIT %d
+		)`, table, table, sweepBatchSize)
+
+	var total int64
+	for batch := 0; batch < sweepMaxBatches; batch++ {
+		tag, err := s.pool.Exec(ctx, query, interval)
+		if err != nil {
+			return total, err
+		}
+		n := tag.RowsAffected()
+		total += n
+		if n < sweepBatchSize {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return total, nil
+}
+
 func (s *Store) sweepIngested(ctx context.Context) {
 	for _, t := range []struct {
 		table string
@@ -453,15 +679,13 @@ func (s *Store) sweepIngested(ctx context.Context) {
 		{"binary_exec_events", BinaryEventTTL},
 		{"container_logs", ContainerLogTTL},
 	} {
-		tag, err := s.pool.Exec(ctx,
-			fmt.Sprintf(`DELETE FROM %s WHERE ts < NOW() - $1::interval`, t.table),
-			fmt.Sprintf("%d seconds", int64(t.ttl.Seconds())))
+		dropped, err := s.sweepExpiredRows(ctx, t.table, t.ttl)
 		if err != nil {
-			log.Printf("[store] %s retention sweep: %v", t.table, err)
+			log.Printf("[store] %s retention sweep: %v (dropped %d before failing)", t.table, err, dropped)
 			continue
 		}
-		if n := tag.RowsAffected(); n > 0 {
-			log.Printf("[store] %s retention sweep: %d expired rows dropped", t.table, n)
+		if dropped > 0 {
+			log.Printf("[store] %s retention sweep: %d expired rows dropped", t.table, dropped)
 		}
 	}
 

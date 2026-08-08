@@ -1,6 +1,6 @@
 import { podNS } from '../../utils/format';
 
-export function NsList({ namespaces, pods, allEvents, activeWatches, getSev, onSelect, onSeverityOpen }) {
+export function NsList({ namespaces, pods, eventSummary = [], activeWatches, getSev, onSelect, onSeverityOpen }) {
   const SYSTEM_NS = new Set(['kube-system','kube-public','kube-node-lease','calico-system','cilium','cert-manager','monitoring','ingress-nginx']);
 
   return (
@@ -18,9 +18,10 @@ export function NsList({ namespaces, pods, allEvents, activeWatches, getSev, onS
         {namespaces.filter(ns => !SYSTEM_NS.has(ns?.metadata?.name || ns?.name || ns)).map(ns => {
           const nsName = ns?.metadata?.name || ns?.name || ns;
           const podCount = pods.filter(p => podNS(p) === nsName).length;
-          const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-          const evts = allEvents.filter(e => e.namespace === nsName && new Date(e.ts).getTime() >= cutoff);
-          const critical = evts.filter(e => getSev(e.syscall, e.execpath, e.process) === 'critical').length;
+          const evts = eventSummary.filter(e => e.namespace === nsName);
+          const eventCount = evts.reduce((sum, e) => sum + e.count, 0);
+          const critical = evts.filter(e => getSev(e.syscall, e.binary, '') === 'critical')
+            .reduce((sum, e) => sum + e.count, 0);
           const anomalyWatching = activeWatches.some(w => w.namespace === nsName && w.source === 'anomaly');
           return (
             <div key={nsName} className="fns-ns-card" onClick={() => onSelect(nsName)}>
@@ -34,7 +35,7 @@ export function NsList({ namespaces, pods, allEvents, activeWatches, getSev, onS
               </div>
               <div className="fns-ns-stats">
                 <div className="fns-ns-stat">
-                  <div className="fns-ns-stat-val">{evts.length}</div>
+                  <div className="fns-ns-stat-val">{eventCount}</div>
                   <div className="fns-ns-stat-lbl">binaries/24h</div>
                 </div>
                 {critical > 0 && (

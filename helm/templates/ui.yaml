@@ -38,6 +38,8 @@ spec:
           env:
             - name: KVISIOR_ADDR
               value: ":8080"
+            - name: APP_VERSION
+              value: {{ .Values.ui.appVersion | default .Chart.AppVersion | quote }}
             - name: POSTGRES_DSN
               value: {{ include "kvisior.serviceDSN" (dict "ctx" . "creds" .Values.postgres.serviceCredentials.ui) | quote }}
             - name: CERT_SERVER_ADDR

@@ -4,6 +4,7 @@ import { TimelineBars }   from './TimelineBars';
 import { EventRow }       from './EventRow';
 import { BinaryFilter }   from './BinaryFilter';
 import { WatchPicker }     from './WatchPicker';
+import { dedupRuntimeEvents } from './forensicsHelpers';
 import { SYSCALL_GROUPS }  from './watchableSyscalls';
 import { LSM_HOOKS, LSM_GROUPS, LSM_NAMES } from '../lsm/lsmCatalog';
 import { TRACEPOINTS, TRACEPOINT_GROUPS, TRACEPOINT_NAMES } from '../tracepoints/tracepointsCatalog';
@@ -20,6 +21,14 @@ const TP_GROUPS_UI  = groupCatalog(TRACEPOINTS, TRACEPOINT_GROUPS);
 const SYSCALL_NAME_SET = new Set(SYSCALL_GROUPS.flatMap(g => g.items.map(i => i.name)));
 const LSM_NAME_SET     = new Set(LSM_NAMES);
 const TP_NAME_SET      = new Set(TRACEPOINT_NAMES);
+const WATCHABLE_EVENT_NAMES = new Set([
+  ...SYSCALL_NAME_SET,
+  ...LSM_NAME_SET,
+  ...TP_NAME_SET,
+]);
+
+const MAX_PULLED_EVENTS = 20_000;
+const MAX_CATCHUP_PAGES = 5;
 
 const LIVE_ONLY_HINT = 'Недоступно: под удалён из кластера';
 const SEV_RANK = { anomaly: 5, critical: 4, high: 3, medium: 2, low: 1, none: 0, syscall: 0 };
@@ -34,7 +43,7 @@ const FNS_COLUMNS = [
   { key: 'podIP',     label: 'Pod IP' },
 ];
 
-export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBack }) {
+export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev, onBack }) {
   const [windowH,         setWindowH]         = useState(24);
   const [filterSev,       setFilterSev]       = useState(new Set());
   const [filterBins,      setFilterBins]      = useState(new Set());
@@ -55,7 +64,11 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
   const [contentTab,      setContentTab]      = useState('syscalls');
   const [watchedSyscalls, setWatchedSyscalls] = useState([]);
   const [watchEvents,     setWatchEvents]     = useState([]);
+  const [pulledEvents,    setPulledEvents]    = useState([]);
+  const eventCursorRef   = useRef(0);
+  const seenRowIdsRef    = useRef(new Set());
   const [watchNoStore,    setWatchNoStore]    = useState(false);
+  const [watchLoaded,     setWatchLoaded]     = useState(false);
 
   const logsWrapRef = useRef(null);
 
@@ -102,7 +115,7 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
   }, [watchedSyscalls.join(','), pNS, pName]);
 
   useEffect(() => {
-    if (gone) return;
+    setWatchLoaded(false);
     let cancelled = false;
     fetch(`/v1/pod-watch?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, { credentials: 'same-origin' })
       .then(r => {
@@ -110,9 +123,57 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
         return r.ok ? r.json() : null;
       })
       .then(d => { if (!cancelled && d?.syscalls) setWatchedSyscalls(d.syscalls); })
+      .finally(() => { if (!cancelled) setWatchLoaded(true); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [pNS, pName, gone]);
+  }, [pNS, pName]);
+
+  useEffect(() => {
+    if (!watchLoaded) return;
+    let alive = true;
+    eventCursorRef.current = 0;
+    seenRowIdsRef.current = new Set();
+    setPulledEvents([]);
+
+    const fetchPage = async () => {
+      const qs = `?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}&since_id=${eventCursorRef.current}`;
+      const res = await fetch(`/v1/forensic-events${qs}`, { credentials: 'same-origin' });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (!alive) return false;
+
+      const seen = seenRowIdsRef.current;
+      const fresh = (data.events || []).filter(e => {
+        if (e._rid == null) return true;
+        if (seen.has(e._rid)) return false;
+        seen.add(e._rid);
+        return true;
+      });
+      if (fresh.length) {
+        setPulledEvents(prev => {
+          const merged = [...prev, ...fresh];
+          if (merged.length <= MAX_PULLED_EVENTS) return merged;
+          const trimmed = merged.slice(-MAX_PULLED_EVENTS);
+          seenRowIdsRef.current = new Set(trimmed.map(e => e._rid).filter(id => id != null));
+          return trimmed;
+        });
+      }
+      if (data.next_since_id > 0) eventCursorRef.current = data.next_since_id;
+      return Boolean(data.has_more);
+    };
+
+    const load = async () => {
+      try {
+        for (let page = 0; page < MAX_CATCHUP_PAGES; page++) {
+          if (!(await fetchPage()) || !alive) break;
+        }
+      } catch {}
+    };
+    load();
+    if (gone) return () => { alive = false; };
+    const t = setInterval(load, 10_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [pNS, pName, gone, watchLoaded, watchedSyscalls.join(',')]);
 
   const saveWatch = async (next) => {
     setWatchedSyscalls(next);
@@ -179,19 +240,26 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
   const podEvents = useMemo(() => {
     const now = Date.now();
     const windowMs = windowH * 60 * 60 * 1000;
-    const binary = allEvents.filter(e => {
+    const selected = new Set(watchedSyscalls);
+    const visibleForWatch = (e) => {
+      if (e._anomaly) return true;
+      if (!WATCHABLE_EVENT_NAMES.has(e.syscall)) return true;
+      return watchLoaded && selected.has(e.syscall);
+    };
+    const sourceEvents = [...allEvents, ...pulledEvents];
+    const binary = sourceEvents.filter(e => {
       if (e.pod !== pName || e.namespace !== pNS) return false;
       if (now - new Date(e.ts).getTime() > windowMs) return false;
-      return true;
+      return visibleForWatch(e);
     });
     const seen = new Set(binary.map(e => e.id).filter(Boolean));
     const watch = watchEvents.filter(e => {
       if (e.id && seen.has(e.id)) return false;
       if (now - new Date(e.ts).getTime() > windowMs) return false;
-      return true;
+      return visibleForWatch(e);
     });
-    return [...binary, ...watch];
-  }, [allEvents, pName, pNS, windowH, watchEvents]);
+    return dedupRuntimeEvents([...binary, ...watch]);
+  }, [allEvents, pulledEvents, pName, pNS, windowH, watchEvents, watchedSyscalls, watchLoaded]);
 
   const containers = useMemo(() => {
     const fromSpec   = podContainers(pod);
