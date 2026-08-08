@@ -7,7 +7,17 @@ export function Topbar() {
   const navigate = useNavigate();
   const { me, signOut } = usePerms();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [version, setVersion] = useState('');
   const ref = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/v1/version', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d?.version) setVersion(d.version); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleLogout = async () => {
     setMenuOpen(false);
@@ -32,7 +42,9 @@ export function Topbar() {
       <div className="logo" onClick={() => navigate('/')}>
         <div className="logo-icon" role="img" aria-label="Wolf Vision" />
         <div className="logo-text">Wolf<span>Vision</span></div>
-        <span style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',letterSpacing:'.04em',marginLeft:6,opacity:.6}}>v1.0</span>
+        {version && (
+          <span style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',letterSpacing:'.04em',marginLeft:6,opacity:.6}}>v{version}</span>
+        )}
       </div>
       <div className="topbar-divider" />
       <div className="topbar-right">

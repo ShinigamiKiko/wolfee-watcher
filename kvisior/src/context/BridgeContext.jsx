@@ -38,6 +38,30 @@ export function BridgeProvider({ children }) {
   const statsRef = useRef(null);
   useEffect(() => { statsRef.current = stats; }, [stats]);
 
+  const pendingEventsRef = useRef([]);
+  const flushTimerRef    = useRef(null);
+
+  const flushTraceeEvents = useCallback(() => {
+    flushTimerRef.current = null;
+    const pending = pendingEventsRef.current;
+    if (pending.length === 0) return;
+    pendingEventsRef.current = [];
+    setEvents(prev => {
+      const byId = new Map(prev.map(e => [e.id ?? e.ts, e]));
+      for (const e of pending) byId.set(e.id ?? e.ts, e);
+      return [...byId.values()]
+        .sort((a, b) => b._tsMs - a._tsMs)
+        .slice(0, MAX_EVENTS);
+    });
+  }, []);
+
+  const queueTraceeEvent = useCallback((event) => {
+    pendingEventsRef.current.push(event);
+    if (flushTimerRef.current === null) {
+      flushTimerRef.current = setTimeout(flushTraceeEvents, 250);
+    }
+  }, [flushTraceeEvents]);
+
   useEffect(() => {
     let es = null;
     let retryTimer = null;
@@ -81,22 +105,17 @@ export function BridgeProvider({ children }) {
 
         switch (type) {
           case 'tracee_event': {
-            const normalized = {
+            const parsed = data.ts ? new Date(data.ts) : null;
+            queueTraceeEvent({
               ...data,
-              time:      data.ts ? new Date(data.ts).toLocaleString() : '—',
+              time:      parsed ? parsed.toLocaleString() : '—',
+              _tsMs:     parsed ? parsed.getTime() : 0,
               pod:       data.pod       || data.container || '—',
               namespace: data.namespace || '—',
               node:      data.node      || '—',
               process:   data.process   || '—',
               execpath:  data.execpath  || '—',
               cmdline:   data.cmdline   || '',
-            };
-            setEvents(prev => {
-              const byId = new Map(prev.map(e => [e.id ?? e.ts, e]));
-              byId.set(normalized.id ?? normalized.ts, normalized);
-              return [...byId.values()]
-                .sort((a, b) => new Date(b.ts) - new Date(a.ts))
-                .slice(0, MAX_EVENTS);
             });
             break;
           }
@@ -191,6 +210,8 @@ export function BridgeProvider({ children }) {
       alive = false;
       clearTimeout(retryTimer);
       es?.close();
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
     };
   }, []);
 
@@ -371,6 +392,7 @@ export function BridgeProvider({ children }) {
   }, []);
 
   const clearTraceeEvents = useCallback(() => {
+    pendingEventsRef.current = [];
     setEvents([]);
     setViolations([]);
   }, []);
@@ -435,12 +457,12 @@ export function BridgeProvider({ children }) {
   const seenPods = useMemo(() =>
     [...new Set(events.map(e => e.pod).filter(Boolean))].sort(), [events]);
 
-  const removeViolation = (fp) => {
+  const removeViolation = useCallback((fp) => {
     if (fp) setViolations(prev => prev.filter(v => v._fp !== fp));
-  };
-  const removeAuditViolation = (fp) => {
+  }, []);
+  const removeAuditViolation = useCallback((fp) => {
     if (fp) setAuditViolations(prev => prev.filter(v => v._fp !== fp));
-  };
+  }, []);
 
   const allViolations = useMemo(() => [...violations, ...auditViolations], [violations, auditViolations]);
 
@@ -453,21 +475,36 @@ export function BridgeProvider({ children }) {
     active:   0,
   }), [allViolations]);
 
+  const value = useMemo(() => ({
+    connected, events, violations, auditViolations, stats, components, counts,
+    syscallStats, nsStats, nodeStats,
+    ruleHits, auditHits, auditEvents,
+    anomalyEvents, honeypotEvents,
+    getMatchedRules,
+    seenNamespaces, seenPods,
+    rulesVersion,
+    k8sMetrics, kafkaStats,
+    k8sSeries, kafkaSeries,
+    clearTraceeEvents, clearAuditEvents,
+    removeViolation, removeAuditViolation,
+    snapshot,
+  }), [
+    connected, events, violations, auditViolations, stats, components, counts,
+    syscallStats, nsStats, nodeStats,
+    ruleHits, auditHits, auditEvents,
+    anomalyEvents, honeypotEvents,
+    getMatchedRules,
+    seenNamespaces, seenPods,
+    rulesVersion,
+    k8sMetrics, kafkaStats,
+    k8sSeries, kafkaSeries,
+    clearTraceeEvents, clearAuditEvents,
+    removeViolation, removeAuditViolation,
+    snapshot,
+  ]);
+
   return (
-    <BridgeCtx.Provider value={{
-      connected, events, violations, auditViolations, stats, components, counts,
-      syscallStats, nsStats, nodeStats,
-      ruleHits, auditHits, auditEvents,
-      anomalyEvents, honeypotEvents,
-      getMatchedRules,
-      seenNamespaces, seenPods,
-      rulesVersion,
-      k8sMetrics, kafkaStats,
-      k8sSeries, kafkaSeries,
-      clearTraceeEvents, clearAuditEvents,
-      removeViolation, removeAuditViolation,
-      snapshot,
-    }}>
+    <BridgeCtx.Provider value={value}>
       {children}
     </BridgeCtx.Provider>
   );

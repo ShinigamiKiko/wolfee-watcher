@@ -84,7 +84,11 @@ var systemNamespaces = map[string]bool{
 	"ingress-nginx":    true,
 }
 
-var globalID atomic.Int64
+var globalID = func() *atomic.Int64 {
+	var id atomic.Int64
+	id.Store(time.Now().UnixNano())
+	return &id
+}()
 
 func Map(t *TraceeEvent) *UIEvent {
 

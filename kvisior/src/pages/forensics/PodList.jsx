@@ -1,15 +1,12 @@
 import { useState, useMemo } from 'react';
 import { podName, podNS, podContainers, relTime } from '../../utils/format';
 
-export function PodList({ ns, pods, allEvents, activeWatches = [], getSev, onSelect }) {
+export function PodList({ ns, pods, eventSummary = [], activeWatches = [], getSev, onSelect }) {
   const [search, setSearch] = useState('');
 
   const rows = useMemo(() => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const recent = allEvents.filter(e => e.namespace === ns && new Date(e.ts).getTime() >= cutoff);
-
     const byPod = new Map();
-    for (const e of recent) {
+    for (const e of eventSummary.filter(e => e.namespace === ns)) {
       if (!e.pod) continue;
       const list = byPod.get(e.pod);
       if (list) list.push(e); else byPod.set(e.pod, [e]);
@@ -17,12 +14,14 @@ export function PodList({ ns, pods, allEvents, activeWatches = [], getSev, onSel
 
     const mkRow = (p, pn, gone) => {
       const evts = byPod.get(pn) || [];
-      const critical = evts.filter(e => getSev(e.syscall, e.execpath, e.process) === 'critical').length;
-      const lastSeen = evts.reduce((m, e) => Math.max(m, new Date(e.ts).getTime()), 0);
+      const critical = evts.filter(e => getSev(e.syscall, e.binary, '') === 'critical')
+        .reduce((sum, e) => sum + e.count, 0);
+      const eventCount = evts.reduce((sum, e) => sum + e.count, 0);
+      const lastSeen = evts.reduce((m, e) => Math.max(m, new Date(e.last_ts).getTime()), 0);
       return {
         pod: p,
         name: pn,
-        evts,
+        eventCount,
         critical,
         gone,
         lastSeen,
@@ -44,8 +43,8 @@ export function PodList({ ns, pods, allEvents, activeWatches = [], getSev, onSel
       .sort((a, b) =>
         a.gone - b.gone ||
         b.critical - a.critical ||
-        b.evts.length - a.evts.length);
-  }, [ns, pods, allEvents, activeWatches, search, getSev]);
+        b.eventCount - a.eventCount);
+  }, [ns, pods, eventSummary, activeWatches, search, getSev]);
 
   return (
     <div className="fns-podlist">
@@ -86,8 +85,8 @@ export function PodList({ ns, pods, allEvents, activeWatches = [], getSev, onSel
                 </div>
               </td>
               <td>
-                <span className={`fns-sc ${r.evts.length > 100 ? 'fns-sc--high' : r.evts.length > 30 ? 'fns-sc--med' : 'fns-sc--low'}`}>
-                  {r.evts.length}
+                <span className={`fns-sc ${r.eventCount > 100 ? 'fns-sc--high' : r.eventCount > 30 ? 'fns-sc--med' : 'fns-sc--low'}`}>
+                  {r.eventCount}
                 </span>
               </td>
               <td>

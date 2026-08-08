@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	alertspkg "github.com/wolfee-watcher/pkg/alerts"
 	"github.com/wolfee-watcher/pkg/logging"
 	"github.com/wolfee-watcher/pkg/mtls"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -44,6 +46,47 @@ type backend struct {
 	prefix  string
 	host    string
 	timeout time.Duration
+}
+
+type forensicSummaryCache struct {
+	mu      sync.RWMutex
+	events  []store.BinaryEventSummary
+	expires time.Time
+	sf      singleflight.Group
+}
+
+func (c *forensicSummaryCache) get(ctx context.Context, st *store.Store) ([]store.BinaryEventSummary, error) {
+	c.mu.RLock()
+	if time.Now().Before(c.expires) {
+		events := c.events
+		c.mu.RUnlock()
+		return events, nil
+	}
+	c.mu.RUnlock()
+	result, err, _ := c.sf.Do("forensic-summary", func() (interface{}, error) {
+		c.mu.RLock()
+		if time.Now().Before(c.expires) {
+			events := c.events
+			c.mu.RUnlock()
+			return events, nil
+		}
+		c.mu.RUnlock()
+		qctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		defer cancel()
+		events, err := st.QueryBinaryEventSummary(qctx)
+		if err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		c.events = events
+		c.expires = time.Now().Add(30 * time.Second)
+		c.mu.Unlock()
+		return events, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]store.BinaryEventSummary), nil
 }
 
 var backends = []backend{
@@ -250,6 +293,20 @@ func main() {
 	mux.HandleFunc("/internal/pull/integration", pushWrap(pushH.HandleIntegrationPull))
 	log.Printf("[kvisior] push endpoints: /internal/push/{events,audit,sensor,anomaly,honeypot,scan,audit-run,histories,scanner-state,forensic,forensic-watch,logs,snapshot-cache}, /internal/pull/{scanner-state,forensic,alert-rules,logs,log-cursors,snapshot-cache} (secret=%v)", os.Getenv("INTERNAL_PUSH_SECRET") != "")
 
+	appVersion := os.Getenv("APP_VERSION")
+	if appVersion == "" {
+		appVersion = "dev"
+	}
+	mux.Handle("/v1/version", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"version": appVersion})
+	})))
+	log.Printf("[kvisior] /v1/version → %s", appVersion)
+
 	mux.Handle("/v1/stream", authMgr.RequireAuth(evHub))
 	log.Printf("[kvisior] /v1/stream → SSE hub (buf=5000)")
 
@@ -261,6 +318,7 @@ func main() {
 	}
 
 	if st != nil {
+		var summaryCache forensicSummaryCache
 		mux.Handle("/v1/binary-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -284,6 +342,45 @@ func main() {
 			json.NewEncoder(w).Encode(map[string]any{"events": events, "total": len(events)})
 		})))
 		log.Printf("[kvisior] /v1/binary-events enabled (24h PostgreSQL history)")
+
+		mux.Handle("/v1/forensic-summary", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			summary, err := summaryCache.get(r.Context(), st)
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": summary})
+		})))
+
+		mux.Handle("/v1/forensic-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			ns, pod := r.URL.Query().Get("ns"), r.URL.Query().Get("pod")
+			if ns == "" || pod == "" {
+				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
+				return
+			}
+			selected, _ := podWatchMgr.GetWatch(r.Context(), ns, pod)
+			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
+			page, err := st.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
+				Namespace: ns, Pod: pod, Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
+			})
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"events": page.Events, "next_since_id": page.NextID, "has_more": page.HasMore,
+			})
+		})))
 
 		mux.Handle("/v1/forensic-watches", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {

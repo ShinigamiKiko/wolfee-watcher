@@ -40,6 +40,21 @@ export function isForensicEvent(syscall) {
   return isBinaryCall(syscall) || isLsmHook(syscall) || isTracepoint(syscall);
 }
 
+const DEDUP_BUCKET_MS = 5 * 60 * 1000;
+
+export function dedupRuntimeEvents(evts) {
+  const seen = new Set();
+  const out = [];
+  for (const e of evts) {
+    if (e._anomaly) { out.push(e); continue; }
+    const bucket = Math.floor(new Date(e.ts).getTime() / DEDUP_BUCKET_MS);
+    const bin = e.execpath || e.process || e.syscall;
+    const key = `${bucket}|${e.namespace}|${e.pod}|${bin}|${e.cmdline || ''}`;
+    if (!seen.has(key)) { seen.add(key); out.push(e); }
+  }
+  return out;
+}
+
 export function eventKind(syscall) {
   if (isLsmHook(syscall)) return 'lsm';
   if (isTracepoint(syscall)) return 'tracepoint';

@@ -296,12 +296,21 @@ var DDL = []string{
 		process    TEXT NOT NULL DEFAULT '',
 		cmdline    TEXT NOT NULL DEFAULT '',
 		data       JSONB NOT NULL,
+		syscall    TEXT GENERATED ALWAYS AS (data->>'syscall') STORED,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`,
+	`ALTER TABLE binary_exec_events
+	ADD COLUMN IF NOT EXISTS syscall TEXT GENERATED ALWAYS AS (data->>'syscall') STORED`,
+
 	`CREATE INDEX IF NOT EXISTS idx_binary_exec_events_lookup
 	ON binary_exec_events(ns, pod, pod_uid, ts DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_binary_exec_events_ts
 	ON binary_exec_events(ts)`,
+	`CREATE INDEX IF NOT EXISTS idx_binary_exec_events_forensic_cursor
+	ON binary_exec_events(ns, pod, id DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_binary_exec_events_forensic_syscall
+	ON binary_exec_events(ns, pod, syscall, id DESC)`,
+	`DROP INDEX IF EXISTS idx_binary_exec_events_summary`,
 
 	`CREATE TABLE IF NOT EXISTS honeypot_hidden_events (
 	namespace  TEXT NOT NULL,

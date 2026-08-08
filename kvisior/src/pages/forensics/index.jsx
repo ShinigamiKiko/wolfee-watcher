@@ -1,9 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import '../../styles/forensics/forensics.scss';
-import { useBridge } from '../../context/BridgeContext';
 import { useSensor }  from '../../context/SensorContext';
 import { podName } from '../../utils/format';
-import { useSeverityConfig, isForensicEvent } from './forensicsHelpers';
+import { useSeverityConfig } from './forensicsHelpers';
 import { SeverityModal } from './SeverityModal';
 import { PodDetail }     from './PodDetail';
 import { PodList }       from './PodList';
@@ -13,60 +12,46 @@ import { NETWORK_KINDS } from '../alerts/alertsConstants';
 function anomalyToForensic(a) {
   const isNet = NETWORK_KINDS.has(a.kind);
   const dst = a.dst_ip ? `${a.dst_ip}${a.dst_port ? ':' + a.dst_port : ''}` : (a.dst_service || '');
-  const cmdline = isNet
-    ? `${a.kind} → ${dst || '?'}${a.protocol ? ' ' + a.protocol : ''}`
-    : (a.detail || [a.syscall, dst && `→ ${dst}`].filter(Boolean).join(' ') || a.kind);
   return {
-    id:        `fanomaly-${a.id}`,
-    ts:        a.ts,
-    namespace: a.src_namespace,
-    pod:       a.src_pod,
-    process:   a.src_process,
-    node:      a.src_node,
-    container: a.src_container,
-    podIP:     a.src_ip,
-    syscall:   isNet ? 'network' : (a.syscall || a.kind),
-    cmdline,
-    _anomaly:  true,
-    args: {
-      kind: a.kind,
-      ...(dst ? { dst } : {}),
-      ...(a.detail ? { detail: a.detail } : {}),
-      ...(a.baseline_state ? { baseline: a.baseline_state } : {}),
-    },
+    id: `fanomaly-${a.id}`, ts: a.ts, namespace: a.src_namespace, pod: a.src_pod,
+    process: a.src_process, node: a.src_node, container: a.src_container,
+    podIP: a.src_ip, syscall: isNet ? 'network' : (a.syscall || a.kind),
+    cmdline: isNet ? `${a.kind} → ${dst || '?'}${a.protocol ? ' ' + a.protocol : ''}` : (a.detail || a.kind),
+    _anomaly: true,
   };
 }
 
-function dedupRuntimeEvents(evts) {
-  const seen = new Set();
-  const out = [];
-  for (const e of evts) {
-    const bucket = Math.floor(new Date(e.ts).getTime() / (5 * 60 * 1000));
-    const bin = e.execpath || e.process || e.syscall;
-    const key = `${bucket}|${e.namespace}|${e.pod}|${bin}|${e.cmdline || ''}`;
-    if (!seen.has(key)) { seen.add(key); out.push(e); }
-  }
-  return out;
-}
-
 export function Forensics() {
-  const { events } = useBridge();
   const { namespaces, pods }   = useSensor();
   const { config, save, getSev } = useSeverityConfig();
 
-  const [backfill, setBackfill] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
+  const [eventSummary, setEventSummary] = useState([]);
   const [activeWatches, setActiveWatches] = useState([]);
-  const fetched = useRef(false);
 
   useEffect(() => {
-    if (fetched.current) return;
-    fetched.current = true;
-    fetch('/v1/binary-events?limit=10000', { credentials: 'same-origin' })
+    const load = () => fetch('/v1/forensic-summary', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.events) setBackfill(d.events); })
+      .then(d => { if (d?.events) setEventSummary(d.events); })
       .catch(() => {});
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    const load = () => fetch('/anomaly/api/anomalies?limit=1000', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.events) setAnomalies(d.events); })
+      .catch(() => {});
+    load();
+    const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const anomalyEvents = anomalies
+    .filter(a => NETWORK_KINDS.has(a.kind) || a.syscall)
+    .map(anomalyToForensic);
 
   useEffect(() => {
     let alive = true;
@@ -82,33 +67,6 @@ export function Forensics() {
     const t = setInterval(load, 10000);
     return () => { alive = false; clearInterval(t); };
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const res = await fetch('/anomaly/api/anomalies?limit=1000', { credentials: 'same-origin' });
-        if (!res.ok) return;
-        const d = await res.json();
-        if (alive) setAnomalies(d.events || []);
-      } catch {}
-    };
-    load();
-    const t = setInterval(load, 10000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
-
-  const anomalyEvents = useMemo(
-    () => anomalies.filter(a => NETWORK_KINDS.has(a.kind) || a.syscall).map(anomalyToForensic),
-    [anomalies],
-  );
-
-  const runtimeEvents = useMemo(() => {
-    const live = events.filter(e => isForensicEvent(e.syscall));
-    const liveIds = new Set(live.map(e => e.id).filter(Boolean));
-    const merged = [...live, ...backfill.filter(e => !liveIds.has(e.id))];
-    return [...dedupRuntimeEvents(merged), ...anomalyEvents];
-  }, [events, backfill, anomalyEvents]);
 
   const [view,         setView]         = useState('ns');
   const [activeNS,     setActiveNS]     = useState(null);
@@ -143,9 +101,9 @@ export function Forensics() {
         )}
       </div>
 
-      {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} allEvents={runtimeEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
-      {view === 'pods'   && <PodList ns={activeNS} pods={pods} allEvents={runtimeEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
-      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={runtimeEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
+      {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} eventSummary={eventSummary} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
+      {view === 'pods'   && <PodList ns={activeNS} pods={pods} eventSummary={eventSummary} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
+      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
 
       {sevModalOpen && <SeverityModal config={config} onSave={save} onClose={() => setSevModalOpen(false)} />}
     </div>
