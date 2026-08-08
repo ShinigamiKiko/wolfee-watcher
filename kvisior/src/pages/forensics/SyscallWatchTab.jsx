@@ -64,7 +64,7 @@ export function SyscallWatchTab({ ns, pod, onSelectedChange }) {
       <div className="fns-syscall-watch-hdr">
         <span className="fns-section-title">Syscall Watch</span>
         <span className="fns-section-count">
-          Captured events appear in the Binary Calls tab · {selected.length}/3 selected
+          Captured events appear in the Runtime Events tab · {selected.length}/3 selected
           {saving && ' · saving…'}
         </span>
       </div>

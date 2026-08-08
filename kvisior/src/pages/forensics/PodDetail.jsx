@@ -377,7 +377,7 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
         {}
         <div className="fns-content-tabs">
           <button className={`fns-ctab${contentTab==='syscalls'?' active':''}`}
-            onClick={() => setContentTab('syscalls')}>Binary Calls</button>
+            onClick={() => setContentTab('syscalls')}>Runtime Events</button>
           <button className={`fns-ctab${contentTab==='fsdiff'?' active':''}`}
             disabled={gone} title={gone ? LIVE_ONLY_HINT : undefined}
             onClick={() => { setContentTab('fsdiff'); if (watching) fetchDiff(); }}>
@@ -438,17 +438,17 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
         )}
 
         {contentTab === 'watch-syscall' && (
-          <WatchPicker title="Syscall Watch" captureHint="Captured events appear in the Binary Calls tab"
+          <WatchPicker title="Syscall Watch" captureHint="Captured events appear in the Runtime Events tab"
             max={3} groups={SYSCALL_GROUPS} selected={watchedSyscalls.filter(n => SYSCALL_NAME_SET.has(n))}
             noStore={watchNoStore} onToggle={(n) => toggleWatch(n, SYSCALL_NAME_SET, 3)} />
         )}
         {contentTab === 'watch-lsm' && (
-          <WatchPicker title="LSM Watch" captureHint="Captured events appear in the Binary Calls tab"
+          <WatchPicker title="LSM Watch" captureHint="Captured events appear in the Runtime Events tab"
             max={5} groups={LSM_GROUPS_UI} selected={watchedSyscalls.filter(n => LSM_NAME_SET.has(n))}
             noStore={watchNoStore} onToggle={(n) => toggleWatch(n, LSM_NAME_SET, 5)} />
         )}
         {contentTab === 'watch-tracepoint' && (
-          <WatchPicker title="Tracepoint Watch" captureHint="Captured events appear in the Binary Calls tab"
+          <WatchPicker title="Tracepoint Watch" captureHint="Captured events appear in the Runtime Events tab"
             max={5} groups={TP_GROUPS_UI} selected={watchedSyscalls.filter(n => TP_NAME_SET.has(n))}
             noStore={watchNoStore} onToggle={(n) => toggleWatch(n, TP_NAME_SET, 5)} />
         )}
@@ -493,7 +493,7 @@ export function PodDetail({ pod, ns, allEvents, activeWatches = [], getSev, onBa
 
         <div>
           <div className="fns-section-hdr">
-            <span className="fns-section-title">Binary calls</span>
+            <span className="fns-section-title">Runtime events</span>
             <span className="fns-section-count">{visibleEvents.length} events{activeContainer ? ` · ${activeContainer}` : ''}</span>
           </div>
           <div className="fns-etable">

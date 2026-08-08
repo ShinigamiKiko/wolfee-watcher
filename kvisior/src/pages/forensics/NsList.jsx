@@ -8,7 +8,7 @@ export function NsList({ namespaces, pods, allEvents, activeWatches, getSev, onS
       <div className="fns-nslist-hdr">
         <div>
           <div className="fns-page-title">Forensics</div>
-          <div className="fns-page-sub">Select namespace to explore pod binary-call history</div>
+          <div className="fns-page-sub">Select namespace to explore pod runtime-event history</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="fns-btn" onClick={onSeverityOpen}>⚙ Severity</button>

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -14,8 +15,25 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 )
 
+var forensicTracepoints = map[string]struct{}{
+	"sched_process_exec": {},
+	"sched_process_fork": {},
+	"sched_process_exit": {},
+	"task_rename":        {},
+	"sched_switch":       {},
+	"module_load":        {},
+	"module_free":        {},
+	"cgroup_mkdir":       {},
+	"cgroup_rmdir":       {},
+	"cgroup_attach_task": {},
+}
+
 func captureForForensics(sc string) bool {
-	return rules.IsBinaryExec(sc)
+	if rules.IsBinaryExec(sc) || strings.HasPrefix(sc, "security_") {
+		return true
+	}
+	_, ok := forensicTracepoints[sc]
+	return ok
 }
 
 func BackfillHandler(ring *binring.Ring) http.HandlerFunc {
