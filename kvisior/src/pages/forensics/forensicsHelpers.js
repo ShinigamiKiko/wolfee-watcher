@@ -37,7 +37,7 @@ export function isTracepoint(syscall) {
 }
 
 export function isForensicEvent(syscall) {
-  return isBinaryCall(syscall);
+  return isBinaryCall(syscall) || isLsmHook(syscall) || isTracepoint(syscall);
 }
 
 export function eventKind(syscall) {

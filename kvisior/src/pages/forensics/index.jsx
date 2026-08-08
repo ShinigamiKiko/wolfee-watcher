@@ -37,7 +37,7 @@ function anomalyToForensic(a) {
   };
 }
 
-function dedupBinary(evts) {
+function dedupRuntimeEvents(evts) {
   const seen = new Set();
   const out = [];
   for (const e of evts) {
@@ -103,11 +103,11 @@ export function Forensics() {
     [anomalies],
   );
 
-  const binaryEvents = useMemo(() => {
+  const runtimeEvents = useMemo(() => {
     const live = events.filter(e => isForensicEvent(e.syscall));
     const liveIds = new Set(live.map(e => e.id).filter(Boolean));
     const merged = [...live, ...backfill.filter(e => !liveIds.has(e.id))];
-    return [...dedupBinary(merged), ...anomalyEvents];
+    return [...dedupRuntimeEvents(merged), ...anomalyEvents];
   }, [events, backfill, anomalyEvents]);
 
   const [view,         setView]         = useState('ns');
@@ -143,9 +143,9 @@ export function Forensics() {
         )}
       </div>
 
-      {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} allEvents={binaryEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
-      {view === 'pods'   && <PodList ns={activeNS} pods={pods} allEvents={binaryEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
-      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={binaryEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
+      {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} allEvents={runtimeEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
+      {view === 'pods'   && <PodList ns={activeNS} pods={pods} allEvents={runtimeEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
+      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={runtimeEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
 
       {sevModalOpen && <SeverityModal config={config} onSave={save} onClose={() => setSevModalOpen(false)} />}
     </div>
