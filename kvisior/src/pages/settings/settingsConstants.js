@@ -52,7 +52,7 @@ export const INTEGRATION_DEFS = [
   {
     kind: 'harbor',
     label: 'Harbor',
-    desc: 'Registry credentials used by the scanner to pull images for Grype.',
+    desc: 'Registry credentials used by the scanner to pull images for Trivy.',
     fields: [
       { key: 'url',      label: 'Harbor URL',       placeholder: 'https://harbor.example.com', required: true },
       { key: 'username', label: 'Robot / user name', placeholder: 'robot$kvisior' },

@@ -63,7 +63,7 @@ export function Dashboard() {
         <div className="stat-card">
           <div className="stat-label">Images Scanned</div>
           <div className="stat-value success">{results.length}</div>
-          <div className="stat-delta">Grype · EPSS enriched</div>
+          <div className="stat-delta">Trivy · EPSS enriched</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Critical CVEs</div>

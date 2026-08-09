@@ -18,9 +18,13 @@ export function ScannerProvider({ children }) {
   const [agentOnline, setAgentOnline]     = useState(false);
   const [agentInfo, setAgentInfo]       = useState(null);
   const [schedule, setSchedule]         = useState(null);
+  const [scanErrors, setScanErrors]     = useState([]);
   const unsubRef = useRef(null);
   const scanStartedAtRef = useRef(0);
+  const scanningRef = useRef(false);
+  const sawBackendScanRef = useRef(false);
   const finalizeScanRef = useRef(null);
+  const adoptScanRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,14 +32,20 @@ export function ScannerProvider({ children }) {
       const h = await scannerHealth().catch(() => null);
       if (cancelled) return;
       setAgentOnline(!!h?.status);
-      if (h) {
-        setAgentInfo(h);
-        if (h.schedule) setSchedule(h.schedule);
-        if (h.scanning === false &&
-            scanStartedAtRef.current > 0 &&
-            Date.now() - scanStartedAtRef.current > 5000) {
-          finalizeScanRef.current?.();
-        }
+      if (!h) return;
+
+      setAgentInfo(h);
+      if (h.schedule) setSchedule(h.schedule);
+
+      if (h.scanning === true) {
+        sawBackendScanRef.current = true;
+        if (!scanningRef.current) adoptScanRef.current?.();
+        return;
+      }
+
+      if (h.scanning === false && scanningRef.current && scanStartedAtRef.current > 0) {
+        const elapsed = Date.now() - scanStartedAtRef.current;
+        if (sawBackendScanRef.current || elapsed > 30_000) finalizeScanRef.current?.();
       }
     };
     check();
@@ -92,35 +102,16 @@ export function ScannerProvider({ children }) {
 
   const finalizeScan = useCallback(() => {
     scanStartedAtRef.current = 0;
+    sawBackendScanRef.current = false;
+    scanningRef.current = false;
     setScanning(false);
     if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
     refreshResults();
   }, [refreshResults]);
   finalizeScanRef.current = finalizeScan;
 
-  const startScan = useCallback(async (images = []) => {
-    if (scanning) return;
-    scanStartedAtRef.current = Date.now();
-    setScanning(true);
-    setProgress(['Connecting to scanner…']);
+  const subscribe = useCallback(() => {
     if (unsubRef.current) unsubRef.current();
-
-    try {
-      const resp = await triggerScan(images);
-      if (resp.queued === 0) {
-        setProgress([`⚠ ${resp.message || 'No images found in cluster'}`]);
-        scanStartedAtRef.current = 0;
-        setScanning(false);
-        return;
-      }
-      setProgress([`Queued ${resp.queued} images for scanning…`]);
-    } catch (e) {
-      setProgress(prev => [...prev, `Error: ${e.message}`]);
-      scanStartedAtRef.current = 0;
-      setScanning(false);
-      return;
-    }
-
     unsubRef.current = subscribeScanStream((ev) => {
       switch (ev.type) {
         case 'start':
@@ -150,13 +141,60 @@ export function ScannerProvider({ children }) {
           break;
         case 'error':
           setProgress(prev => [...prev.slice(-99), `✗ ${ev.image}: ${ev.message}`]);
+          setScanErrors(prev => [...prev.slice(-99), { image: ev.image, message: ev.message }]);
           break;
       }
+    }, (error) => {
+      setProgress(prev => [...prev.slice(-99), `✗ ${error.message}`]);
+      setScanErrors(prev => [...prev.slice(-99), { image: 'scanner', message: error.message }]);
     });
-  }, [scanning, finalizeScan]);
+  }, [finalizeScan]);
+
+  const adoptScan = useCallback(() => {
+    scanningRef.current = true;
+    scanStartedAtRef.current = Date.now();
+    sawBackendScanRef.current = true;
+    setScanning(true);
+    setScanErrors([]);
+    setProgress(prev => (prev.length ? prev : ['Scan already running — attaching to progress stream…']));
+    subscribe();
+  }, [subscribe]);
+  adoptScanRef.current = adoptScan;
+
+  const startScan = useCallback(async (images = []) => {
+    if (scanningRef.current) return { ok: false, reason: 'busy', message: 'A scan is already running' };
+
+    setProgress(['Connecting to scanner…']);
+    setScanErrors([]);
+
+    let resp;
+    try {
+      resp = await triggerScan(images);
+    } catch (e) {
+      const message = e?.message || 'Scanner request failed';
+      setProgress([`✗ ${message}`]);
+      return { ok: false, reason: 'error', message };
+    }
+
+    if (!resp || (!resp.queued && !resp.scanning)) {
+      const message = resp?.message || 'No images found in cluster';
+      setProgress([`⚠ ${message}`]);
+      return { ok: false, reason: 'empty', message };
+    }
+
+    scanningRef.current = true;
+    scanStartedAtRef.current = Date.now();
+    sawBackendScanRef.current = !!resp.scanning;
+    setScanning(true);
+    setProgress([resp.queued
+      ? `Queued ${resp.queued} images for scanning…`
+      : 'Attaching to a scan already in progress…']);
+    subscribe();
+    return { ok: true, queued: resp.queued || 0 };
+  }, [subscribe]);
 
   const stopScan = useCallback(async () => {
-    if (!scanning) return;
+    if (!scanningRef.current) return { ok: false, message: 'No scan is running' };
     try {
       const resp = await apiStopScan();
       setProgress(prev => [...prev.slice(-99), '⏹ Stop requested…']);
@@ -164,12 +202,15 @@ export function ScannerProvider({ children }) {
         setProgress(prev => [...prev.slice(-99), 'Backend was already idle — clearing UI state.']);
         finalizeScan();
       }
+      return { ok: true };
     } catch (e) {
-      setProgress(prev => [...prev.slice(-99), `Error stopping: ${e.message}`]);
+      const message = e?.message || 'Stop request failed';
+      setProgress(prev => [...prev.slice(-99), `✗ Error stopping: ${message}`]);
       const h = await scannerHealth().catch(() => null);
       if (h && h.scanning === false) finalizeScan();
+      return { ok: false, message };
     }
-  }, [scanning, finalizeScan]);
+  }, [finalizeScan]);
 
   const allCVEs = results.flatMap(r =>
     (r.cves || []).map(c => ({ ...c, _image: r.image, _imageName: r.name, _imageTag: r.tag }))
@@ -191,6 +232,7 @@ export function ScannerProvider({ children }) {
       allCVEs: sortedCVEs,
       scanning,
       progress,
+      scanErrors,
       agentOnline,
       agentInfo,
       startScan,

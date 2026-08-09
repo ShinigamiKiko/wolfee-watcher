@@ -153,6 +153,10 @@ scannerAgent:
     tag: latest
     pullPolicy: Never
   hostAliases: []
+  javaDB: false
+  dbRefreshInterval: "24h"
+  dbRepository: ""
+  javaDBRepository: ""
   bdu:
     enabled: true
     archiveURL: ""

@@ -14,7 +14,7 @@ images as `localhost/wolfee-watcher/*:latest` with `pullPolicy: Never`.
   with `hostPID`** and needs real host-kernel access.
 - Tools on the build host: `podman`, `ctr`, `helm`, `kubectl`, `go`, `openssl`.
 - Outbound network for images that are pulled (not pre-imported): `postgres:16-alpine`,
-  `apache/kafka`, and the grype vulnerability DB used by `scanner-agent`.
+  `apache/kafka`, and the Trivy vulnerability DB used by `scanner-agent`.
 
 ## 1. Build and import the images
 
@@ -92,7 +92,7 @@ cd helm
 helm install wolfee-watcher . -n wolfee-watcher \
   --set namespace.create=false \
   --set global.internalPushSecret="$(openssl rand -hex 32)"
-# grype DB IP pinning (if required):  -f overrides.yaml
+# Trivy DB mirror (if required):  -f overrides.yaml
 cd ..
 ```
 

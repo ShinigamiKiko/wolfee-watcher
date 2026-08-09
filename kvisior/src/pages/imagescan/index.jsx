@@ -31,12 +31,21 @@ const MOCK_HISTORY = [
 
 export function ImageScan() {
   const { toast } = useApp();
-  const { clusterImages, results, summary, scanning, progress, agentOnline, startScan } = useScanner();
+  const { clusterImages, results, summary, scanning, progress, scanErrors, agentOnline, startScan } = useScanner();
   const [tab, setTab]       = useState('results');
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [sevChecked, setSevChecked] = useState(['Critical','High','Medium','Low']);
   const [regChecked, setRegChecked] = useState(['docker.io','gcr.io','quay.io','registry.k8s.io','sha256']);
+  const seenScanErrors = useRef(0);
+
+  useEffect(() => {
+    const fresh = scanErrors.slice(seenScanErrors.current);
+    fresh.forEach(({ image, message }) => {
+      toast('error', 'Image scan failed', `${image}: ${message}`);
+    });
+    seenScanErrors.current = scanErrors.length;
+  }, [scanErrors, toast]);
 
   const filtered = useMemo(()=>{
     const q=search.toLowerCase();
@@ -56,15 +65,23 @@ export function ImageScan() {
     return Object.values(m).sort((a,b)=>b.critical-a.critical);
   },[results]);
 
+  const reportScanFailure = (res)=>{
+    if(res?.reason==='empty'){toast('warn','Nothing to scan',res.message);return;}
+    if(res?.reason==='busy'){toast('warn','Scan already running',res.message);return;}
+    toast('error','Scan failed to start',res?.message||'Scanner did not respond');
+  };
   const handleScanAll = async()=>{
     if(!agentOnline){toast('error','Scanner offline','scanner-agent unreachable');return;}
-    try{await startScan([],true);setTab('history');toast('info','Scan started','Scanning all cluster images…');}
-    catch(e){toast('error','Scan failed',e.message);}
+    const res=await startScan([]);
+    if(!res?.ok){reportScanFailure(res);return;}
+    setTab('history');
+    toast('info','Scan started',`Queued ${res.queued} image${res.queued===1?'':'s'} for scanning…`);
   };
   const handleScanOne = async(ref)=>{
     if(!agentOnline){toast('error','Scanner offline','scanner-agent unreachable');return;}
-    try{await startScan([ref]);toast('info','Scanning',ref);}
-    catch(e){toast('error','Scan failed',e.message);}
+    const res=await startScan([ref]);
+    if(!res?.ok){reportScanFailure(res);return;}
+    toast('info','Scanning',ref);
   };
 
   const toggleSev=(s)=>setSevChecked(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s]);

@@ -1,0 +1,29 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: scanner-agent-registry-egress
+  namespace: wolfee-watcher
+spec:
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: wolfee-watcher
+      k8s:app.kubernetes.io/name: scanner-agent
+  egress:
+    - toFQDNs:
+        - matchName: public.ecr.aws
+        - matchName: registry-1.docker.io
+        - matchName: auth.docker.io
+        - matchName: production.cloudflare.docker.com
+        - matchName: ghcr.io
+        - matchName: quay.io
+        - matchName: registry.k8s.io
+      toPorts:
+         - ports:
+             - port: "443"
+               protocol: TCP
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

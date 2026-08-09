@@ -38,7 +38,7 @@ flowchart TB
   sensor[sensor]
   scanner[scanner-agent]
   harbor[Harbor / Registry]
-  grypedb[Grype Vuln DB]
+  trivydb[Trivy Vuln DB]
 
   browser -->|HTTPS / Ingress| kvisior
 
@@ -71,7 +71,7 @@ flowchart TB
 
   honeyop -->|deploy/watch| honeypot
   scanner -->|pull images| harbor
-  scanner -->|vuln DB| grypedb
+  scanner -->|vuln DB| trivydb
 
   certserver -.->|mTLS certs| kvisior
 

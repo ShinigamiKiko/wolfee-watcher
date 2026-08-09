@@ -3,7 +3,7 @@ import { useScanner } from '../../context/ScannerContext';
 
 const CARD_META = {
   'tracee-bridge':    { label: 'Tracee Bridge',    sub: (s) => s ? `${s.events_total || 0} events total` : 'No data' },
-  'scanner-agent':    { label: 'Scanner Agent',    sub: (_s, sc) => sc?.grypeVersion ? `Grype ${sc.grypeVersion}` : 'scanner-agent:9090' },
+  'scanner-agent':    { label: 'Scanner Agent',    sub: (_s, sc) => sc?.dbUpdatedAt ? `Trivy DB ${sc.dbUpdatedAt.slice(0, 10)}` : 'scanner-agent:9090' },
   'tracee-ebpf':      { label: 'Tracee eBPF',      sub: () => 'DaemonSet · hostPID/Network' },
   'kafka':            { label: 'Kafka',            sub: (s) => s?.kafka_topic ? `Topic ${s.kafka_topic}` : 'Event streaming bus' },
   'postgres':         { label: 'PostgreSQL',       sub: () => 'Event history store' },

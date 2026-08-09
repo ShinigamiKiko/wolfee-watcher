@@ -49,13 +49,16 @@ export async function scannerHealth() {
   return r.json();
 }
 
-export function subscribeScanStream(onEvent) {
+export function subscribeScanStream(onEvent, onError) {
   const es = new EventSource(`${BASE}/stream`);
   es.onmessage = (e) => {
     try { onEvent(JSON.parse(e.data)); }
     catch {}
   };
-  es.onerror = () => es.close();
+  es.onerror = () => {
+    onError?.(new Error('Scanner event stream disconnected'));
+    es.close();
+  };
   return () => es.close();
 }
 
