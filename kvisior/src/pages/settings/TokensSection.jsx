@@ -52,7 +52,7 @@ export function TokensSection({ toast }) {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
         <div>
           <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:3}}>API Tokens</div>
-          <div style={{fontSize:12,color:'var(--text-muted)'}}>Tokens allow programmatic access to the Wolf Vision API.</div>
+          <div style={{fontSize:12,color:'var(--text-muted)'}}>Tokens allow programmatic access to the wolfee-watcher API.</div>
         </div>
         {can('tokens.create') ? (
           <button className="btn btn-primary" onClick={startCreate}>+ Generate token</button>

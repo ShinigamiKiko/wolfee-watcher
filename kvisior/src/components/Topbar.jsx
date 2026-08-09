@@ -40,8 +40,8 @@ export function Topbar() {
   return (
     <header className="topbar">
       <div className="logo" onClick={() => navigate('/')}>
-        <div className="logo-icon" role="img" aria-label="Wolf Vision" />
-        <div className="logo-text">Wolf<span>Vision</span></div>
+        <div className="logo-icon" role="img" aria-label="wolfee-watcher" />
+        <div className="logo-text">wolfee<span>-watcher</span></div>
         {version && (
           <span style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',letterSpacing:'.04em',marginLeft:6,opacity:.6}}>v{version}</span>
         )}
