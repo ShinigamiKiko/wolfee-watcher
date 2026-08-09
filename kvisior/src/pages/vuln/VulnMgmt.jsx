@@ -17,7 +17,7 @@ import { VulnImagesTab } from './VulnImagesTab';
 export function VulnMgmt() {
   const { toast } = useApp();
   const { allCVEs, results, summary, clusterImages, agentOnline, scanning,
-          startScan, stopScan, schedule, updateSchedule, progress } = useScanner();
+          startScan, stopScan, schedule, updateSchedule, progress, scanErrors } = useScanner();
   const { nodeStats }         = useBridge();
   const { nodes: sensorNodes, workloads } = useSensor();
 
@@ -45,7 +45,43 @@ export function VulnMgmt() {
   const [sbomFilter,    setSbomFilter]    = useState('all');
   const [libsExtraH,    setLibsExtraH]    = useState(0);
 
-  const handleScanAll = () => { setShowProgress(true); setLogCollapsed(false); startScan([]); toast('info', 'Scan started', 'Scanner is collecting cluster images…'); };
+  const [starting, setStarting] = useState(false);
+
+  const handleScanAll = async () => {
+    setShowProgress(true);
+    setLogCollapsed(false);
+    setStarting(true);
+    const res = await startScan([]);
+    setStarting(false);
+    if (res?.ok) {
+      toast('info', 'Scan started', `Queued ${res.queued} image${res.queued === 1 ? '' : 's'} for scanning…`);
+    } else if (res?.reason === 'empty') {
+      toast('warn', 'Nothing to scan', res.message);
+    } else if (res?.reason === 'busy') {
+      toast('warn', 'Scan already running', res.message);
+    } else {
+      toast('error', 'Scan failed to start', res?.message || 'Scanner did not respond');
+    }
+  };
+
+  const failedResults = useMemo(
+    () => results.filter(r => r.status === 'error' || r.error),
+    [results]);
+  const okResults = results.length - failedResults.length;
+
+  const wasScanningRef = useRef(false);
+  useEffect(() => {
+    if (wasScanningRef.current && !scanning) {
+      const failed = failedResults.length || scanErrors.length;
+      if (failed > 0) {
+        toast('error', 'Scan finished with errors',
+          `${failed} image${failed === 1 ? '' : 's'} failed — see the banner above the table`);
+      } else {
+        toast('success', 'Scan complete', `${okResults} image${okResults === 1 ? '' : 's'} scanned`);
+      }
+    }
+    wasScanningRef.current = scanning;
+  }, [scanning]);
 
   const libsDragCleanupRef = useRef(null);
   useEffect(() => () => { libsDragCleanupRef.current?.(); }, []);
@@ -68,7 +104,11 @@ export function VulnMgmt() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', cleanup);
   };
-  const handleStop = () => { stopScan(); toast('info', 'Stopping scan', 'Cancelling running grype processes…'); };
+  const handleStop = async () => {
+    const res = await stopScan();
+    if (res?.ok) toast('info', 'Stopping scan', 'Cancelling running Trivy processes…');
+    else toast('error', 'Stop failed', res?.message || 'Could not stop the scan');
+  };
 
   const totalCVEs   = summary?.total    || allCVEs.length;
   const critCVEs    = summary?.critical || allCVEs.filter(c => c.severity?.toUpperCase() === 'CRITICAL').length;
@@ -167,7 +207,10 @@ export function VulnMgmt() {
             <div className="page-title">Vulnerability Management</div>
             <div className="page-subtitle">
               CVEs across images, deployments and nodes
-              {agentOnline ? <span style={{ color: 'var(--accent-3)', marginLeft: 8, fontSize: 11 }}>● scanner online · {results.length} images scanned</span>
+              {agentOnline ? <span style={{ color: 'var(--accent-3)', marginLeft: 8, fontSize: 11 }}>
+                               ● scanner online · {okResults} images scanned
+                               {failedResults.length > 0 && <span style={{ color: 'var(--danger)' }}> · {failedResults.length} failed</span>}
+                             </span>
                            : <span style={{ color: 'var(--warning)', marginLeft: 8, fontSize: 11 }}>⚠ scanner offline</span>}
             </div>
           </div>
@@ -176,18 +219,47 @@ export function VulnMgmt() {
               ⏱ Schedule
               {schedule?.enabled && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#000', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>ON</span>}
             </button>
-            {agentOnline && !scanning && <button className="btn btn-primary" onClick={handleScanAll}>🔍 Scan All Images</button>}
-            {scanning && <button className="btn btn-danger" onClick={handleStop} title="Cancel running grype processes and clear the queue">
+            {!scanning && (
+              <button
+                className="btn btn-primary"
+                onClick={handleScanAll}
+                disabled={!agentOnline || starting}
+                title={agentOnline ? 'Scan every image running in the cluster' : 'Scanner agent is offline'}
+              >
+                {starting
+                  ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>&nbsp;Starting…</>
+                  : '🔍 Scan All Images'}
+              </button>
+            )}
+            {scanning && <button className="btn btn-danger" onClick={handleStop} title="Cancel running Trivy processes and clear the queue">
               <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>&nbsp;Stop Scan
             </button>}
             {allCVEs.length > 0 && <button className="btn btn-outline" onClick={exportCSV}>📥 CSV</button>}
           </div>
         </div>
 
+        {failedResults.length > 0 && (
+          <div className="card" style={{ padding: '12px 14px', marginBottom: 14, borderLeft: '3px solid var(--danger)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)', marginBottom: 6 }}>
+              ✗ {failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 132, overflowY: 'auto' }}>
+              {failedResults.slice(0, 6).map(r => (
+                <div key={r.image} style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'var(--text-muted)', wordBreak: 'break-all' }}>
+                  <span style={{ color: 'var(--text)' }}>{r.image}</span> — {r.error || 'unknown error'}
+                </div>
+              ))}
+              {failedResults.length > 6 && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>…and {failedResults.length - 6} more</div>
+              )}
+            </div>
+          </div>
+        )}
+
         {}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
           {[['Total CVEs', totalCVEs, 'var(--danger)', critCVEs > 0 ? `${critCVEs} critical · ${highCVEs} high` : 'No critical CVEs'],
-            ['Images Scanned', results.length, 'var(--warning)', results.filter(r => r.summary?.critical > 0).length > 0 ? `${results.filter(r => r.summary?.critical > 0).length} with critical` : 'No critical images'],
+            ['Images Scanned', okResults, 'var(--warning)', failedResults.length > 0 ? `${failedResults.length} failed to scan` : (results.filter(r => r.summary?.critical > 0).length > 0 ? `${results.filter(r => r.summary?.critical > 0).length} with critical` : 'No critical images')],
             ['Fixable', fixableCVEs, 'var(--accent-3)', totalCVEs > 0 ? `${Math.round(fixableCVEs / totalCVEs * 100)}% of total` : '—'],
             ['CISA KEV', summary?.inKev || 0, 'var(--danger)', 'Actively exploited'],
             ['With PoC', summary?.hasPoc || 0, 'var(--warning)', 'Public exploit code'],

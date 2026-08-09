@@ -30,6 +30,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	sched := s.schedule
 	s.schedMu.RUnlock()
 
+	dbUpdated := ""
+	if t := s.scanner.DBUpdatedAt(); !t.IsZero() {
+		dbUpdated = t.UTC().Format(time.RFC3339)
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "ok",
 		"scanned":     n,
@@ -39,6 +44,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"nodeCount":   cluster.NodeCount,
 		"k8sVersion":  cluster.K8sVersion,
 		"schedule":    sched,
+		"dbUpdatedAt": dbUpdated,
 	})
 }
 
@@ -102,18 +108,25 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if len(refs) == 0 {
 		log.Printf("[scan] no images found in cluster")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"queued":  0,
-			"images":  []string{},
-			"message": "No running images found in cluster. Are pods running?",
+			"queued":   0,
+			"scanning": false,
+			"images":   []string{},
+			"message":  "No running images found in cluster. Are pods running?",
 		})
 		return
 	}
 
 	queued := s.enqueueScan(refs)
-	log.Printf("[scan] queued %d/%d images", queued, len(refs))
+
+	s.scanMu.Lock()
+	scanning := s.scanning
+	s.scanMu.Unlock()
+
+	log.Printf("[scan] queued %d/%d images (scanning=%v)", queued, len(refs), scanning)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"queued":    queued,
 		"requested": len(refs),
+		"scanning":  scanning,
 		"images":    refs,
 	})
 }

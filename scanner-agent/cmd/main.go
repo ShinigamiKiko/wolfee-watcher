@@ -15,16 +15,16 @@ import (
 	"github.com/wolfee-watcher/scanner-agent/internal/api"
 	"github.com/wolfee-watcher/scanner-agent/internal/bdu"
 	"github.com/wolfee-watcher/scanner-agent/internal/epss"
-	"github.com/wolfee-watcher/scanner-agent/internal/grype"
 	"github.com/wolfee-watcher/scanner-agent/internal/harbor"
 	"github.com/wolfee-watcher/scanner-agent/internal/k8s"
+	"github.com/wolfee-watcher/scanner-agent/internal/trivy"
 )
 
 func main() {
 	logging.Setup("scanner-agent")
 	addr := env.Str("SCANNER_ADDR", ":9090")
-	grypeBin := env.Str("GRYPE_PATH", "grype")
-	cacheDir := env.Str("GRYPE_CACHE_DIR", "/grype-cache")
+	trivyBin := env.Str("TRIVY_PATH", "trivy")
+	cacheDir := env.Str("TRIVY_CACHE_DIR", "/trivy-cache")
 
 	workspaceDir := env.Str("SCAN_WORKSPACE_DIR", "/scan-workspace")
 	nvdAPIKey := env.Str("NVD_API_KEY", "")
@@ -32,8 +32,8 @@ func main() {
 	slog.Info("service_starting",
 		"component", "scanner-agent/main",
 		"addr", addr,
-		"engine", "grype",
-		"grype_path", grypeBin,
+		"engine", "trivy",
+		"trivy_path", trivyBin,
 		"cache_dir", cacheDir,
 		"workspace_dir", workspaceDir,
 		"nvd_api_key_configured", nvdAPIKey != "")
@@ -45,28 +45,39 @@ func main() {
 	}
 	slog.Info("dependency_ready", "component", "scanner-agent/main", "dependency", "kubernetes")
 
-	scanner := grype.New(grypeBin, cacheDir, workspaceDir)
+	scanner := trivy.New(trivyBin, cacheDir, workspaceDir)
 
 	scanner.SweepWorkspace()
 
-	if env.Str("GRYPE_SKIP_DB_UPDATE", "false") != "true" {
-		slog.Info("grype_db_update_started", "component", "scanner-agent/main")
+	if env.Str("SCANNER_SKIP_DB_WARMUP", "false") != "true" {
+		slog.Info("trivy_db_update_started", "component", "scanner-agent/main")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		if err := scanner.EnsureDB(ctx); err != nil {
-			slog.Warn("grype_db_warmup_failed",
+			slog.Warn("trivy_db_warmup_failed",
 				"component", "scanner-agent/main",
 				"error", err,
 				"action", "retry_on_first_scan")
 		} else {
-			slog.Info("dependency_ready", "component", "scanner-agent/main", "dependency", "grype_db")
+			slog.Info("dependency_ready", "component", "scanner-agent/main", "dependency", "trivy_db")
 		}
 		cancel()
 	} else {
-		slog.Info("grype_db_update_skipped", "component", "scanner-agent/main")
+		slog.Info("trivy_db_warmup_skipped", "component", "scanner-agent/main")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	refreshEvery, err := time.ParseDuration(env.Str("SCANNER_DB_REFRESH_INTERVAL", "24h"))
+	if err != nil {
+		slog.Warn("db_refresh_interval_invalid",
+			"component", "scanner-agent/main",
+			"value", env.Str("SCANNER_DB_REFRESH_INTERVAL", "24h"),
+			"error", err,
+			"action", "fallback_24h")
+		refreshEvery = 24 * time.Hour
+	}
+	scanner.StartDBRefresh(ctx, refreshEvery, 20*time.Minute)
 
 	enricher := epss.New(ctx, nvdAPIKey)
 

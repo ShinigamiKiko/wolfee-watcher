@@ -11,17 +11,17 @@ import (
 	"github.com/wolfee-watcher/pkg/mtls"
 	internal "github.com/wolfee-watcher/scanner-agent/internal"
 	"github.com/wolfee-watcher/scanner-agent/internal/epss"
-	"github.com/wolfee-watcher/scanner-agent/internal/grype"
 	"github.com/wolfee-watcher/scanner-agent/internal/harbor"
 	"github.com/wolfee-watcher/pkg/httputil"
 	"github.com/wolfee-watcher/scanner-agent/internal/k8s"
 	"github.com/wolfee-watcher/scanner-agent/internal/registry"
+	"github.com/wolfee-watcher/scanner-agent/internal/trivy"
 )
 
 type Server struct {
 	ctx       context.Context
 	k8s       *k8s.Client
-	scanner   *grype.Scanner
+	scanner   *trivy.Scanner
 	enricher  *epss.Enricher
 	inspector *registry.Inspector
 	addr      string
@@ -70,7 +70,7 @@ func (s *Server) ListClusterImages(ctx context.Context) ([]internal.ClusterImage
 	return s.k8s.ListImages(ctx)
 }
 
-func New(ctx context.Context, k8sClient *k8s.Client, scanner *grype.Scanner, enricher *epss.Enricher, addr string, harborStore *harbor.Store) *Server {
+func New(ctx context.Context, k8sClient *k8s.Client, scanner *trivy.Scanner, enricher *epss.Enricher, addr string, harborStore *harbor.Store) *Server {
 	kv := newKVClient()
 	s := &Server{
 		ctx:          ctx,

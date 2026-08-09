@@ -36,24 +36,28 @@ spec:
           env:
             - name: SCANNER_ADDR
               value: ":9090"
-            - name: GRYPE_DB_CACHE_DIR
-              value: "/grype-cache"
+            - name: TRIVY_CACHE_DIR
+              value: "/trivy-cache"
             - name: XDG_CACHE_HOME
-              value: "/grype-cache"
+              value: "/trivy-cache"
             - name: HOME
-              value: "/grype-cache"
-            - name: GRYPE_SKIP_DB_UPDATE
+              value: "/trivy-cache"
+            - name: SCANNER_SKIP_DB_WARMUP
               value: "true"
-            - name: GRYPE_DB_AUTO_UPDATE
-              value: "false"
-            - name: GRYPE_DB_VALIDATE_AGE
-              value: "false"
-            - name: GRYPE_DB_REQUIRE_UPDATE_CHECK
-              value: "false"
-            - name: GRYPE_DB_MAX_ALLOWED_BUILT_AGE
-              value: "8760h"
-            - name: GRYPE_CHECK_FOR_APP_UPDATE
-              value: "false"
+            - name: TRIVY_SKIP_VERSION_CHECK
+              value: "true"
+            - name: SCANNER_DB_REFRESH_INTERVAL
+              value: {{ .Values.scannerAgent.dbRefreshInterval | default "24h" | quote }}
+            - name: TRIVY_JAVA_DB
+              value: {{ .Values.scannerAgent.javaDB | default false | quote }}
+            {{- with .Values.scannerAgent.dbRepository }}
+            - name: TRIVY_DB_REPOSITORY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.scannerAgent.javaDBRepository }}
+            - name: TRIVY_JAVA_DB_REPOSITORY
+              value: {{ . | quote }}
+            {{- end }}
             - name: CERT_SERVER_ADDR
               value: {{ .Values.global.certServerAddr | quote }}
             - name: MTLS_REQUIRED

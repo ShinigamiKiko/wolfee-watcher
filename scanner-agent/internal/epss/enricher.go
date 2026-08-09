@@ -185,17 +185,17 @@ func applyEnrichment(e *Enricher, c *internal.CVE) {
 
 	switch c.FixState {
 	case "fixed":
-		c.VEXStatus, c.VEXSource = "fixed", "Grype fix.state"
+		c.VEXStatus, c.VEXSource = "fixed", "Trivy status"
 	case "wont-fix":
-		c.VEXStatus, c.VEXSource = "wont_fix", "Grype fix.state"
+		c.VEXStatus, c.VEXSource = "wont_fix", "Trivy status"
 	case "not-fixed":
-		c.VEXStatus, c.VEXSource = "not_fixed", "Grype fix.state"
+		c.VEXStatus, c.VEXSource = "not_fixed", "Trivy status"
 	default:
 
 		if c.FixedIn != "" {
-			c.VEXStatus, c.VEXSource = "fixed", "Grype fix.versions"
+			c.VEXStatus, c.VEXSource = "fixed", "Trivy fixed version"
 		} else {
-			c.VEXStatus, c.VEXSource = "not_fixed", "Grype fix.state"
+			c.VEXStatus, c.VEXSource = "not_fixed", "Trivy status"
 		}
 	}
 
