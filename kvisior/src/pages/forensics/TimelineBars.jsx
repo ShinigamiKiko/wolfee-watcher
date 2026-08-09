@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { isWithinWindow, eventTimeMs } from './forensicsHelpers';
 
 export function TimelineBars({ events, windowH }) {
   const buckets = useMemo(() => {
@@ -7,8 +8,9 @@ export function TimelineBars({ events, windowH }) {
     const bucketMs = windowMs / 60;
     const arr = Array(60).fill(0);
     events.forEach(e => {
-      const age = now - new Date(e.ts).getTime();
-      if (age < 0 || age > windowMs) return;
+      const eventMs = eventTimeMs(e.ts);
+      if (!isWithinWindow(e.ts, now, windowMs)) return;
+      const age = now - eventMs;
       const idx = Math.min(59, Math.floor((windowMs - age) / bucketMs));
       arr[idx]++;
     });

@@ -100,8 +100,12 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 			if pw != nil {
 				ns, _ := ev["namespace"].(string)
 				pod, _ := ev["pod"].(string)
+				podUID, _ := ev["pod_uid"].(string)
+				if podUID == "" {
+					podUID, _ = ev["podUID"].(string)
+				}
 				if sc != "" && pw.ShouldCapture(ns, pod, sc) {
-					pw.Add(ns, pod, sc, json.RawMessage(raw), eventTime(ev))
+					pw.Add(ns, pod, podUID, sc, json.RawMessage(raw), eventTime(ev))
 				}
 			}
 

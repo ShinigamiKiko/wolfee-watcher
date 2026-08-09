@@ -55,6 +55,7 @@ type UIEvent struct {
 	Namespace   string                 `json:"namespace"`
 	Pod         string                 `json:"pod"`
 	PodUID      string                 `json:"podUID,omitempty"`
+	PodIP       string                 `json:"podIP,omitempty"`
 	Node        string                 `json:"node"`
 	Container   string                 `json:"container"`
 	ContainerID string                 `json:"containerId"`

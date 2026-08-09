@@ -32,19 +32,6 @@ export const TRACEPOINTS = [
            { key: 'version',     kind: 'string', label: 'version' },
            { key: 'src_version', kind: 'string', label: 'src version' }] },
 
-  { name: 'cgroup_mkdir', group: 'Cgroups & Containers', risk: 'medium',
-    desc: 'A cgroup directory was created (cgroup:cgroup_mkdir) — container creation; from inside a container it hints at escape staging (release_agent tricks).',
-    args: [{ key: 'cgroup_path', kind: 'string', label: 'cgroup path' },
-           { key: 'cgroup_id',   kind: 'num',    label: 'cgroup id' }] },
-  { name: 'cgroup_rmdir', group: 'Cgroups & Containers', risk: 'low',
-    desc: 'A cgroup directory was removed (cgroup:cgroup_rmdir) — container teardown.',
-    args: [{ key: 'cgroup_path', kind: 'string', label: 'cgroup path' },
-           { key: 'cgroup_id',   kind: 'num',    label: 'cgroup id' }] },
-  { name: 'cgroup_attach_task', group: 'Cgroups & Containers', risk: 'high',
-    desc: 'A task was attached to a cgroup (cgroup:cgroup_attach_task) — process moved between containers / escape & lateral movement indicator.',
-    args: [{ key: 'cgroup_path', kind: 'string', label: 'cgroup path' },
-           { key: 'comm',        kind: 'string', label: 'comm' },
-           { key: 'pid',         kind: 'num',    label: 'pid' }] },
 ];
 
 export const TRACEPOINT_NAMES   = TRACEPOINTS.map(t => t.name);

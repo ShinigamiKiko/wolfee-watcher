@@ -24,7 +24,13 @@ func (pc *PodCache) refresh() {
 
 	next := make(map[string]PodInfo, len(pods.Items)*3)
 	for _, pod := range pods.Items {
-		info := PodInfo{PodName: pod.Name, Namespace: pod.Namespace, NodeName: pod.Spec.NodeName}
+		info := PodInfo{
+			PodName:   pod.Name,
+			Namespace: pod.Namespace,
+			NodeName:  pod.Spec.NodeName,
+			PodUID:    string(pod.UID),
+			PodIP:     pod.Status.PodIP,
+		}
 		for _, cs := range pod.Status.ContainerStatuses {
 			indexContainerID(next, cs.ContainerID, info)
 		}

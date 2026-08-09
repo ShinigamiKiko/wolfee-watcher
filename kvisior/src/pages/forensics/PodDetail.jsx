@@ -4,7 +4,7 @@ import { TimelineBars }   from './TimelineBars';
 import { EventRow }       from './EventRow';
 import { BinaryFilter }   from './BinaryFilter';
 import { WatchPicker }     from './WatchPicker';
-import { dedupRuntimeEvents } from './forensicsHelpers';
+import { dedupRuntimeEvents, eventTimeMs, isWithinWindow } from './forensicsHelpers';
 import { SYSCALL_GROUPS }  from './watchableSyscalls';
 import { LSM_HOOKS, LSM_GROUPS, LSM_NAMES } from '../lsm/lsmCatalog';
 import { TRACEPOINTS, TRACEPOINT_GROUPS, TRACEPOINT_NAMES } from '../tracepoints/tracepointsCatalog';
@@ -74,6 +74,8 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
 
   const pName = podName(pod);
   const pNS   = podNS(pod);
+  const pUID  = pod?.metadata?.uid || pod?.uid || '';
+  const pContainerID = pod?.status?.containerStatuses?.[0]?.containerID?.replace(/^\w+:\/\//, '') || '';
   const gone  = pod?._gone === true;
 
   useEffect(() => {
@@ -98,7 +100,9 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
 
   const fetchWatchEvents = async () => {
     try {
-      const res = await fetch(`/v1/pod-syscall-events?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, { credentials: 'same-origin' });
+      const uid = pUID ? `&pod_uid=${encodeURIComponent(pUID)}` : '';
+      const container = pContainerID ? `&container_id=${encodeURIComponent(pContainerID)}` : '';
+      const res = await fetch(`/v1/pod-syscall-events?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}${uid}${container}`, { credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         const parsed = (data.events || []).map(e => typeof e === 'string' ? JSON.parse(e) : e);
@@ -112,7 +116,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     fetchWatchEvents();
     const t = setInterval(fetchWatchEvents, 30_000);
     return () => clearInterval(t);
-  }, [watchedSyscalls.join(','), pNS, pName]);
+  }, [watchedSyscalls.join(','), pNS, pName, pUID, pContainerID]);
 
   useEffect(() => {
     setWatchLoaded(false);
@@ -136,7 +140,9 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     setPulledEvents([]);
 
     const fetchPage = async () => {
-      const qs = `?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}&since_id=${eventCursorRef.current}`;
+      const podUID = pUID ? `&pod_uid=${encodeURIComponent(pUID)}` : '';
+      const container = pContainerID ? `&container_id=${encodeURIComponent(pContainerID)}` : '';
+      const qs = `?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}${podUID}${container}&since_id=${eventCursorRef.current}`;
       const res = await fetch(`/v1/forensic-events${qs}`, { credentials: 'same-origin' });
       if (!res.ok) return false;
       const data = await res.json();
@@ -173,7 +179,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     if (gone) return () => { alive = false; };
     const t = setInterval(load, 10_000);
     return () => { alive = false; clearInterval(t); };
-  }, [pNS, pName, gone, watchLoaded, watchedSyscalls.join(',')]);
+  }, [pNS, pName, pUID, gone, watchLoaded, watchedSyscalls.join(',')]);
 
   const saveWatch = async (next) => {
     setWatchedSyscalls(next);
@@ -238,8 +244,8 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   };
 
   const podEvents = useMemo(() => {
-    const now = Date.now();
     const windowMs = windowH * 60 * 60 * 1000;
+    const now = Date.now();
     const selected = new Set(watchedSyscalls);
     const visibleForWatch = (e) => {
       if (e._anomaly) return true;
@@ -249,17 +255,22 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     const sourceEvents = [...allEvents, ...pulledEvents];
     const binary = sourceEvents.filter(e => {
       if (e.pod !== pName || e.namespace !== pNS) return false;
-      if (now - new Date(e.ts).getTime() > windowMs) return false;
+      if (e.podUID && pUID && e.podUID !== pUID) return false;
+      if (!e.podUID && e.containerId && pContainerID && e.containerId !== pContainerID) return false;
+      if (!isWithinWindow(e.ts, now, windowMs)) return false;
       return visibleForWatch(e);
     });
-    const seen = new Set(binary.map(e => e.id).filter(Boolean));
+    const seen = new Set(binary.map(e => e._rid ?? e.id).filter(Boolean));
     const watch = watchEvents.filter(e => {
-      if (e.id && seen.has(e.id)) return false;
-      if (now - new Date(e.ts).getTime() > windowMs) return false;
+      const eventID = e._rid ?? e.id;
+      if (eventID && seen.has(eventID)) return false;
+      if (e.podUID && pUID && e.podUID !== pUID) return false;
+      if (!e.podUID && e.containerId && pContainerID && e.containerId !== pContainerID) return false;
+      if (!isWithinWindow(e.ts, now, windowMs)) return false;
       return visibleForWatch(e);
     });
     return dedupRuntimeEvents([...binary, ...watch]);
-  }, [allEvents, pulledEvents, pName, pNS, windowH, watchEvents, watchedSyscalls, watchLoaded]);
+  }, [allEvents, pulledEvents, pName, pNS, pUID, pContainerID, windowH, watchEvents, watchedSyscalls, watchLoaded]);
 
   const containers = useMemo(() => {
     const fromSpec   = podContainers(pod);
@@ -315,7 +326,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
       });
   }, [podEvents, activeContainer, filterSev, filterBins, getSev, sortCol, sortDir]);
 
-  useEffect(() => { setPage(1); }, [visibleEvents.length]);
+  useEffect(() => { setPage(1); }, [windowH, filterSev, filterBins, activeContainer, visibleEvents.length]);
 
   const pagedEvents = useMemo(() => {
     const tp = Math.max(1, Math.ceil(visibleEvents.length / pageSize));
@@ -575,7 +586,14 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
             </div>
             {visibleEvents.length === 0
               ? <div className="fns-empty">No events for this window</div>
-              : pagedEvents.map(ev => <EventRow key={ev.id} ev={ev} podIP={pod?.status?.podIP} getSev={getSev} />)
+              : pagedEvents.map((ev, index) => (
+                <EventRow
+                  key={ev._rid ?? ev.id ?? `${ev.ts}-${ev.syscall}-${ev.pid}-${index}`}
+                  ev={ev}
+                  podIP={pod?.status?.podIP}
+                  getSev={getSev}
+                />
+              ))
             }
           </div>
           <Pager

@@ -22,6 +22,25 @@ export const SYSCALL_GROUPS = {
 
 export const BINARY_CALL_SYSCALLS = new Set(['execve', 'execveat']);
 
+export function eventTimeMs(ts) {
+  if (typeof ts === 'number') {
+    return ts < 1e12 ? ts * 1000 : ts;
+  }
+  if (typeof ts === 'string' && /^\d+(\.\d+)?$/.test(ts.trim())) {
+    const numeric = Number(ts);
+    return numeric < 1e12 ? numeric * 1000 : numeric;
+  }
+  const ms = new Date(ts).getTime();
+  return Number.isFinite(ms) ? ms : NaN;
+}
+
+export function isWithinWindow(ts, now, windowMs) {
+  const eventMs = eventTimeMs(ts);
+  if (!Number.isFinite(eventMs)) return false;
+  const age = now - eventMs;
+  return age >= 0 && age <= windowMs;
+}
+
 export function isBinaryCall(syscall) {
   return BINARY_CALL_SYSCALLS.has(syscall);
 }
@@ -49,7 +68,8 @@ export function dedupRuntimeEvents(evts) {
     if (e._anomaly) { out.push(e); continue; }
     const bucket = Math.floor(new Date(e.ts).getTime() / DEDUP_BUCKET_MS);
     const bin = e.execpath || e.process || e.syscall;
-    const key = `${bucket}|${e.namespace}|${e.pod}|${bin}|${e.cmdline || ''}`;
+    const podUID = e.podUID || e.pod_uid || '';
+    const key = `${bucket}|${e.namespace}|${e.pod}|${podUID}|${bin}|${e.cmdline || ''}`;
     if (!seen.has(key)) { seen.add(key); out.push(e); }
   }
   return out;

@@ -206,7 +206,7 @@ func (s *Store) InsertBinaryExecEvent(ctx context.Context, raw json.RawMessage) 
 		ON CONFLICT (event_hash) DO NOTHING`,
 		eventID, hex.EncodeToString(hash[:]), ts, ns, pod,
 		get("pod_uid", "podUID", "uid"), get("pod_ip", "podIP"),
-		get("container"), get("node"), get("execpath", "binary"),
+		get("container", "containerId"), get("node"), get("execpath", "binary"),
 		get("process"), get("cmdline"), raw)
 	return err
 }
@@ -235,22 +235,27 @@ func (s *Store) QueryBinaryExecEvents(ctx context.Context, q BinaryExecQuery) ([
 }
 
 type BinaryEventSummary struct {
-	Namespace string    `json:"namespace"`
-	Pod       string    `json:"pod"`
-	Syscall   string    `json:"syscall"`
-	Binary    string    `json:"binary"`
-	Count     int       `json:"count"`
-	LastTS    time.Time `json:"last_ts"`
+	Namespace   string    `json:"namespace"`
+	Pod         string    `json:"pod"`
+	PodUID      string    `json:"pod_uid,omitempty"`
+	PodIP       string    `json:"pod_ip,omitempty"`
+	ContainerID string    `json:"container_id,omitempty"`
+	Syscall     string    `json:"syscall"`
+	Binary      string    `json:"binary"`
+	Count       int       `json:"count"`
+	LastTS      time.Time `json:"last_ts"`
 }
 
 const cursorOverlap = 128
 
 type ForensicEventQuery struct {
-	Namespace string
-	Pod       string
-	Syscalls  []string
-	SinceID   int64
-	Limit     int
+	Namespace   string
+	Pod         string
+	PodUID      string
+	ContainerID string
+	Syscalls    []string
+	SinceID     int64
+	Limit       int
 }
 
 func withRowID(data json.RawMessage, id int64) json.RawMessage {
@@ -296,9 +301,21 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 	}
 	watermark := q.SinceID
 	if initial {
-		if err := s.pool.QueryRow(ctx,
-			`SELECT COALESCE(MAX(id), 0) FROM binary_exec_events WHERE ns=$1 AND pod=$2`,
-			q.Namespace, q.Pod).Scan(&watermark); err != nil {
+		watermarkQuery := `SELECT COALESCE(MAX(id), 0) FROM binary_exec_events WHERE ns=$1 AND pod=$2`
+		watermarkArgs := []interface{}{q.Namespace, q.Pod}
+		if q.PodUID != "" {
+			watermarkArgs = append(watermarkArgs, q.PodUID)
+			watermarkQuery += fmt.Sprintf(" AND (pod_uid=$%d", len(watermarkArgs))
+			if q.ContainerID != "" {
+				watermarkArgs = append(watermarkArgs, q.ContainerID)
+				watermarkQuery += fmt.Sprintf(" OR (pod_uid='' AND COALESCE(NULLIF(container,''), data->>'containerId')=$%d)", len(watermarkArgs))
+			}
+			watermarkQuery += ")"
+		} else if q.ContainerID != "" {
+			watermarkArgs = append(watermarkArgs, q.ContainerID)
+			watermarkQuery += fmt.Sprintf(" AND COALESCE(NULLIF(container,''), data->>'containerId')=$%d", len(watermarkArgs))
+		}
+		if err := s.pool.QueryRow(ctx, watermarkQuery, watermarkArgs...).Scan(&watermark); err != nil {
 			return ForensicEventPage{}, err
 		}
 		if watermark == 0 {
@@ -311,10 +328,20 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 		FROM binary_exec_events
 		WHERE ns = $1
 		  AND pod = $2
-		  AND syscall = ANY($3::text[])
-		  AND id %s $4
-		ORDER BY id %s
-		LIMIT $5`
+		  AND syscall = ANY($3::text[])`
+	args := []interface{}{q.Namespace, q.Pod, q.Syscalls}
+	if q.PodUID != "" {
+		args = append(args, q.PodUID)
+		query += fmt.Sprintf(" AND (pod_uid = $%d", len(args))
+		if q.ContainerID != "" {
+			args = append(args, q.ContainerID)
+			query += fmt.Sprintf(" OR (pod_uid = '' AND COALESCE(NULLIF(container,''), data->>'containerId') = $%d)", len(args))
+		}
+		query += ")"
+	} else if q.ContainerID != "" {
+		args = append(args, q.ContainerID)
+		query += fmt.Sprintf(" AND COALESCE(NULLIF(container,''), data->>'containerId') = $%d", len(args))
+	}
 	comparison, order := ">", "ASC"
 	bound := watermark
 	if initial {
@@ -325,8 +352,9 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 			bound = 0
 		}
 	}
-	rows, err := s.pool.Query(ctx, fmt.Sprintf(query, comparison, order),
-		q.Namespace, q.Pod, q.Syscalls, bound, q.Limit+1)
+	args = append(args, bound, q.Limit+1)
+	query += fmt.Sprintf(" AND id %s $%d ORDER BY id %s LIMIT $%d", comparison, len(args)-1, order, len(args))
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return ForensicEventPage{}, err
 	}
@@ -401,13 +429,16 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 		SELECT
 			ns,
 			pod,
+			COALESCE(NULLIF(pod_uid, ''), '') AS pod_uid,
+			COALESCE(MAX(NULLIF(pod_ip, '')), '') AS pod_ip,
+			COALESCE(NULLIF(container, ''), NULLIF(data->>'containerId', '')) AS container_id,
 			COALESCE(syscall, '') AS sc,
 			COALESCE(NULLIF("binary", ''), NULLIF(process, ''), COALESCE(syscall, '')) AS bin,
 			COUNT(DISTINCT (floor(extract(epoch FROM ts) / 300)::bigint, cmdline)),
 			MAX(ts)
 		FROM binary_exec_events
 		WHERE ts > NOW() - INTERVAL '24 hours'
-		GROUP BY ns, pod, sc, bin
+		GROUP BY ns, pod, pod_uid, container_id, sc, bin
 		ORDER BY ns, pod, MAX(ts) DESC`)
 	if err != nil {
 		return nil, err
@@ -417,7 +448,7 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 	var out []BinaryEventSummary
 	for rows.Next() {
 		var item BinaryEventSummary
-		if err := rows.Scan(&item.Namespace, &item.Pod, &item.Syscall, &item.Binary, &item.Count, &item.LastTS); err != nil {
+		if err := rows.Scan(&item.Namespace, &item.Pod, &item.PodUID, &item.PodIP, &item.ContainerID, &item.Syscall, &item.Binary, &item.Count, &item.LastTS); err != nil {
 			return nil, err
 		}
 		if !visible(item) {

@@ -76,11 +76,11 @@ func (m *Manager) ShouldCapture(ns, pod, syscall string) bool {
 	return false
 }
 
-func (m *Manager) Add(ns, pod, syscall string, raw json.RawMessage, ts time.Time) {
-	m.ring.Add(ns, pod, syscall, raw, ts)
+func (m *Manager) Add(ns, pod, podUID, syscall string, raw json.RawMessage, ts time.Time) {
+	m.ring.Add(ns, pod, podUID, syscall, raw, ts)
 }
 
-func (m *Manager) GetEvents(ns, pod string) []json.RawMessage {
+func (m *Manager) GetEvents(ns, pod, podUID string) []json.RawMessage {
 	m.mu.RLock()
 	key := ns + "/" + pod
 	e := m.watches[key]
@@ -88,7 +88,7 @@ func (m *Manager) GetEvents(ns, pod string) []json.RawMessage {
 	if len(e.syscalls) == 0 {
 		return nil
 	}
-	return m.ring.Get(ns, pod, e.syscalls)
+	return m.ring.Get(ns, pod, podUID, e.syscalls)
 }
 
 func (m *Manager) GetWatch(ctx context.Context, ns, pod string) ([]string, error) {

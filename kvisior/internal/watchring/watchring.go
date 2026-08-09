@@ -55,8 +55,8 @@ func (r *Ring) evict() {
 	}
 }
 
-func (r *Ring) Add(ns, pod, syscall string, raw json.RawMessage, ts time.Time) {
-	key := ns + "/" + pod + "/" + syscall
+func (r *Ring) Add(ns, pod, podUID, syscall string, raw json.RawMessage, ts time.Time) {
+	key := ns + "/" + pod + "/" + podUID + "/" + syscall
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	cutoff := time.Now().Add(-retention)
@@ -76,13 +76,13 @@ func (r *Ring) Add(ns, pod, syscall string, raw json.RawMessage, ts time.Time) {
 	r.bufs[key] = buf
 }
 
-func (r *Ring) Get(ns, pod string, syscalls []string) []json.RawMessage {
+func (r *Ring) Get(ns, pod, podUID string, syscalls []string) []json.RawMessage {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	cutoff := time.Now().Add(-retention)
 	var out []json.RawMessage
 	for _, sc := range syscalls {
-		key := ns + "/" + pod + "/" + sc
+		key := ns + "/" + pod + "/" + podUID + "/" + sc
 		for _, e := range r.bufs[key] {
 			if !e.ts.Before(cutoff) {
 				out = append(out, e.raw)

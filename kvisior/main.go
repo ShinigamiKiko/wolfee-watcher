@@ -363,6 +363,8 @@ func main() {
 				return
 			}
 			ns, pod := r.URL.Query().Get("ns"), r.URL.Query().Get("pod")
+			podUID := r.URL.Query().Get("pod_uid")
+			containerID := r.URL.Query().Get("container_id")
 			if ns == "" || pod == "" {
 				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 				return
@@ -370,7 +372,7 @@ func main() {
 			selected, _ := podWatchMgr.GetWatch(r.Context(), ns, pod)
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
 			page, err := st.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
-				Namespace: ns, Pod: pod, Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
+				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID, Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
 			})
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
@@ -444,11 +446,12 @@ func main() {
 	mux.Handle("/v1/pod-syscall-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
+		podUID := r.URL.Query().Get("pod_uid")
 		if ns == "" || pod == "" {
 			http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 			return
 		}
-		evts := podWatchMgr.GetEvents(ns, pod)
+		evts := podWatchMgr.GetEvents(ns, pod, podUID)
 		if evts == nil {
 			evts = []json.RawMessage{}
 		}

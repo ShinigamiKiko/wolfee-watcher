@@ -1,4 +1,4 @@
-{{- if .Values.ui.enabled }}
+{{- if and .Values.ui.enabled (hasKey .Values "istio") .Values.istio.enabled }}
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:

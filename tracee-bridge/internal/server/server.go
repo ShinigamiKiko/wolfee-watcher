@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wolfee-watcher/pkg/mtls"
 	"github.com/wolfee-watcher/pkg/httputil"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"github.com/wolfee-watcher/tracee-bridge/internal/hub"
 	"github.com/wolfee-watcher/tracee-bridge/internal/k8s"
 	"github.com/wolfee-watcher/tracee-bridge/internal/mapper"
@@ -120,8 +120,8 @@ func (s *Server) ingestWorker() {
 			if item.nodeName != "" && ui.Node == "" {
 				ui.Node = item.nodeName
 			}
-			if ui.Pod == "" || ui.Namespace == "" {
-				s.podCache.Enrich(item.rawCtxID, &ui.Pod, &ui.Namespace, &ui.Node)
+			if ui.Pod == "" || ui.Namespace == "" || ui.PodUID == "" || ui.PodIP == "" {
+				s.podCache.Enrich(item.rawCtxID, &ui.Pod, &ui.Namespace, &ui.Node, &ui.PodUID, &ui.PodIP)
 			}
 			if ui.Namespace != "" && s.podCache.IsSystemNS(ui.Namespace) {
 				continue

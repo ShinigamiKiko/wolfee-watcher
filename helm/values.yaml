@@ -14,6 +14,9 @@ global:
     allowInternal: false
     allowedCIDRs: ""
 
+istio:
+  enabled: false
+
 namespace:
   create: true
 
