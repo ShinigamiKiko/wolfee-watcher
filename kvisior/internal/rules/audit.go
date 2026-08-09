@@ -37,8 +37,11 @@ var auditChecks = map[string]auditCheck{
 	"crb-delete":         {kind: "delete", resource: "clusterrolebindings"},
 
 	"mwh-create": {kind: "create", resource: "mutatingwebhookconfigurations"},
+	"mwh-update": {kind: "update", resource: "mutatingwebhookconfigurations"},
 	"mwh-delete": {kind: "delete", resource: "mutatingwebhookconfigurations"},
 	"vwh-create": {kind: "create", resource: "validatingwebhookconfigurations"},
+	"vwh-update": {kind: "update", resource: "validatingwebhookconfigurations"},
+	"vwh-delete": {kind: "delete", resource: "validatingwebhookconfigurations"},
 
 	"ns-create":   {kind: "create", resource: "namespaces"},
 	"ns-delete":   {kind: "delete", resource: "namespaces"},
@@ -62,17 +65,22 @@ func (r AuditRule) isEnabled() bool {
 }
 
 type AuditViolation struct {
-	Policy    string `json:"policy"`
-	RuleID    string `json:"ruleId"`
-	Sev       string `json:"sev"`
-	Check     string `json:"check"`
-	Action    string `json:"action"`
-	Kind      string `json:"kind"`
-	Resource  string `json:"resource"`
-	Namespace string `json:"ns"`
-	Name      string `json:"name"`
-	User      string `json:"user"`
-	Timestamp string `json:"timestamp"`
+	Policy          string `json:"policy"`
+	RuleID          string `json:"ruleId"`
+	Sev             string `json:"sev"`
+	Check           string `json:"check"`
+	Action          string `json:"action"`
+	Kind            string `json:"kind"`
+	Resource        string `json:"resource"`
+	WebhookType     string `json:"webhookType,omitempty"`
+	Namespace       string `json:"ns"`
+	Name            string `json:"name"`
+	User            string `json:"user"`
+	ServiceAccount  string `json:"serviceAccount,omitempty"`
+	Timestamp       string `json:"timestamp"`
+	UID             string `json:"uid,omitempty"`
+	ResourceVersion string `json:"resourceVersion,omitempty"`
+	Source          string `json:"source,omitempty"`
 }
 
 type AuditMatcher struct {
@@ -98,7 +106,12 @@ func (m *AuditMatcher) Match(ev map[string]interface{}) []AuditViolation {
 	evNamespace := strField(ev, "namespace")
 	evName := strField(ev, "name")
 	evUser := strField(ev, "user")
+	evServiceAccount := strField(ev, "serviceAccount")
 	evTs := strField(ev, "timestamp")
+	evWebhookType := strField(ev, "webhookType")
+	evUID := strField(ev, "uid")
+	evResourceVersion := strField(ev, "resourceVersion")
+	evSource := strField(ev, "source")
 	connectKind := evKind == "exec" || evKind == "attach" || evKind == "portforward"
 
 	var hits []AuditViolation
@@ -123,17 +136,22 @@ func (m *AuditMatcher) Match(ev map[string]interface{}) []AuditViolation {
 				continue
 			}
 			hits = append(hits, AuditViolation{
-				Policy:    rule.Name,
-				RuleID:    rule.ID,
-				Sev:       sev(rule.Sev),
-				Check:     checkID,
-				Action:    rule.Action,
-				Kind:      evKind,
-				Resource:  evResource,
-				Namespace: evNamespace,
-				Name:      evName,
-				User:      evUser,
-				Timestamp: evTs,
+				Policy:          rule.Name,
+				RuleID:          rule.ID,
+				Sev:             sev(rule.Sev),
+				Check:           checkID,
+				Action:          rule.Action,
+				Kind:            evKind,
+				Resource:        evResource,
+				WebhookType:     evWebhookType,
+				Namespace:       evNamespace,
+				Name:            evName,
+				User:            evUser,
+				ServiceAccount:  evServiceAccount,
+				Timestamp:       evTs,
+				UID:             evUID,
+				ResourceVersion: evResourceVersion,
+				Source:          evSource,
 			})
 		}
 	}

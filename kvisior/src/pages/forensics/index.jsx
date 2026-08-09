@@ -15,7 +15,8 @@ function anomalyToForensic(a) {
   return {
     id: `fanomaly-${a.id}`, ts: a.ts, namespace: a.src_namespace, pod: a.src_pod,
     process: a.src_process, node: a.src_node, container: a.src_container,
-    podIP: a.src_ip, syscall: isNet ? 'network' : (a.syscall || a.kind),
+    podIP: a.src_ip, podUID: a.src_pod_uid || a.pod_uid || a.podUID,
+    syscall: isNet ? 'network' : (a.syscall || a.kind),
     cmdline: isNet ? `${a.kind} → ${dst || '?'}${a.protocol ? ' ' + a.protocol : ''}` : (a.detail || a.kind),
     _anomaly: true,
   };
@@ -101,8 +102,8 @@ export function Forensics() {
         )}
       </div>
 
-      {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} eventSummary={eventSummary} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
-      {view === 'pods'   && <PodList ns={activeNS} pods={pods} eventSummary={eventSummary} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
+       {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} eventSummary={eventSummary} anomalyEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
+       {view === 'pods'   && <PodList ns={activeNS} pods={pods} eventSummary={eventSummary} anomalyEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
       {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
 
       {sevModalOpen && <SeverityModal config={config} onSave={save} onClose={() => setSevModalOpen(false)} />}

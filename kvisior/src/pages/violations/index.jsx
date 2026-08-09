@@ -272,8 +272,9 @@ export function Violations() {
     { key: 'time',     label: 'Time',      val: auditTimeOf },
     { key: 'policy',   label: 'Policy',    val: v => v.policy || '' },
     { key: 'sev',      label: 'Severity',  val: v => sevRank(v.sev) },
-    { key: 'kind',     label: 'Action',    val: v => v.kind || '' },
-    { key: 'resource', label: 'Resource',  val: v => v.resource || '' },
+     { key: 'kind',     label: 'Action',    val: v => v.kind || '' },
+     { key: 'webhookType', label: 'Webhook type', val: v => v.webhookType || '' },
+     { key: 'resource', label: 'Resource',  val: v => v.resource || '' },
     { key: 'name',     label: 'Name',      val: v => v.name || '' },
     { key: 'ns',       label: 'Namespace', val: v => v.ns || '' },
     { key: 'user',     label: 'User',      val: v => v.user || '' },
@@ -569,7 +570,7 @@ export function Violations() {
                   <thead><tr>{auditCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>
                     {filteredAudit.length === 0
-                      ? <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
+                       ? <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
                           {apiRules.filter(r => r.enabled !== false && r.detType === 'Audit').length === 0 ? 'No Audit policies — create one in Policy Management' : 'Waiting for events from sentry-audit…'}
                         </td></tr>
                       : paginate(sortRows(filteredAudit, auditCols, auditTimeOf)).map((v, i) => (
@@ -589,9 +590,10 @@ export function Violations() {
                                 border: `1px solid ${KIND_COLOR[v.kind] || '#94a3b8'}44`,
                                 fontFamily: 'JetBrains Mono,monospace' }}>
                                 {v.kind}
-                              </span>
-                            </td>
-                            <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--accent)' }}>{v.resource}</td>
+                               </span>
+                             </td>
+                             <td style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.webhookType || '—'}</td>
+                             <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--accent)' }}>{v.resource}</td>
                             <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.name || '—'}</td>
                             <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.ns}</td>
                             <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.user || '—'}</td>

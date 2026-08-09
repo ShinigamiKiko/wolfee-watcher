@@ -41,7 +41,7 @@ export function AuditDetail({ v, onClose }) {
             <div className="dp-title" style={{ fontSize: 13 }}>
               {icon} {v.policy}
             </div>
-            <div className="dp-meta">{v.kind} · {v.resource} · {v.ns}</div>
+            <div className="dp-meta">{v.kind} · {v.webhookType || v.resource} · {v.ns}</div>
           </div>
           <button className="dp-close" onClick={onClose}>✕</button>
         </div>
@@ -64,11 +64,12 @@ export function AuditDetail({ v, onClose }) {
           border: `1px solid ${bgCol.replace('.', ',.3').replace('rgba(', 'rgba(')}`,
           borderRadius: 8, marginBottom: 14, fontSize: 12,
           color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-          <strong>{v.user || 'unknown'}</strong>
+           <strong>{v.user || 'unknown'}</strong>
+           {v.serviceAccount ? <> (<strong>{v.serviceAccount}</strong>)</> : null}
           {v.groups?.length ? <span style={{ color: 'var(--text-muted)' }}> [{v.groups.join(', ')}]</span> : null}
           {' performed '}
           <strong>{v.kind}</strong>
-          {v.resource ? <> on <strong>{v.resource}</strong></> : null}
+          {v.webhookType ? <> on <strong>{v.webhookType}</strong></> : v.resource ? <> on <strong>{v.resource}</strong></> : null}
           {v.name ? <> · <code style={{ fontSize: 11 }}>{v.name}</code></> : null}
           {v.ns ? <> in <strong>{v.ns}</strong></> : null}
         </div>
@@ -102,13 +103,18 @@ export function AuditDetail({ v, onClose }) {
           Event Details
         </div>
         {kv('Time',      ts)}
-        {kv('User',      v.user)}
+         {kv('User',      v.user)}
+         {kv('ServiceAccount', v.serviceAccount)}
         {kv('Groups',    v.groups?.join(', '))}
         {kv('Source IPs', v.sourceIPs?.join(', '))}
-        {kv('Resource',  v.resource)}
-        {kv('Name',      v.name)}
-        {kv('Namespace', v.ns)}
-        {kv('Policy',    v.policy)}
+         {kv('Resource',  v.resource)}
+         {kv('Webhook type', v.webhookType)}
+         {kv('Name',      v.name)}
+         {kv('Namespace', v.ns)}
+         {kv('UID',       v.uid)}
+         {kv('Resource version', v.resourceVersion)}
+         {kv('Source',    v.source)}
+         {kv('Policy',    v.policy)}
         {kv('Action',    v.action || 'alert')}
       </div>
     </div>

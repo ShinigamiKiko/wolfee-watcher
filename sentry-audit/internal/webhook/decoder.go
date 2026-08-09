@@ -24,14 +24,19 @@ type AuditEvent struct {
 	ID        string    `json:"id"`
 	Timestamp time.Time `json:"timestamp"`
 
-	User      string   `json:"user"`
-	Groups    []string `json:"groups"`
-	SourceIPs []string `json:"sourceIPs,omitempty"`
+	User           string   `json:"user"`
+	ServiceAccount string   `json:"serviceAccount,omitempty"`
+	Groups         []string `json:"groups"`
+	SourceIPs      []string `json:"sourceIPs,omitempty"`
 
-	Kind      EventKind `json:"kind"`
-	Resource  string    `json:"resource"`
-	Namespace string    `json:"namespace"`
-	Name      string    `json:"name"`
+	Kind            EventKind `json:"kind"`
+	Resource        string    `json:"resource"`
+	WebhookType     string    `json:"webhookType,omitempty"`
+	Namespace       string    `json:"namespace"`
+	Name            string    `json:"name"`
+	UID             string    `json:"uid,omitempty"`
+	ResourceVersion string    `json:"resourceVersion,omitempty"`
+	Source          string    `json:"source,omitempty"`
 
 	Container string   `json:"container,omitempty"`
 	Commands  []string `json:"commands,omitempty"`

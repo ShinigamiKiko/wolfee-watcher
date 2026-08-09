@@ -1,6 +1,6 @@
 import { podNS } from '../../utils/format';
 
-export function NsList({ namespaces, pods, eventSummary = [], activeWatches, getSev, onSelect, onSeverityOpen }) {
+export function NsList({ namespaces, pods, eventSummary = [], anomalyEvents = [], activeWatches, getSev, onSelect, onSeverityOpen }) {
   const SYSTEM_NS = new Set(['kube-system','kube-public','kube-node-lease','calico-system','cilium','cert-manager','monitoring','ingress-nginx']);
 
   return (
@@ -19,7 +19,8 @@ export function NsList({ namespaces, pods, eventSummary = [], activeWatches, get
           const nsName = ns?.metadata?.name || ns?.name || ns;
           const podCount = pods.filter(p => podNS(p) === nsName).length;
           const evts = eventSummary.filter(e => e.namespace === nsName);
-          const eventCount = evts.reduce((sum, e) => sum + e.count, 0);
+          const anomalyCount = anomalyEvents.filter(e => e.namespace === nsName).length;
+          const eventCount = evts.reduce((sum, e) => sum + e.count, 0) + anomalyCount;
           const critical = evts.filter(e => getSev(e.syscall, e.binary, '') === 'critical')
             .reduce((sum, e) => sum + e.count, 0);
           const anomalyWatching = activeWatches.some(w => w.namespace === nsName && w.source === 'anomaly');
@@ -36,7 +37,7 @@ export function NsList({ namespaces, pods, eventSummary = [], activeWatches, get
               <div className="fns-ns-stats">
                 <div className="fns-ns-stat">
                   <div className="fns-ns-stat-val">{eventCount}</div>
-                  <div className="fns-ns-stat-lbl">binaries/24h</div>
+                  <div className="fns-ns-stat-lbl">events/24h</div>
                 </div>
                 {critical > 0 && (
                   <div className="fns-ns-stat">

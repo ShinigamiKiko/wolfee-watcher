@@ -58,8 +58,11 @@ export const AUDIT_CHECKS = [
   { id: 'crb-delete',       group: 'RBAC',          label: 'ClusterRoleBinding deleted', desc: 'A ClusterRoleBinding was removed',                                     kind: 'delete', resource: 'clusterrolebindings' },
 
   { id: 'mwh-create',       group: 'Admission',     label: 'MutatingWebhook created',   desc: 'A new MutatingWebhookConfiguration was registered — can rewrite any resource', kind: 'create', resource: 'mutatingwebhookconfigurations' },
+  { id: 'mwh-update',       group: 'Admission',     label: 'MutatingWebhook updated',   desc: 'A MutatingWebhookConfiguration was modified', kind: 'update', resource: 'mutatingwebhookconfigurations' },
   { id: 'mwh-delete',       group: 'Admission',     label: 'MutatingWebhook deleted',   desc: 'A MutatingWebhookConfiguration was removed',                           kind: 'delete', resource: 'mutatingwebhookconfigurations' },
   { id: 'vwh-create',       group: 'Admission',     label: 'ValidatingWebhook created', desc: 'A new ValidatingWebhookConfiguration was registered',                  kind: 'create', resource: 'validatingwebhookconfigurations' },
+  { id: 'vwh-update',       group: 'Admission',     label: 'ValidatingWebhook updated', desc: 'A ValidatingWebhookConfiguration was modified', kind: 'update', resource: 'validatingwebhookconfigurations' },
+  { id: 'vwh-delete',       group: 'Admission',     label: 'ValidatingWebhook deleted', desc: 'A ValidatingWebhookConfiguration was removed', kind: 'delete', resource: 'validatingwebhookconfigurations' },
 
   { id: 'ns-create',        group: 'Infrastructure', label: 'Namespace created',      desc: 'A new namespace was created — watch for unexpected namespaces',           kind: 'create', resource: 'namespaces' },
   { id: 'ns-delete',        group: 'Infrastructure', label: 'Namespace deleted',      desc: 'A namespace was deleted',                                                 kind: 'delete', resource: 'namespaces' },

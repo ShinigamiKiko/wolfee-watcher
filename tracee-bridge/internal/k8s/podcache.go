@@ -19,6 +19,8 @@ type PodInfo struct {
 	PodName   string
 	Namespace string
 	NodeName  string
+	PodUID    string
+	PodIP     string
 }
 
 type PodCache struct {
@@ -150,7 +152,7 @@ func (pc *PodCache) Lookup(containerID string) (PodInfo, bool) {
 	return info, ok
 }
 
-func (pc *PodCache) Enrich(containerID string, podName, namespace, node *string) bool {
+func (pc *PodCache) Enrich(containerID string, podName, namespace, node, podUID, podIP *string) bool {
 	info, ok := pc.Lookup(containerID)
 	if !ok {
 		return false
@@ -163,6 +165,12 @@ func (pc *PodCache) Enrich(containerID string, podName, namespace, node *string)
 	}
 	if *node == "" {
 		*node = info.NodeName
+	}
+	if *podUID == "" {
+		*podUID = info.PodUID
+	}
+	if *podIP == "" {
+		*podIP = info.PodIP
 	}
 	return true
 }

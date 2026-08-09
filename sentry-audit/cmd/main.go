@@ -14,6 +14,7 @@ import (
 	"github.com/wolfee-watcher/sentry-audit/internal/selfregister"
 	"github.com/wolfee-watcher/sentry-audit/internal/server"
 	"github.com/wolfee-watcher/sentry-audit/internal/store"
+	"github.com/wolfee-watcher/sentry-audit/internal/watcher"
 	"github.com/wolfee-watcher/sentry-audit/internal/webhook"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -77,6 +78,12 @@ func main() {
 			"component", "sentry-audit/main",
 			"reason", "KVISIOR_PUSH_URL unset or invalid")
 	}
+	informerWatcher := watcher.New(client, h.Emit)
+	go func() {
+		if err := informerWatcher.Run(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("informer_watch_failed", "component", "sentry-audit/main", "error", err)
+		}
+	}()
 
 	webhookMux := http.NewServeMux()
 	webhookMux.HandleFunc("/validate", h.HandlePolicy)

@@ -53,6 +53,18 @@ func (h *Handler) SetEvaluator(e Evaluator) { h.evaluator = e }
 
 func (h *Handler) SetForwarder(f eventForwarder) { h.forwarder = f }
 
+func (h *Handler) Emit(ev AuditEvent) {
+	h.store.Push(ev)
+	if h.evaluator != nil {
+		h.evaluator.Evaluate(ev)
+	}
+	if h.forwarder != nil {
+		if raw, err := json.Marshal(ev); err == nil {
+			h.forwarder.Forward([]json.RawMessage{raw})
+		}
+	}
+}
+
 func (h *Handler) HandlePolicy(w http.ResponseWriter, r *http.Request) {
 	h.handleAdmission(w, r)
 }
@@ -89,15 +101,7 @@ func (h *Handler) handleAdmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ev := fromAdmissionRequest(req)
-	h.store.Push(ev)
-	if h.evaluator != nil {
-		h.evaluator.Evaluate(ev)
-	}
-	if h.forwarder != nil {
-		if raw, err := json.Marshal(ev); err == nil {
-			h.forwarder.Forward([]json.RawMessage{raw})
-		}
-	}
+	h.Emit(ev)
 	log.Printf("[sentry-audit] %s %s/%s by %s", ev.Kind, ev.Namespace, ev.Name, ev.User)
 
 	resp := &admissionv1.AdmissionReview{

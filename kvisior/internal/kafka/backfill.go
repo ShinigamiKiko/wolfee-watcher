@@ -191,6 +191,10 @@ func WarmWatchRing(ctx context.Context, brokers []string, topic string, mgr *pod
 			}
 			ns, _ := ev["namespace"].(string)
 			pod, _ := ev["pod"].(string)
+			podUID, _ := ev["pod_uid"].(string)
+			if podUID == "" {
+				podUID, _ = ev["podUID"].(string)
+			}
 			sc, _ := ev["syscall"].(string)
 			if ns == "" || pod == "" || sc == "" {
 				return
@@ -204,7 +208,7 @@ func WarmWatchRing(ctx context.Context, brokers []string, topic string, mgr *pod
 			if rec.Timestamp.Before(meta.since) {
 				return
 			}
-			mgr.Add(ns, pod, sc, json.RawMessage(rec.Value), rec.Timestamp)
+			mgr.Add(ns, pod, podUID, sc, json.RawMessage(rec.Value), rec.Timestamp)
 			added++
 			if rec.Timestamp.After(caughtUpAfter) {
 				done = true
