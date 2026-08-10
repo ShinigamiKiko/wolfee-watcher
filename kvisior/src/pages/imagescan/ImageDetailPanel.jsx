@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useScanner } from '../../context/ScannerContext';
 import { SevBadge, StatusDot } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
-import { epssLabel, sevColor, fmtDuration } from '../../data/scanner';
+import { epssLabel, sevColor, fmtDuration, getImageWorkloads } from '../../data/scanner';
 
 const SCAN_TABS = [
   { id: 'results',    label: 'Scan Results' },
@@ -28,6 +28,31 @@ const MOCK_HISTORY = [
 ];
 
 function ImageDetailPanel({ img, onClose }) {
+  const [historyWorkloads, setHistoryWorkloads] = useState([]);
+  useEffect(() => {
+    if (!img) {
+      setHistoryWorkloads([]);
+      return undefined;
+    }
+    let alive = true;
+    getImageWorkloads(img.image).then(data => {
+      if (alive) setHistoryWorkloads(data.workloads || []);
+    }).catch(() => {
+      if (alive) setHistoryWorkloads([]);
+    });
+    return () => { alive = false; };
+  }, [img?.image]);
+
+  const workloads = useMemo(() => {
+    if (!img) return [];
+    const byKey = new Map();
+    for (const workload of [...(img.workloads || []), ...historyWorkloads]) {
+      const key = `${workload.image || img.image}\x00${workload.namespace}\x00${workload.podUID || workload.pod}\x00${workload.observedAt}`;
+      byKey.set(key, workload);
+    }
+    return [...byKey.values()].sort((a, b) => new Date(b.observedAt || 0) - new Date(a.observedAt || 0));
+  }, [img?.image, img?.workloads, historyWorkloads]);
+
   if (!img) return null;
   const cves = [...(img.cves||[])].sort((a,b)=>(b.cvssV3Score||0)-(a.cvssV3Score||0)).slice(0,8);
   return (
@@ -60,6 +85,24 @@ function ImageDetailPanel({ img, onClose }) {
             ['Namespaces',(img.namespaces||[]).join(', ')||'—']].map(([k,v])=>(
             <div key={k} className="dp-kv"><span>{k}</span><span>{v}</span></div>
           ))}
+        </div>
+
+        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--text-muted)',marginBottom:8}}>Workloads observed at scan</div>
+        <div style={{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',marginBottom:14}}>
+          <table className="data-table">
+            <thead><tr><th>Namespace / Pod</th><th>IP</th><th>Node</th><th>UID</th></tr></thead>
+            <tbody>
+              {workloads.map((w, i) => (
+                <tr key={`${w.namespace}/${w.podUID || w.pod}/${i}`}>
+                  <td style={{fontSize:11}}>{w.namespace || '—'} / {w.pod || '—'}</td>
+                  <td className="mono" style={{fontSize:11}}>{w.podIP || '—'}</td>
+                  <td style={{fontSize:11}}>{w.node || '—'}</td>
+                  <td className="mono" style={{fontSize:10}} title={w.podUID}>{w.podUID ? `${w.podUID.slice(0, 12)}…` : '—'}</td>
+                </tr>
+              ))}
+              {workloads.length === 0 && <tr><td colSpan={4} style={{textAlign:'center',color:'var(--text-muted)',padding:12}}>No workload snapshot</td></tr>}
+            </tbody>
+          </table>
         </div>
 
         <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--text-muted)',marginBottom:8}}>Top CVEs in this image</div>

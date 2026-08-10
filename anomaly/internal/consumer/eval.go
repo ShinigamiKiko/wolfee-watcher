@@ -43,6 +43,7 @@ func (c *Consumer) evaluateRaw(ctx context.Context, data []byte) []*AnomalyEvent
 		SrcIP:         podInfo.PodIP,
 		SrcContainer:  strVal(ev, "container"),
 		Syscall:       syscall,
+		EventKind:     strVal(ev, "event_kind"),
 	}
 
 	switch syscall {

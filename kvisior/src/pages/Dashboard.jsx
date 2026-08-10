@@ -19,11 +19,28 @@ export function Dashboard() {
   const { summary, results } = useScanner();
   const navigate = useNavigate();
 
-  const critViol = violations.filter(v => v.severity === 'critical').length;
-  const highViol = violations.filter(v => v.severity === 'high').length;
-  const medViol  = violations.filter(v => v.severity === 'medium').length;
-  const lowViol  = violations.filter(v => v.severity === 'low').length;
-  const totalViol = violations.length;
+  // Overview severity metrics are image CVEs from Trivy, not runtime events.
+  const critViol = summary?.critical ?? 0;
+  const highViol = summary?.high ?? 0;
+  const medViol  = summary?.medium ?? 0;
+  const lowViol  = summary?.low ?? 0;
+  const totalViol = summary?.total ?? (critViol + highViol + medViol + lowViol);
+  const severityTotal = critViol + highViol + medViol + lowViol;
+  const ringStops = (() => {
+    if (!severityTotal) return 'var(--bg-elevated) 0 100%';
+    let start = 0;
+    return [
+      [critViol, 'var(--danger)'],
+      [highViol, 'var(--warning)'],
+      [medViol, '#6366f1'],
+      [lowViol, 'var(--accent-3)'],
+    ].map(([count, color]) => {
+      const end = start + count / severityTotal * 100;
+      const stop = `${color} ${start}% ${end}%`;
+      start = end;
+      return stop;
+    }).join(', ');
+  })();
 
   const wlCounts = {};
   violations.forEach(v => {
@@ -51,12 +68,12 @@ export function Dashboard() {
 
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-label">Critical Violations</div>
+            <div className="stat-label">Critical CVEs</div>
           <div className="stat-value danger">{critViol}</div>
-          <div className="stat-delta up">{totalViol} total violations</div>
+          <div className="stat-delta up">{totalViol} total CVEs</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Violations</div>
+            <div className="stat-label">Image CVEs</div>
           <div className="stat-value info">{totalViol}</div>
           <div className="stat-delta">{critViol} critical · {highViol} high</div>
         </div>
@@ -85,7 +102,7 @@ export function Dashboard() {
           </div>
           <div className="card-body">
             <div style={{display:'flex',alignItems:'center',gap:24}}>
-              <div className="chart-ring" />
+              <div className="chart-ring" style={{ background: `conic-gradient(${ringStops})` }} />
               <div style={{flex:1}}>
                 {[
                   ['Critical', critViol, 'var(--danger)'],

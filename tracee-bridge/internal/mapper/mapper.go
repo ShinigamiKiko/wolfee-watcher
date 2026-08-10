@@ -5,12 +5,17 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/wolfee-watcher/tracee-bridge/internal/events"
 )
 
 type TraceeEvent struct {
-	Timestamp      int64  `json:"timestamp"`
-	ProcessID      int    `json:"processId"`
-	HostProcessID  int    `json:"hostProcessId"`
+	Timestamp           int64 `json:"timestamp"`
+	ProcessID           int   `json:"processId"`
+	HostProcessID       int   `json:"hostProcessId"`
+	HostParentProcessID int   `json:"hostParentProcessId"`
+	HostThreadID        int   `json:"hostThreadId"`
+
 	UserID         int    `json:"userId"`
 	ProcessName    string `json:"processName"`
 	HostName       string `json:"hostName"`
@@ -28,6 +33,7 @@ type TraceeEvent struct {
 	EventName   string            `json:"eventName"`
 	ReturnValue int               `json:"returnValue"`
 	Args        []TraceeArg       `json:"args"`
+	Data        []TraceeArg       `json:"data"`
 }
 
 type TraceeContainerContext struct {
@@ -52,6 +58,7 @@ type UIEvent struct {
 	ID          int64                  `json:"id"`
 	Ts          time.Time              `json:"ts"`
 	Syscall     string                 `json:"syscall"`
+	EventKind   events.Kind            `json:"event_kind"`
 	Namespace   string                 `json:"namespace"`
 	Pod         string                 `json:"pod"`
 	PodUID      string                 `json:"podUID,omitempty"`
@@ -92,6 +99,10 @@ var globalID = func() *atomic.Int64 {
 }()
 
 func Map(t *TraceeEvent) *UIEvent {
+
+	if len(t.Args) == 0 && len(t.Data) > 0 {
+		t.Args = t.Data
+	}
 
 	podName := t.PodName
 	podNS := t.PodNamespace
@@ -238,6 +249,7 @@ func Map(t *TraceeEvent) *UIEvent {
 		ID:          globalID.Add(1),
 		Ts:          time.Unix(0, t.Timestamp),
 		Syscall:     t.EventName,
+		EventKind:   events.KindFor(t.EventName),
 		Namespace:   podNS,
 		Pod:         podName,
 		PodUID:      podUID,

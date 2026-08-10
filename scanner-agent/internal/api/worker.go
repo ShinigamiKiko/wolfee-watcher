@@ -177,6 +177,7 @@ func (s *Server) processOne(poolCtx context.Context, workerID int, ref string) {
 	}
 
 	scanCtx, cancel := context.WithTimeout(poolCtx, 15*time.Minute)
+	workloads := s.imageWorkloads(scanCtx, ref)
 	result, err := s.scanner.Scan(scanCtx, ref)
 	cancel()
 
@@ -199,7 +200,7 @@ func (s *Server) processOne(poolCtx context.Context, workerID int, ref string) {
 			"error", err)
 		errResult := &internal.ScanResult{
 			Image: ref, Name: ref, Status: internal.StatusError,
-			Error: err.Error(), ScannedAt: time.Now(),
+			Error: err.Error(), ScannedAt: time.Now(), Workloads: workloads,
 		}
 		s.mu.Lock()
 		s.results[ref] = errResult
@@ -231,6 +232,7 @@ func (s *Server) processOne(poolCtx context.Context, workerID int, ref string) {
 	}
 
 	result.Summary = buildSummary(result.CVEs)
+	result.Workloads = workloads
 	result.Status = internal.StatusDone
 
 	s.mu.Lock()
@@ -251,6 +253,19 @@ func (s *Server) processOne(poolCtx context.Context, workerID int, ref string) {
 			"poc", result.Summary.HasPoC)
 	}
 	s.broadcast(internal.ScanEvent{Type: "result", Image: ref, Result: result})
+}
+
+func (s *Server) imageWorkloads(ctx context.Context, ref string) []internal.ImageWorkload {
+	images, err := s.k8s.ListImages(ctx)
+	if err != nil {
+		return nil
+	}
+	for _, image := range images {
+		if image.Ref == ref {
+			return image.Workloads
+		}
+	}
+	return nil
 }
 
 func buildSummary(cves []internal.CVE) internal.CVESummary {

@@ -411,26 +411,23 @@ func main() {
 		case http.MethodGet:
 			sc, err := podWatchMgr.GetWatch(r.Context(), ns, pod)
 			if err != nil {
-				sc = []string{}
+				sc = store.PodWatchSelection{}
 			}
-			if sc == nil {
-				sc = []string{}
-			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"syscalls": sc})
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"syscalls": sc.Syscalls, "lsm_hooks": sc.LSMHooks, "tracepoints": sc.Tracepoints,
+			})
 		case http.MethodPut:
-			var body struct {
-				Syscalls []string `json:"syscalls"`
-			}
+			var body store.PodWatchSelection
 			if json.NewDecoder(r.Body).Decode(&body) != nil {
 				http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 				return
 			}
 
-			if len(body.Syscalls) > 13 {
+			if len(body.Syscalls)+len(body.LSMHooks)+len(body.Tracepoints) > 13 {
 				http.Error(w, `{"error":"max 13 watch events"}`, http.StatusBadRequest)
 				return
 			}
-			if err := podWatchMgr.SetWatch(r.Context(), ns, pod, body.Syscalls); err != nil {
+			if err := podWatchMgr.SetWatch(r.Context(), ns, pod, body); err != nil {
 				http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 				return
 			}
@@ -447,11 +444,12 @@ func main() {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
 		podUID := r.URL.Query().Get("pod_uid")
+		containerID := r.URL.Query().Get("container_id")
 		if ns == "" || pod == "" {
 			http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 			return
 		}
-		evts := podWatchMgr.GetEvents(ns, pod, podUID)
+		evts := podWatchMgr.GetEvents(ns, pod, podUID, containerID)
 		if evts == nil {
 			evts = []json.RawMessage{}
 		}
@@ -652,6 +650,7 @@ func main() {
 
 	if st != nil {
 		mux.Handle("/scanner/results", authMgr.RequireAuth(imageScansHandler(st)))
+		mux.Handle("/scanner/workloads", authMgr.RequireAuth(imageScanWorkloadsHandler(st)))
 		mux.Handle("/scanner/histories", authMgr.RequireAuth(imageHistoriesHandler(st)))
 		mux.Handle("/audit/runs", authMgr.RequireAuth(auditRunsHandler(st)))
 

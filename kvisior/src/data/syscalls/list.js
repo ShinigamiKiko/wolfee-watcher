@@ -27,8 +27,6 @@ export const SYSCALLS = [
   { name: 'chroot',            sev: 'high',     cat: 'escape',     desc: 'Chroot — filesystem isolation change' },
   { name: 'mount',             sev: 'high',     cat: 'escape',     desc: 'Filesystem mount inside container' },
   { name: 'umount2',           sev: 'high',     cat: 'escape',     desc: 'Filesystem unmount inside container' },
-  { name: 'security_sb_mount', sev: 'high',     cat: 'escape',     desc: 'Mount via LSM hook (more reliable than mount syscall)' },
-
   { name: 'setuid',            sev: 'high',     cat: 'privesc',    desc: 'UID change — privilege escalation' },
   { name: 'setgid',            sev: 'high',     cat: 'privesc',    desc: 'GID change — privilege escalation' },
   { name: 'setreuid',          sev: 'high',     cat: 'privesc',    desc: 'Real/effective UID change' },

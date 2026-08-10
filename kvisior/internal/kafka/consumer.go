@@ -91,8 +91,9 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 				return
 			}
 			sc, _ := ev["syscall"].(string)
+			kind := eventKindFromMap(ev, sc)
 
-			forensic := captureForForensics(sc)
+			forensic := captureForForensics(kind, sc)
 			if ring != nil && forensic {
 				ring.Add(raw, eventTime(ev))
 			}
@@ -104,8 +105,8 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 				if podUID == "" {
 					podUID, _ = ev["podUID"].(string)
 				}
-				if sc != "" && pw.ShouldCapture(ns, pod, sc) {
-					pw.Add(ns, pod, podUID, sc, json.RawMessage(raw), eventTime(ev))
+				if sc != "" && pw.ShouldCapture(ns, pod, kind, sc) {
+					pw.Add(ns, pod, podUID, kind, sc, json.RawMessage(raw), eventTime(ev))
 				}
 			}
 
@@ -186,7 +187,8 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 	if json.Unmarshal(raw, &ev) != nil {
 		return nil
 	}
-	if captureForForensics(stringField(ev, "syscall")) && c.store != nil {
+	sc := stringField(ev, "syscall")
+	if captureForForensics(eventKindFromMap(ev, sc), sc) && c.store != nil {
 		wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := c.store.InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
 		cancel()

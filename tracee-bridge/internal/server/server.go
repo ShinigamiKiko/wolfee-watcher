@@ -38,6 +38,9 @@ type queueItem struct {
 	ev       *mapper.UIEvent
 	nodeName string
 	rawCtxID string
+	hostPID  int
+	hostPPID int
+	hostTID  int
 }
 
 type Server struct {
@@ -52,6 +55,8 @@ type Server struct {
 	eventsBusy         atomic.Int64
 	eventsDropped      atomic.Int64
 	eventsOverflow     atomic.Int64
+	enrichByPID        atomic.Int64
+	enrichMissing      atomic.Int64
 	queryTimeouts      atomic.Int64
 	startTime          time.Time
 	ingestReqs         atomic.Int64
@@ -116,19 +121,56 @@ func (s *Server) ingestWorker() {
 			if !ok {
 				return
 			}
+			s.enrich(item)
 			ui := item.ev
-			if item.nodeName != "" && ui.Node == "" {
-				ui.Node = item.nodeName
-			}
-			if ui.Pod == "" || ui.Namespace == "" || ui.PodUID == "" || ui.PodIP == "" {
-				s.podCache.Enrich(item.rawCtxID, &ui.Pod, &ui.Namespace, &ui.Node, &ui.PodUID, &ui.PodIP)
-			}
 			if ui.Namespace != "" && s.podCache.IsSystemNS(ui.Namespace) {
 				continue
 			}
 			s.hub.Broadcast(ui)
 			s.eventsAccepted.Add(1)
 		}
+	}
+}
+
+func (s *Server) enrich(item queueItem) {
+	ui := item.ev
+	if item.nodeName != "" && ui.Node == "" {
+		ui.Node = item.nodeName
+	}
+
+	if ui.Pod == "" || ui.Namespace == "" || ui.PodUID == "" || ui.PodIP == "" {
+		s.podCache.Enrich(item.rawCtxID, &ui.Pod, &ui.Namespace, &ui.Node, &ui.PodUID, &ui.PodIP)
+	}
+
+	if ui.PodUID == "" {
+		if info, ok := s.podCache.LookupPID(item.hostPID, item.hostTID, item.hostPPID); ok {
+			s.podCache.Apply(info, &ui.Pod, &ui.Namespace, &ui.Node, &ui.PodUID, &ui.PodIP)
+			s.enrichByPID.Add(1)
+		}
+	}
+
+	if ui.PodUID != "" {
+		s.podCache.Remember(item.rawCtxID, item.hostPID, k8s.PodInfo{
+			PodName:   ui.Pod,
+			Namespace: ui.Namespace,
+			NodeName:  ui.Node,
+			PodUID:    ui.PodUID,
+			PodIP:     ui.PodIP,
+		})
+		if item.hostTID > 0 && item.hostTID != item.hostPID {
+			s.podCache.Remember("", item.hostTID, k8s.PodInfo{
+				PodName:   ui.Pod,
+				Namespace: ui.Namespace,
+				NodeName:  ui.Node,
+				PodUID:    ui.PodUID,
+				PodIP:     ui.PodIP,
+			})
+		}
+		return
+	}
+
+	if ui.ContainerID != "" || ui.Pod != "" {
+		s.enrichMissing.Add(1)
 	}
 }
 

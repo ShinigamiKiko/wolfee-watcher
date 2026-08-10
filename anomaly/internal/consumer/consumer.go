@@ -78,6 +78,7 @@ type AnomalyEvent struct {
 	WindowSec    int      `json:"window_sec,omitempty"`
 
 	Syscall       string `json:"syscall,omitempty"`
+	EventKind     string `json:"event_kind,omitempty"`
 	BaselineState string `json:"baseline_state,omitempty"`
 	Detail        string `json:"detail,omitempty"`
 }

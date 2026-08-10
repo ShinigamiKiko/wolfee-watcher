@@ -38,6 +38,7 @@ var Grants = map[string][]TableGrant{
 		{"pod_syscall_watches", "SELECT, INSERT, UPDATE, DELETE"},
 		{"image_scans", "SELECT, INSERT, UPDATE, DELETE"},
 		{"image_histories", "SELECT, INSERT, UPDATE, DELETE"},
+		{"image_scan_workloads", "SELECT, INSERT, UPDATE, DELETE"},
 		{"scanner_state", "SELECT, INSERT, UPDATE"},
 		{"audit_runs", "SELECT, INSERT, DELETE"},
 		{"runtime_policies", "SELECT, INSERT, UPDATE, DELETE"},
