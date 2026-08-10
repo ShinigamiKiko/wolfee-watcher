@@ -220,6 +220,10 @@ spec:
           args:
             - --output=webhook:http://tracee-bridge.{{ include "kvisior.namespace" . }}.svc.cluster.local:8080/tracee/event?node=$(NODE_NAME)
             - --perf-buffer-size={{ .Values.tracee.perfBufferSize }}
+            - --containers=enrich=true
+            - --containers=sockets.containerd=/run/containerd/containerd.sock
+            - --containers=cgroupfs.path=/sys/fs/cgroup
+            - --containers=cgroupfs.force=true
             - --server=http-address=:3366
             - --server=metrics
             - --policy=/policies/wolfee-watcher.yaml
@@ -279,4 +283,8 @@ spec:
           hostPath:
             path: /sys/kernel
             type: DirectoryOrCreate
+        - name: containerd-run
+          hostPath:
+            path: /run/containerd
+            type: Directory
 {{- end }}

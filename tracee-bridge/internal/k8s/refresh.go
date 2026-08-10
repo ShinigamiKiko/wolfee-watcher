@@ -16,7 +16,7 @@ func (pc *PodCache) refresh() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pods, err := pc.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{FieldSelector: "status.phase=Running"})
+	pods, err := pc.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Printf("[podcache] refresh error: %v", err)
 		return
@@ -42,6 +42,7 @@ func (pc *PodCache) refresh() {
 	pc.mu.Lock()
 	pc.cache = next
 	pc.mu.Unlock()
+	pc.prune()
 	log.Printf("[podcache] refreshed — %d containers indexed", len(next))
 }
 

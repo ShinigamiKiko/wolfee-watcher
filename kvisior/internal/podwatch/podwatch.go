@@ -6,12 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wolfee-watcher/kvisior/internal/events"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 	"github.com/wolfee-watcher/kvisior/internal/watchring"
 )
 
 type watchEntry struct {
-	syscalls  []string
+	selection store.PodWatchSelection
 	updatedAt time.Time
 }
 
@@ -41,15 +42,15 @@ func (m *Manager) Load(ctx context.Context) error {
 	m.mu.Lock()
 	m.watches = make(map[string]watchEntry, len(rows))
 	for k, e := range rows {
-		m.watches[k] = watchEntry{syscalls: e.Syscalls, updatedAt: e.UpdatedAt}
+		m.watches[k] = watchEntry{selection: e.PodWatchSelection, updatedAt: e.UpdatedAt}
 	}
 	m.mu.Unlock()
 	return nil
 }
 
 type WatchSnapshot struct {
-	Syscalls []string
-	Since    time.Time
+	store.PodWatchSelection
+	Since time.Time
 }
 
 func (m *Manager) Watches() map[string]WatchSnapshot {
@@ -57,59 +58,75 @@ func (m *Manager) Watches() map[string]WatchSnapshot {
 	defer m.mu.RUnlock()
 	out := make(map[string]WatchSnapshot, len(m.watches))
 	for k, e := range m.watches {
-		cp := make([]string, len(e.syscalls))
-		copy(cp, e.syscalls)
-		out[k] = WatchSnapshot{Syscalls: cp, Since: e.updatedAt}
+		out[k] = WatchSnapshot{PodWatchSelection: cloneSelection(e.selection), Since: e.updatedAt}
 	}
 	return out
 }
 
-func (m *Manager) ShouldCapture(ns, pod, syscall string) bool {
+func (m *Manager) ShouldCapture(ns, pod string, kind events.Kind, name string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	key := ns + "/" + pod
-	for _, sc := range m.watches[key].syscalls {
-		if sc == syscall {
+	selection := m.watches[key].selection
+	var names []string
+	switch kind {
+	case events.LSMHook:
+		names = selection.LSMHooks
+	case events.Tracepoint:
+		names = selection.Tracepoints
+	default:
+		names = selection.Syscalls
+	}
+	for _, selected := range names {
+		if selected == name {
 			return true
 		}
 	}
 	return false
 }
 
-func (m *Manager) Add(ns, pod, podUID, syscall string, raw json.RawMessage, ts time.Time) {
-	m.ring.Add(ns, pod, podUID, syscall, raw, ts)
+func (m *Manager) Add(ns, pod, podUID string, kind events.Kind, name string, raw json.RawMessage, ts time.Time) {
+	m.ring.Add(ns, pod, podUID, kind, name, raw, ts)
 }
 
-func (m *Manager) GetEvents(ns, pod, podUID string) []json.RawMessage {
+func (m *Manager) GetEvents(ns, pod, podUID, containerID string) []json.RawMessage {
 	m.mu.RLock()
 	key := ns + "/" + pod
 	e := m.watches[key]
 	m.mu.RUnlock()
-	if len(e.syscalls) == 0 {
+	if len(e.selection.Syscalls)+len(e.selection.LSMHooks)+len(e.selection.Tracepoints) == 0 {
 		return nil
 	}
-	return m.ring.Get(ns, pod, podUID, e.syscalls)
+	return m.ring.Get(ns, pod, podUID, containerID, e.selection)
 }
 
-func (m *Manager) GetWatch(ctx context.Context, ns, pod string) ([]string, error) {
+func (m *Manager) GetWatch(ctx context.Context, ns, pod string) (store.PodWatchSelection, error) {
 	if m.store == nil {
-		return nil, nil
+		return store.PodWatchSelection{}, nil
 	}
 	return m.store.GetPodWatch(ctx, ns, pod)
 }
 
-func (m *Manager) SetWatch(ctx context.Context, ns, pod string, syscalls []string) error {
+func (m *Manager) SetWatch(ctx context.Context, ns, pod string, selection store.PodWatchSelection) error {
 	if m.store == nil {
 		return nil
 	}
-	if err := m.store.SetPodWatch(ctx, ns, pod, syscalls); err != nil {
+	if err := m.store.SetPodWatch(ctx, ns, pod, selection); err != nil {
 		return err
 	}
 	key := ns + "/" + pod
 	m.mu.Lock()
-	m.watches[key] = watchEntry{syscalls: syscalls, updatedAt: time.Now()}
+	m.watches[key] = watchEntry{selection: cloneSelection(selection), updatedAt: time.Now()}
 	m.mu.Unlock()
 	return nil
+}
+
+func cloneSelection(in store.PodWatchSelection) store.PodWatchSelection {
+	return store.PodWatchSelection{
+		Syscalls:    append([]string(nil), in.Syscalls...),
+		LSMHooks:    append([]string(nil), in.LSMHooks...),
+		Tracepoints: append([]string(nil), in.Tracepoints...),
+	}
 }
 
 func (m *Manager) DeleteWatch(ctx context.Context, ns, pod string) error {

@@ -57,7 +57,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0010-binary-exec-events"
+  schemaVersion: "0011-image-scan-workloads"
   adminBootstrapPassword: ""
   resources:
     requests:
@@ -286,7 +286,7 @@ tracee:
     repository: aquasec/tracee
     tag: "0.24.1"
     pullPolicy: IfNotPresent
-  perfBufferSize: 1024
+  perfBufferSize: 8192
   memCacheSize: 512
   resources:
     requests:

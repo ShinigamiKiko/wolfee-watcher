@@ -316,7 +316,10 @@ func (h *Handler) HandleScan(w http.ResponseWriter, r *http.Request) {
 	}
 	data := append(json.RawMessage(nil), raw...)
 	if !h.syncWrite(w, r, "image scan", func(ctx context.Context) error {
-		return h.store.UpsertImageScan(ctx, meta.Image, scannedAt, data)
+		if err := h.store.UpsertImageScan(ctx, meta.Image, scannedAt, data); err != nil {
+			return err
+		}
+		return h.store.InsertImageScanWorkloads(ctx, meta.Image, scannedAt, data)
 	}) {
 		return
 	}

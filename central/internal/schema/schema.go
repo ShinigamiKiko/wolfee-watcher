@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0010-binary-exec-events"
+const Version = "0011-image-scan-workloads"
 
 var DDL = []string{
 
@@ -118,10 +118,24 @@ var DDL = []string{
 )`,
 	`CREATE INDEX IF NOT EXISTS idx_image_scans_scanned_at ON image_scans(scanned_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS image_histories (
-	image      TEXT        PRIMARY KEY,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	data       JSONB       NOT NULL
+		image      TEXT        PRIMARY KEY,
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		data       JSONB       NOT NULL
 )`,
+	`CREATE TABLE IF NOT EXISTS image_scan_workloads (
+		id           BIGSERIAL PRIMARY KEY,
+		image        TEXT        NOT NULL,
+		namespace    TEXT        NOT NULL DEFAULT '',
+		pod          TEXT        NOT NULL DEFAULT '',
+		pod_uid      TEXT        NOT NULL DEFAULT '',
+		pod_ip       TEXT        NOT NULL DEFAULT '',
+		node         TEXT        NOT NULL DEFAULT '',
+		observed_at  TIMESTAMPTZ NOT NULL,
+		data         JSONB       NOT NULL,
+		UNIQUE (image, namespace, pod_uid, observed_at)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_image_scan_workloads_image_observed
+	 ON image_scan_workloads(image, observed_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS scanner_state (
 	key        TEXT        PRIMARY KEY,
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

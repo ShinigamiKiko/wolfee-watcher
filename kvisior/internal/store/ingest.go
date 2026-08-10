@@ -402,10 +402,12 @@ func isAlwaysWatched(syscall string) bool {
 	return false
 }
 
-func WatchedSyscalls(selected []string) []string {
-	out := make([]string, 0, len(selected)+len(AlwaysWatchedSyscalls))
+func WatchedSyscalls(selected PodWatchSelection) []string {
+	out := make([]string, 0, len(selected.Syscalls)+len(selected.LSMHooks)+len(selected.Tracepoints)+len(AlwaysWatchedSyscalls))
 	out = append(out, AlwaysWatchedSyscalls...)
-	return append(out, selected...)
+	out = append(out, selected.Syscalls...)
+	out = append(out, selected.LSMHooks...)
+	return append(out, selected.Tracepoints...)
 }
 
 func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSummary, error) {

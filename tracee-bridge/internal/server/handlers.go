@@ -86,6 +86,8 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 		"events_busy":            s.eventsBusy.Load(),
 		"events_dropped":         s.eventsDropped.Load(),
 		"events_overflow":        s.eventsOverflow.Load(),
+		"enrich_by_pid":          s.enrichByPID.Load(),
+		"enrich_missing":         s.enrichMissing.Load(),
 		"query_timeouts":         s.queryTimeouts.Load(),
 		"ingest_avg_ms":          ingestAvgMs,
 		"query_avg_ms":           queryAvgMs,

@@ -42,7 +42,6 @@ export const SYSCALL_GROUPS = [
     items: [
       { name: 'mount',             desc: 'Mount a filesystem — host path exposure / escape.' },
       { name: 'umount2',           desc: 'Unmount a filesystem.' },
-      { name: 'security_sb_mount', desc: 'LSM hook fired on every mount attempt.' },
       { name: 'pivot_root',        desc: 'Change the root mount — namespace / container escape.' },
       { name: 'unshare',           desc: 'Detach into new namespaces — privilege/namespace manipulation.' },
       { name: 'setns',             desc: 'Join an existing namespace — cross-namespace access.' },

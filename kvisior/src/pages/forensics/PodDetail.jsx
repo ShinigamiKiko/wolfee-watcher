@@ -126,7 +126,15 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         if (r.status === 503) { if (!cancelled) setWatchNoStore(true); return null; }
         return r.ok ? r.json() : null;
       })
-      .then(d => { if (!cancelled && d?.syscalls) setWatchedSyscalls(d.syscalls); })
+      .then(d => {
+        if (!cancelled && d) {
+          setWatchedSyscalls([
+            ...(d.syscalls || []),
+            ...(d.lsm_hooks || []),
+            ...(d.tracepoints || []),
+          ]);
+        }
+      })
       .finally(() => { if (!cancelled) setWatchLoaded(true); })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -191,7 +199,11 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         await fetch(url, {
           method: 'PUT', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ syscalls: next }),
+          body: JSON.stringify({
+            syscalls: next.filter(n => SYSCALL_NAME_SET.has(n)),
+            lsm_hooks: next.filter(n => LSM_NAME_SET.has(n)),
+            tracepoints: next.filter(n => TP_NAME_SET.has(n)),
+          }),
         });
       }
     } catch {}

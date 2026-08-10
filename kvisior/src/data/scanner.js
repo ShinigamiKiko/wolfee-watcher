@@ -25,6 +25,13 @@ export async function getImageResult(ref) {
   return r.json();
 }
 
+export async function getImageWorkloads(ref) {
+  const query = ref ? `?image=${encodeURIComponent(ref)}` : '';
+  const r = await fetch(`${BASE}/workloads${query}`, { credentials: 'same-origin' });
+  if (!r.ok) throw new Error(`workloads: HTTP ${r.status}`);
+  return r.json();
+}
+
 export async function triggerScan(images = []) {
   const r = await fetch(`${BASE}/scan`, {
     method:      'POST',

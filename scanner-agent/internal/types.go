@@ -3,14 +3,25 @@ package internal
 import "time"
 
 type ClusterImage struct {
-	Ref        string   `json:"ref"`
-	Name       string   `json:"name"`
-	Tag        string   `json:"tag"`
-	Digest     string   `json:"digest,omitempty"`
-	Pods       []string `json:"pods"`
-	Namespaces []string `json:"namespaces"`
-	Nodes      []string `json:"nodes"`
-	PullPolicy string   `json:"pullPolicy,omitempty"`
+	Ref        string          `json:"ref"`
+	Name       string          `json:"name"`
+	Tag        string          `json:"tag"`
+	Digest     string          `json:"digest,omitempty"`
+	Pods       []string        `json:"pods"`
+	Namespaces []string        `json:"namespaces"`
+	Nodes      []string        `json:"nodes"`
+	Workloads  []ImageWorkload `json:"workloads,omitempty"`
+	PullPolicy string          `json:"pullPolicy,omitempty"`
+}
+
+type ImageWorkload struct {
+	Image      string    `json:"image"`
+	Pod        string    `json:"pod"`
+	Namespace  string    `json:"namespace"`
+	PodUID     string    `json:"podUID"`
+	PodIP      string    `json:"podIP,omitempty"`
+	Node       string    `json:"node,omitempty"`
+	ObservedAt time.Time `json:"observedAt"`
 }
 
 type ScanStatus string
@@ -28,20 +39,21 @@ type ScanResult struct {
 	Tag    string `json:"tag"`
 	Digest string `json:"digest,omitempty"`
 
-	PreviousDigest  string     `json:"previousDigest,omitempty"`
-	DigestChanged   bool       `json:"digestChanged,omitempty"`
-	DigestChangedAt *time.Time `json:"digestChangedAt,omitempty"`
-	OS              string     `json:"os"`
-	OSFamily        string     `json:"osFamily"`
-	Status          ScanStatus `json:"status"`
-	Error           string     `json:"error,omitempty"`
-	ScannedAt       time.Time  `json:"scannedAt"`
-	DurationMs      int64      `json:"durationMs"`
-	Summary         CVESummary `json:"summary"`
-	CVEs            []CVE      `json:"cves"`
-	Pods            []string   `json:"pods,omitempty"`
-	Namespaces      []string   `json:"namespaces,omitempty"`
-	Nodes           []string   `json:"nodes,omitempty"`
+	PreviousDigest  string          `json:"previousDigest,omitempty"`
+	DigestChanged   bool            `json:"digestChanged,omitempty"`
+	DigestChangedAt *time.Time      `json:"digestChangedAt,omitempty"`
+	OS              string          `json:"os"`
+	OSFamily        string          `json:"osFamily"`
+	Status          ScanStatus      `json:"status"`
+	Error           string          `json:"error,omitempty"`
+	ScannedAt       time.Time       `json:"scannedAt"`
+	DurationMs      int64           `json:"durationMs"`
+	Summary         CVESummary      `json:"summary"`
+	CVEs            []CVE           `json:"cves"`
+	Pods            []string        `json:"pods,omitempty"`
+	Namespaces      []string        `json:"namespaces,omitempty"`
+	Nodes           []string        `json:"nodes,omitempty"`
+	Workloads       []ImageWorkload `json:"workloads,omitempty"`
 }
 
 type CVESummary struct {

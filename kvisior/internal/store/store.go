@@ -274,6 +274,69 @@ func (s *Store) ListImageScans(ctx context.Context) ([]json.RawMessage, error) {
 	return s.listJSONBlobs(ctx, `SELECT data FROM image_scans ORDER BY scanned_at DESC`)
 }
 
+func (s *Store) InsertImageScanWorkloads(ctx context.Context, image string, scannedAt time.Time, data json.RawMessage) error {
+	var payload struct {
+		Workloads []struct {
+			Image      string    `json:"image"`
+			Pod        string    `json:"pod"`
+			Namespace  string    `json:"namespace"`
+			PodUID     string    `json:"podUID"`
+			PodIP      string    `json:"podIP"`
+			Node       string    `json:"node"`
+			ObservedAt time.Time `json:"observedAt"`
+		} `json:"workloads"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return fmt.Errorf("decode image workloads: %w", err)
+	}
+	for _, workload := range payload.Workloads {
+		observedAt := workload.ObservedAt
+		if observedAt.IsZero() {
+			observedAt = scannedAt
+		}
+		workloadImage := workload.Image
+		if workloadImage == "" {
+			workloadImage = image
+		}
+		workloadData, err := json.Marshal(workload)
+		if err != nil {
+			return fmt.Errorf("encode image workload: %w", err)
+		}
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO image_scan_workloads
+			  (image, namespace, pod, pod_uid, pod_ip, node, observed_at, data)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (image, namespace, pod_uid, observed_at) DO UPDATE SET
+			  pod = EXCLUDED.pod, pod_ip = EXCLUDED.pod_ip,
+			  node = EXCLUDED.node, data = EXCLUDED.data`,
+			workloadImage, workload.Namespace, workload.Pod, workload.PodUID,
+			workload.PodIP, workload.Node, observedAt, workloadData); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ListImageScanWorkloads(ctx context.Context, image string) ([]json.RawMessage, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT data FROM image_scan_workloads
+		WHERE ($1 = '' OR image = $1)
+		ORDER BY observed_at DESC LIMIT 5000`, image)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []json.RawMessage
+	for rows.Next() {
+		var data json.RawMessage
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		out = append(out, data)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) UpsertImageHistory(ctx context.Context, image string, data json.RawMessage) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO image_histories(image, data, updated_at)
@@ -395,9 +458,15 @@ type RuleRow struct {
 	Data json.RawMessage `json:"data"`
 }
 
-func (s *Store) SetPodWatch(ctx context.Context, ns, pod string, syscalls []string) error {
+type PodWatchSelection struct {
+	Syscalls    []string `json:"syscalls"`
+	LSMHooks    []string `json:"lsm_hooks"`
+	Tracepoints []string `json:"tracepoints"`
+}
+
+func (s *Store) SetPodWatch(ctx context.Context, ns, pod string, selection PodWatchSelection) error {
 	key := ns + "/" + pod
-	data, _ := json.Marshal(syscalls)
+	data, _ := json.Marshal(selection)
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO pod_syscall_watches(pod_key,namespace,pod,syscalls,updated_at)
 		 VALUES($1,$2,$3,$4,NOW())
@@ -411,22 +480,30 @@ func (s *Store) DeletePodWatch(ctx context.Context, ns, pod string) error {
 	return err
 }
 
-func (s *Store) GetPodWatch(ctx context.Context, ns, pod string) ([]string, error) {
+func (s *Store) GetPodWatch(ctx context.Context, ns, pod string) (PodWatchSelection, error) {
 	var raw string
 	err := s.pool.QueryRow(ctx,
 		`SELECT syscalls FROM pod_syscall_watches WHERE pod_key=$1`, ns+"/"+pod).Scan(&raw)
 	if err != nil {
-		return nil, err
+		return PodWatchSelection{}, err
 	}
-	var syscalls []string
-	if err := json.Unmarshal([]byte(raw), &syscalls); err != nil {
-		return nil, fmt.Errorf("store: unmarshal syscalls for %s/%s: %w", ns, pod, err)
+	var selection PodWatchSelection
+	if len(raw) > 0 && raw[0] == '{' {
+		if err := json.Unmarshal([]byte(raw), &selection); err == nil {
+			return selection, nil
+		}
 	}
-	return syscalls, nil
+	if len(raw) > 0 && raw[0] == '[' {
+		var legacy []string
+		if err := json.Unmarshal([]byte(raw), &legacy); err == nil {
+			return PodWatchSelection{Syscalls: legacy}, nil
+		}
+	}
+	return PodWatchSelection{}, fmt.Errorf("store: unmarshal watch for %s/%s", ns, pod)
 }
 
 type PodWatchEntry struct {
-	Syscalls  []string
+	PodWatchSelection
 	UpdatedAt time.Time
 }
 
@@ -441,11 +518,21 @@ func (s *Store) ListPodWatches(ctx context.Context) (map[string]PodWatchEntry, e
 		var key, raw string
 		var updatedAt time.Time
 		if err := rows.Scan(&key, &raw, &updatedAt); err == nil {
-			var sc []string
-			if err := json.Unmarshal([]byte(raw), &sc); err != nil {
-				log.Printf("[store] unmarshal syscalls for %s: %v", key, err)
+			var selection PodWatchSelection
+			if len(raw) > 0 && raw[0] == '{' {
+				if err := json.Unmarshal([]byte(raw), &selection); err != nil {
+					log.Printf("[store] unmarshal watch for %s: %v", key, err)
+					continue
+				}
+			} else {
+				var legacy []string
+				if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
+					log.Printf("[store] unmarshal watch for %s: %v", key, err)
+					continue
+				}
+				selection.Syscalls = legacy
 			}
-			m[key] = PodWatchEntry{Syscalls: sc, UpdatedAt: updatedAt}
+			m[key] = PodWatchEntry{PodWatchSelection: selection, UpdatedAt: updatedAt}
 		}
 	}
 	return m, nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	internal "github.com/wolfee-watcher/scanner-agent/internal"
 	corev1 "k8s.io/api/core/v1"
@@ -41,19 +42,24 @@ func (c *Client) ListImages(ctx context.Context) ([]internal.ClusterImage, error
 		pods       map[string]struct{}
 		namespaces map[string]struct{}
 		nodes      map[string]struct{}
+		workloads  map[string]internal.ImageWorkload
 		pullPolicy string
 		digest     string
 	}
 	seen := make(map[string]*meta)
 
-	add := func(ref, digest, ns, pod, node, policy string) {
+	add := func(ref, digest, ns, pod, podUID, podIP, node, policy string) {
 		if ref == "" {
 			return
 		}
+		workloadKey := ns + "\x00" + podUID
 		if m, ok := seen[ref]; ok {
 			m.pods[pod] = struct{}{}
 			m.namespaces[ns] = struct{}{}
 			m.nodes[node] = struct{}{}
+			if _, exists := m.workloads[workloadKey]; !exists {
+				m.workloads[workloadKey] = newWorkload(ref, ns, pod, podUID, podIP, node)
+			}
 			if m.digest == "" && digest != "" {
 				m.digest = digest
 			}
@@ -62,6 +68,7 @@ func (c *Client) ListImages(ctx context.Context) ([]internal.ClusterImage, error
 				pods:       map[string]struct{}{pod: {}},
 				namespaces: map[string]struct{}{ns: {}},
 				nodes:      map[string]struct{}{node: {}},
+				workloads:  map[string]internal.ImageWorkload{workloadKey: newWorkload(ref, ns, pod, podUID, podIP, node)},
 				pullPolicy: policy,
 				digest:     digest,
 			}
@@ -73,13 +80,14 @@ func (c *Client) ListImages(ctx context.Context) ([]internal.ClusterImage, error
 			continue
 		}
 		ns, name, node := pod.Namespace, pod.Name, pod.Spec.NodeName
+		podUID, podIP := string(pod.UID), pod.Status.PodIP
 		for _, cs := range pod.Spec.InitContainers {
 			ref, digest := resolveImage(cs.Image, pod.Status.InitContainerStatuses)
-			add(ref, digest, ns, name, node, string(cs.ImagePullPolicy))
+			add(ref, digest, ns, name, podUID, podIP, node, string(cs.ImagePullPolicy))
 		}
 		for _, cs := range pod.Spec.Containers {
 			ref, digest := resolveImage(cs.Image, pod.Status.ContainerStatuses)
-			add(ref, digest, ns, name, node, string(cs.ImagePullPolicy))
+			add(ref, digest, ns, name, podUID, podIP, node, string(cs.ImagePullPolicy))
 		}
 	}
 
@@ -99,10 +107,26 @@ func (c *Client) ListImages(ctx context.Context) ([]internal.ClusterImage, error
 			Pods:       setToSlice(m.pods),
 			Namespaces: setToSlice(m.namespaces),
 			Nodes:      setToSlice(m.nodes),
+			Workloads:  workloadSlice(m.workloads),
 			PullPolicy: m.pullPolicy,
 		})
 	}
 	return result, nil
+}
+
+func newWorkload(image, namespace, pod, podUID, podIP, node string) internal.ImageWorkload {
+	return internal.ImageWorkload{
+		Image: image, Namespace: namespace, Pod: pod, PodUID: podUID,
+		PodIP: podIP, Node: node, ObservedAt: time.Now().UTC(),
+	}
+}
+
+func workloadSlice(workloads map[string]internal.ImageWorkload) []internal.ImageWorkload {
+	out := make([]internal.ImageWorkload, 0, len(workloads))
+	for _, workload := range workloads {
+		out = append(out, workload)
+	}
+	return out
 }
 
 func (c *Client) listPodsPaged(ctx context.Context, chunkSize int64) ([]corev1.Pod, error) {

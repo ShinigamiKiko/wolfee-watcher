@@ -39,6 +39,7 @@ export function VulnMgmt() {
   const [imageDrill,    setImageDrill]    = useState(null);
   const [scheduleOpen,  setScheduleOpen]  = useState(false);
   const [showProgress,  setShowProgress]  = useState(false);
+  const [errorsDismissed, setErrorsDismissed] = useState(false);
   const [logCollapsed,  setLogCollapsed]  = useState(false);
   const [sbomSelected,  setSbomSelected]  = useState(null);
   const [sbomSearch,    setSbomSearch]    = useState('');
@@ -50,6 +51,7 @@ export function VulnMgmt() {
   const handleScanAll = async () => {
     setShowProgress(true);
     setLogCollapsed(false);
+    setErrorsDismissed(false);
     setStarting(true);
     const res = await startScan([]);
     setStarting(false);
@@ -238,10 +240,18 @@ export function VulnMgmt() {
           </div>
         </div>
 
-        {failedResults.length > 0 && (
+        {failedResults.length > 0 && !errorsDismissed && (
           <div className="card" style={{ padding: '12px 14px', marginBottom: 14, borderLeft: '3px solid var(--danger)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)', marginBottom: 6 }}>
-              ✗ {failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)' }}>
+                ✗ {failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan
+              </div>
+              <button
+                type="button"
+                aria-label="Close scan errors"
+                onClick={() => setErrorsDismissed(true)}
+                style={{ background: 'none', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}
+              >✕</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 132, overflowY: 'auto' }}>
               {failedResults.slice(0, 6).map(r => (

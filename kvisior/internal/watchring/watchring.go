@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/wolfee-watcher/kvisior/internal/events"
+	"github.com/wolfee-watcher/kvisior/internal/store"
 )
 
 const maxPerKey = 500
@@ -55,8 +58,8 @@ func (r *Ring) evict() {
 	}
 }
 
-func (r *Ring) Add(ns, pod, podUID, syscall string, raw json.RawMessage, ts time.Time) {
-	key := ns + "/" + pod + "/" + podUID + "/" + syscall
+func (r *Ring) Add(ns, pod, podUID string, kind events.Kind, name string, raw json.RawMessage, ts time.Time) {
+	key := ringKey(ns, pod, podUID, kind, name)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	cutoff := time.Now().Add(-retention)
@@ -76,18 +79,48 @@ func (r *Ring) Add(ns, pod, podUID, syscall string, raw json.RawMessage, ts time
 	r.bufs[key] = buf
 }
 
-func (r *Ring) Get(ns, pod, podUID string, syscalls []string) []json.RawMessage {
+func (r *Ring) Get(ns, pod, podUID, containerID string, selection store.PodWatchSelection) []json.RawMessage {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	cutoff := time.Now().Add(-retention)
 	var out []json.RawMessage
-	for _, sc := range syscalls {
-		key := ns + "/" + pod + "/" + podUID + "/" + sc
-		for _, e := range r.bufs[key] {
-			if !e.ts.Before(cutoff) {
-				out = append(out, e.raw)
+	appendEvents := func(kind events.Kind, names []string) {
+		for _, name := range names {
+			for _, e := range r.bufs[ringKey(ns, pod, podUID, kind, name)] {
+				if !e.ts.Before(cutoff) {
+					out = append(out, e.raw)
+				}
+			}
+			if podUID != "" && containerID != "" {
+				for _, e := range r.bufs[ringKey(ns, pod, "", kind, name)] {
+					if e.ts.Before(cutoff) || rawContainerID(e.raw) != containerID {
+						continue
+					}
+					out = append(out, e.raw)
+				}
 			}
 		}
 	}
+	appendEvents(events.Syscall, selection.Syscalls)
+	appendEvents(events.LSMHook, selection.LSMHooks)
+	appendEvents(events.Tracepoint, selection.Tracepoints)
 	return out
+}
+
+func rawContainerID(raw json.RawMessage) string {
+	var ev map[string]interface{}
+	if json.Unmarshal(raw, &ev) != nil {
+		return ""
+	}
+	if value, ok := ev["containerId"].(string); ok {
+		return value
+	}
+	if value, ok := ev["container_id"].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func ringKey(ns, pod, podUID string, kind events.Kind, name string) string {
+	return ns + "/" + pod + "/" + podUID + "/" + string(kind) + "/" + name
 }

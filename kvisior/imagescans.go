@@ -57,6 +57,22 @@ func imageScansHandler(st *store.Store) http.HandlerFunc {
 	}
 }
 
+func imageScanWorkloadsHandler(st *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		rows, err := st.ListImageScanWorkloads(r.Context(), r.URL.Query().Get("image"))
+		if err != nil {
+			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"workloads": rows, "total": len(rows)})
+	}
+}
+
 func auditRunsHandler(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

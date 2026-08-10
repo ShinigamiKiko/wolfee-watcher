@@ -6,14 +6,27 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/wolfee-watcher/kvisior/internal/binring"
+	"github.com/wolfee-watcher/kvisior/internal/events"
 	"github.com/wolfee-watcher/kvisior/internal/podwatch"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 )
+
+var forensicSyscalls = map[string]struct{}{
+	"io_uring_setup": {}, "io_uring_enter": {}, "io_uring_register": {},
+}
+
+var forensicLSMHooks = map[string]struct{}{
+	"security_file_open": {}, "security_inode_unlink": {}, "security_inode_rename": {},
+	"security_inode_symlink": {}, "security_inode_mknod": {}, "security_bprm_check": {},
+	"security_mmap_file": {}, "security_file_mprotect": {}, "security_socket_create": {},
+	"security_socket_connect": {}, "security_socket_bind": {}, "security_socket_accept": {},
+	"security_socket_listen": {}, "security_socket_setsockopt": {}, "security_sb_mount": {},
+	"security_bpf": {}, "security_bpf_map": {}, "security_kernel_read_file": {},
+}
 
 var forensicTracepoints = map[string]struct{}{
 	"sched_process_exec": {},
@@ -28,12 +41,23 @@ var forensicTracepoints = map[string]struct{}{
 	"cgroup_attach_task": {},
 }
 
-func captureForForensics(sc string) bool {
-	if rules.IsBinaryExec(sc) || strings.HasPrefix(sc, "security_") {
+func captureForForensics(kind events.Kind, sc string) bool {
+	if rules.IsBinaryExec(sc) {
 		return true
 	}
-	_, ok := forensicTracepoints[sc]
-	return ok
+	switch kind {
+	case events.Syscall:
+		_, ok := forensicSyscalls[sc]
+		return ok
+	case events.LSMHook:
+		_, ok := forensicLSMHooks[sc]
+		return ok
+	case events.Tracepoint:
+		_, ok := forensicTracepoints[sc]
+		return ok
+	default:
+		return false
+	}
 }
 
 func BackfillHandler(ring *binring.Ring) http.HandlerFunc {
@@ -103,7 +127,7 @@ func WarmRing(ctx context.Context, brokers []string, topic string, ring *binring
 			if raw, ok := ev["syscall"]; ok {
 				json.Unmarshal(raw, &sc)
 			}
-			if !captureForForensics(sc) {
+			if !captureForForensics(eventKind(ev, sc), sc) {
 				return
 			}
 			ring.Add(rec.Value, rec.Timestamp)
@@ -122,6 +146,24 @@ func WarmRing(ctx context.Context, brokers []string, topic string, ring *binring
 		added, time.Since(start).Round(time.Second), ring.Len())
 }
 
+func eventKind(ev map[string]json.RawMessage, sc string) events.Kind {
+	var raw string
+	if data, ok := ev["event_kind"]; ok {
+		_ = json.Unmarshal(data, &raw)
+	}
+	if raw != "" {
+		return events.Kind(raw)
+	}
+	return events.KindFor(sc)
+}
+
+func eventKindFromMap(ev map[string]interface{}, sc string) events.Kind {
+	if raw, ok := ev["event_kind"].(string); ok && raw != "" {
+		return events.Kind(raw)
+	}
+	return events.KindFor(sc)
+}
+
 func WarmWatchRing(ctx context.Context, brokers []string, topic string, mgr *podwatch.Manager) {
 	watches := mgr.Watches()
 	if len(watches) == 0 {
@@ -129,17 +171,23 @@ func WarmWatchRing(ctx context.Context, brokers []string, topic string, mgr *pod
 	}
 
 	type podMeta struct {
-		syscalls map[string]bool
+		selected map[string]bool
 		since    time.Time
 	}
 	podMap := make(map[string]podMeta, len(watches))
 	earliest := time.Now()
 	for key, snap := range watches {
-		m := make(map[string]bool, len(snap.Syscalls))
+		m := make(map[string]bool, len(snap.Syscalls)+len(snap.LSMHooks)+len(snap.Tracepoints))
 		for _, sc := range snap.Syscalls {
-			m[sc] = true
+			m[string(events.Syscall)+"/"+sc] = true
 		}
-		podMap[key] = podMeta{syscalls: m, since: snap.Since}
+		for _, sc := range snap.LSMHooks {
+			m[string(events.LSMHook)+"/"+sc] = true
+		}
+		for _, sc := range snap.Tracepoints {
+			m[string(events.Tracepoint)+"/"+sc] = true
+		}
+		podMap[key] = podMeta{selected: m, since: snap.Since}
 		if snap.Since.Before(earliest) {
 			earliest = snap.Since
 		}
@@ -201,14 +249,15 @@ func WarmWatchRing(ctx context.Context, brokers []string, topic string, mgr *pod
 			}
 			key := ns + "/" + pod
 			meta, ok := podMap[key]
-			if !ok || !meta.syscalls[sc] {
+			kind := eventKindFromMap(ev, sc)
+			if !ok || !meta.selected[string(kind)+"/"+sc] {
 				return
 			}
 
 			if rec.Timestamp.Before(meta.since) {
 				return
 			}
-			mgr.Add(ns, pod, podUID, sc, json.RawMessage(rec.Value), rec.Timestamp)
+			mgr.Add(ns, pod, podUID, kind, sc, json.RawMessage(rec.Value), rec.Timestamp)
 			added++
 			if rec.Timestamp.After(caughtUpAfter) {
 				done = true

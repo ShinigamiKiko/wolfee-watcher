@@ -45,11 +45,19 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 		if ui == nil {
 			continue
 		}
-		item := queueItem{ev: ui, nodeName: nodeName, rawCtxID: te.ContainerID}
+		item := queueItem{
+			ev:       ui,
+			nodeName: nodeName,
+			rawCtxID: ui.ContainerID,
+			hostPID:  te.HostProcessID,
+			hostPPID: te.HostParentProcessID,
+			hostTID:  te.HostThreadID,
+		}
 		select {
 		case s.eventQueue <- item:
 			enqueued++
 		default:
+			s.enrich(item)
 			s.hub.Broadcast(item.ev)
 			overflowed++
 		}
