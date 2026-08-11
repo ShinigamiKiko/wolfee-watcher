@@ -76,3 +76,7 @@ replace github.com/wolfee-watcher/pkg/env => ../pkg/env
 require github.com/wolfee-watcher/pkg/logging v0.0.0
 
 replace github.com/wolfee-watcher/pkg/logging => ../pkg/logging
+
+require github.com/wolfee-watcher/pkg/policy v0.0.0
+
+replace github.com/wolfee-watcher/pkg/policy => ../pkg/policy

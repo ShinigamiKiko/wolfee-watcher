@@ -1,8 +1,13 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"hash/fnv"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -17,24 +22,14 @@ var lastKafkaProduceErrorLog atomic.Int64
 
 func (h *Hub) Broadcast(ev *mapper.UIEvent) {
 	h.cntReceived.Add(1)
-	if !alwaysPass[ev.Syscall] && !isLSMHook(ev.Syscall) && ev.Execpath == "" && ev.Cmdline == "" {
+	if !h.wanted(ev) {
 		h.cntDropped.Add(1)
+		h.cntFiltered.Add(1)
 		return
 	}
-	if ev.Pod != "" {
-		key := dedupKey(ev)
-		h.dedupMu.Lock()
-		now := time.Now()
-		if now.Sub(h.dedup[key]) < dedupTTL {
-			h.dedupMu.Unlock()
-			h.cntDedup.Add(1)
-			return
-		}
-		h.dedup[key] = now
-		if len(h.dedup) > 5000 {
-			h.dedup = make(map[string]time.Time)
-		}
-		h.dedupMu.Unlock()
+	if h.shouldDedup(ev) && h.markSeen(dedupKey(ev)) {
+		h.cntDedup.Add(1)
+		return
 	}
 	h.cntPassed.Add(1)
 	data, err := json.Marshal(ev)
@@ -47,18 +42,29 @@ func (h *Hub) Broadcast(ev *mapper.UIEvent) {
 		return
 	}
 
-	h.producer.Produce(h.ctx, &kgo.Record{Value: data, Key: []byte(ev.Namespace + "/" + ev.Pod)}, func(_ *kgo.Record, err error) {
-		if err != nil && h.ctx.Err() == nil {
+	h.producer.Produce(context.Background(), &kgo.Record{Value: data, Key: []byte(ev.Namespace + "/" + ev.Pod)}, func(_ *kgo.Record, err error) {
+		if err != nil {
 			dropped := h.cntDropped.Add(1)
 			if shouldLogKafkaProduceError() {
 				slog.Warn("kafka_produce_failed",
 					"component", "tracee-bridge/hub",
 					"topic", h.kafkaTopic,
 					"error", err,
+					"shutting_down", h.ctx.Err() != nil,
 					"dropped_total", dropped)
 			}
 		}
 	})
+}
+
+func (h *Hub) wanted(ev *mapper.UIEvent) bool {
+	if alwaysPass[ev.Syscall] || isLSMHook(ev.Syscall) {
+		return true
+	}
+	if ev.Execpath != "" || ev.Cmdline != "" {
+		return true
+	}
+	return h.alerter.WantsSyscall(ev.Syscall)
 }
 
 func shouldLogKafkaProduceError() bool {
@@ -89,17 +95,91 @@ func (h *Hub) sendToClient(c *client, data []byte) {
 	}
 }
 
+func (h *Hub) shouldDedup(ev *mapper.UIEvent) bool {
+	return h.dedupTTL > 0 && ev.Pod != "" && !neverDedup[ev.Syscall]
+}
+
+func (h *Hub) markSeen(key string) bool {
+	now := time.Now()
+	h.dedupMu.Lock()
+	defer h.dedupMu.Unlock()
+	if last, ok := h.dedup[key]; ok && now.Sub(last) < h.dedupTTL {
+		return true
+	}
+	h.dedup[key] = now
+	if len(h.dedup) > h.dedupMaxEntries {
+		h.sweepDedupLocked(now)
+	}
+	return false
+}
+
+func (h *Hub) sweepDedupLocked(now time.Time) {
+	for k, ts := range h.dedup {
+		if now.Sub(ts) >= h.dedupTTL {
+			delete(h.dedup, k)
+		}
+	}
+	if len(h.dedup) > h.dedupMaxEntries {
+		flushed := h.cntDedupFlush.Add(1)
+		slog.Warn("dedup_table_flushed",
+			"component", "tracee-bridge/hub",
+			"entries", len(h.dedup),
+			"max_entries", h.dedupMaxEntries,
+			"flush_count", flushed,
+			"impact", "next_repeat_of_each_event_passes_through")
+		h.dedup = make(map[string]time.Time, h.dedupMaxEntries)
+	}
+}
+
+func (h *Hub) dedupSweepLoop() {
+	t := time.NewTicker(h.dedupTTL)
+	defer t.Stop()
+	for {
+		select {
+		case <-h.ctx.Done():
+			return
+		case <-t.C:
+			now := time.Now()
+			h.dedupMu.Lock()
+			for k, ts := range h.dedup {
+				if now.Sub(ts) >= h.dedupTTL {
+					delete(h.dedup, k)
+				}
+			}
+			h.dedupMu.Unlock()
+		}
+	}
+}
+
 func dedupKey(ev *mapper.UIEvent) string {
+	var b strings.Builder
+	b.Grow(len(ev.Pod) + len(ev.Container) + len(ev.Syscall) + len(ev.Process) + len(ev.Cmdline) + 24)
+	b.WriteString(ev.Pod)
+	b.WriteByte('|')
+	b.WriteString(ev.Container)
+	b.WriteByte('|')
+	b.WriteString(ev.Syscall)
+	b.WriteByte('|')
+	b.WriteString(ev.Process)
+	b.WriteByte('|')
 	switch {
 	case ev.Cmdline != "":
-		return ev.Pod + ":" + ev.Syscall + ":" + ev.Process + ":" + ev.Cmdline
+		b.WriteString(ev.Cmdline)
 	case ev.Execpath != "":
-		return ev.Pod + ":" + ev.Syscall + ":" + ev.Process + ":" + ev.Execpath
-	case ev.Process != "":
-		return ev.Pod + ":" + ev.Syscall + ":" + ev.Process
-	case ev.Syscall != "":
-		return ev.Pod + ":" + ev.Syscall
-	default:
-		return ev.Pod
+		b.WriteString(ev.Execpath)
 	}
+	if fp := argsFingerprint(ev.Args); fp != 0 {
+		b.WriteByte('|')
+		b.WriteString(strconv.FormatUint(fp, 16))
+	}
+	return b.String()
+}
+
+func argsFingerprint(args map[string]interface{}) uint64 {
+	if len(args) == 0 {
+		return 0
+	}
+	h := fnv.New64a()
+	fmt.Fprintf(h, "%v", args)
+	return h.Sum64()
 }

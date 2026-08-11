@@ -89,6 +89,7 @@ func main() {
 	srv := server.New(ctx, *addr, client, ls, httpClient)
 
 	al := alerter.New(ctx, srv)
+	srv.SetAlerterStats(al)
 
 	switch role {
 	case "leader":

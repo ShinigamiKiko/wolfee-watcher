@@ -77,8 +77,18 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 		queueFillPct = float64(queueLen) / float64(queueCap) * 100.0
 	}
 	kafkaBufRecs, kafkaBufBytes := s.hub.KafkaProducerBuffered()
+	alertQLen, alertQCap, alertQDropped, alertQLost := s.hub.AlertQueueStats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
+		"hub_filtered":           s.hub.HubFiltered(),
+		"dedup_entries":          s.hub.DedupEntries(),
+		"dedup_flushes":          s.hub.DedupFlushes(),
+		"history_backfilled":     s.hub.Backfilled(),
+		"policy_stale_sec":       s.hub.PolicyStaleSeconds(),
+		"alert_queue_len":        alertQLen,
+		"alert_queue_cap":        alertQCap,
+		"alert_queue_dropped":    alertQDropped,
+		"alert_queue_lost":       alertQLost,
 		"events_total":           s.eventsTotal.Load(),
 		"events_accepted":        s.eventsAccepted.Load(),
 		"events_rejected":        s.eventsRejected.Load(),

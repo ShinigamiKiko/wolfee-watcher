@@ -3,6 +3,8 @@ package matcher
 import (
 	"fmt"
 	"strings"
+
+	"github.com/wolfee-watcher/pkg/policy"
 )
 
 type Rule struct {
@@ -32,10 +34,6 @@ type Event struct {
 	Args      map[string]interface{}
 }
 
-var execSyscalls = map[string]bool{
-	"execve": true, "execveat": true, "sched_process_exec": true,
-}
-
 func Matches(e Event, r Rule) bool {
 	if !r.Enabled {
 		return false
@@ -53,31 +51,20 @@ func Matches(e Event, r Rule) bool {
 		}
 	}
 
-	if r.Namespace != "" {
-		nsMatch := strings.Contains(e.Namespace, r.Namespace)
-		podMatch := strings.Contains(e.Pod, r.Namespace)
-		if !nsMatch && !podMatch {
-			return false
-		}
+	if !policy.NamespaceMatches(e.Namespace, r.Namespace) {
+		return false
+	}
+
+	if !policy.PodMatches(e.Pod, r.PodPattern) {
+		return false
 	}
 
 	if r.ProcessFilter != "" {
-		if !execSyscalls[e.Syscall] {
+		syscallPinned := r.Syscall != "" && r.Syscall != "*"
+		if !syscallPinned && !policy.IsExecSyscall(e.Syscall) {
 			return false
 		}
-		pf := strings.ToLower(r.ProcessFilter)
-		proc := strings.ToLower(e.Process)
-		ep := strings.ToLower(e.Execpath)
-		cmd0 := strings.ToLower(strings.SplitN(e.Cmdline, " ", 2)[0])
-
-		matched := proc == pf ||
-			strings.HasSuffix(proc, "/"+pf) ||
-			ep == "/"+pf ||
-			strings.HasSuffix(ep, "/"+pf) ||
-			cmd0 == pf ||
-			strings.HasSuffix(cmd0, "/"+pf)
-
-		if !matched {
+		if !policy.ProcessMatches(r.ProcessFilter, e.Process, e.Execpath, e.Cmdline) {
 			return false
 		}
 	}

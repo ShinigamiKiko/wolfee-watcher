@@ -55,6 +55,10 @@ func NewWebhookHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func SendWebhook(ctx context.Context, hc *http.Client, kind string, cfg WebhookConfig, alert AlertLog) error {
+	return SendWebhookIdempotent(ctx, hc, kind, cfg, alert, "")
+}
+
+func SendWebhookIdempotent(ctx context.Context, hc *http.Client, kind string, cfg WebhookConfig, alert AlertLog, idempotencyKey string) error {
 	if hc == nil {
 		return fmt.Errorf("webhook: HTTP client is required")
 	}
@@ -74,6 +78,10 @@ func SendWebhook(ctx context.Context, hc *http.Client, kind string, cfg WebhookC
 		return fmt.Errorf("webhook request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+		req.Header.Set("X-Idempotency-Key", idempotencyKey)
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s webhook: %w", kind, err)

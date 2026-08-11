@@ -39,7 +39,6 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 	s.eventsTotal.Add(int64(len(events)))
 
 	enqueued := 0
-	overflowed := 0
 	for _, te := range events {
 		ui := mapper.Map(te)
 		if ui == nil {
@@ -56,25 +55,10 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 		select {
 		case s.eventQueue <- item:
 			enqueued++
-		default:
-			s.enrich(item)
-			s.hub.Broadcast(item.ev)
-			overflowed++
-		}
-	}
-
-	if overflowed > 0 {
-		s.eventsOverflow.Add(int64(overflowed))
-		total := s.eventsOverflow.Load()
-		if total%1000 == 0 || total < 10 {
-			slog.Warn("ingest_queue_full",
-				"component", "tracee-bridge/ingest",
-				"node", nodeName,
-				"overflowed", overflowed,
-				"overflow_total", total,
-				"queue_depth", len(s.eventQueue),
-				"queue_capacity", cap(s.eventQueue),
-				"action", "bypassed_enrichment")
+		case <-r.Context().Done():
+			s.eventsBusy.Add(1)
+			http.Error(w, "ingest busy; retry", http.StatusServiceUnavailable)
+			return
 		}
 	}
 
@@ -84,7 +68,6 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 			"node", nodeName,
 			"events", len(events),
 			"enqueued", enqueued,
-			"overflowed", overflowed,
 			"queue_depth", len(s.eventQueue))
 	}
 	w.WriteHeader(http.StatusOK)

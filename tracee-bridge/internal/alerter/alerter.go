@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,6 +17,8 @@ import (
 )
 
 const ruleRefreshInterval = 30 * time.Second
+
+const ruleStaleWarnAfter = 5 * time.Minute
 
 const dedupTTL = 10 * time.Minute
 
@@ -29,15 +33,22 @@ type Alerter struct {
 	mu    sync.RWMutex
 	rules []matcher.Rule
 
+	syscallMu      sync.RWMutex
+	policySyscalls map[string]bool
+	policyPassAll  bool
+
+	lastRefreshOK atomic.Int64
+
 	dedupMu sync.Mutex
 	dedup   map[string]time.Time
 }
 
 func New(ctx context.Context, pool *pgxpool.Pool) *Alerter {
 	a := &Alerter{
-		pool:  pool,
-		fwd:   alertspkg.NewForwarder(),
-		dedup: make(map[string]time.Time),
+		pool:           pool,
+		fwd:            alertspkg.NewForwarder(),
+		dedup:          make(map[string]time.Time),
+		policySyscalls: make(map[string]bool),
 	}
 
 	a.fwd.OnDeliveryFailed(a.persistBatch)
@@ -52,6 +63,13 @@ func New(ctx context.Context, pool *pgxpool.Pool) *Alerter {
 	go a.refreshLoop(ctx)
 	go a.dedupSweepLoop(ctx)
 	return a
+}
+
+func (a *Alerter) Close() {
+	if a == nil {
+		return
+	}
+	a.fwd.Close()
 }
 
 func (a *Alerter) RuleCount() int {
@@ -198,10 +216,24 @@ func (a *Alerter) refreshLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			if err := a.refresh(ctx); err != nil {
-				log.Printf("[alerter] rule refresh failed: %v", err)
+				a.reportStaleRules(err)
 			}
 		}
 	}
+}
+
+func (a *Alerter) reportStaleRules(err error) {
+	stale := a.StaleFor()
+	if stale < ruleStaleWarnAfter {
+		log.Printf("[alerter] rule refresh failed: %v", err)
+		return
+	}
+	slog.Error("policy_snapshot_stale",
+		"component", "tracee-bridge/alerter",
+		"stale_for", stale.Truncate(time.Second).String(),
+		"rules", a.RuleCount(),
+		"error", err,
+		"impact", "disabled_or_deleted_policies_still_alerting")
 }
 
 func (a *Alerter) refresh(ctx context.Context) error {
@@ -231,14 +263,93 @@ func (a *Alerter) refresh(ctx context.Context) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
+
+	syscalls, passAll, err := a.loadPolicySyscalls(ctx)
+	if err != nil {
+		return err
+	}
+
 	a.mu.Lock()
 	prevCount := len(a.rules)
 	a.rules = fresh
 	a.mu.Unlock()
+
+	a.syscallMu.Lock()
+	prevSyscalls := len(a.policySyscalls)
+	a.policySyscalls = syscalls
+	a.policyPassAll = passAll
+	a.syscallMu.Unlock()
+
+	a.lastRefreshOK.Store(time.Now().UnixNano())
 	if prevCount != len(fresh) {
 		log.Printf("[alerter] rule set changed: %d → %d alertOnly rule(s)", prevCount, len(fresh))
 	}
+	if prevSyscalls != len(syscalls) {
+		log.Printf("[alerter] policy syscall set changed: %d → %d syscall(s), pass_all=%v",
+			prevSyscalls, len(syscalls), passAll)
+	}
 	return nil
+}
+
+func (a *Alerter) loadPolicySyscalls(ctx context.Context) (map[string]bool, bool, error) {
+	loadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := a.pool.Query(loadCtx, `
+		SELECT DISTINCT COALESCE(data->>'syscall', '') FROM runtime_policies
+		WHERE enabled = TRUE
+		  AND (det_type IS NULL OR det_type IN ('', 'Runtime', 'Syscall', 'Binary', 'LSM', 'Tracepoint'))`)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	syscalls := make(map[string]bool)
+	passAll := false
+	for rows.Next() {
+		var sc string
+		if err := rows.Scan(&sc); err != nil {
+			continue
+		}
+		sc = strings.TrimSpace(sc)
+		switch sc {
+		case "":
+			continue
+		case "*":
+			passAll = true
+		default:
+			syscalls[sc] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	return syscalls, passAll, nil
+}
+
+func (a *Alerter) WantsSyscall(syscall string) bool {
+	if a == nil {
+		return false
+	}
+	a.syscallMu.RLock()
+	defer a.syscallMu.RUnlock()
+	return a.policyPassAll || a.policySyscalls[syscall]
+}
+
+func (a *Alerter) QueueStats() (buffered, capacity int, dropped, lost int64) {
+	if a == nil {
+		return 0, 0, 0, 0
+	}
+	return a.fwd.QueueStats()
+}
+
+func (a *Alerter) StaleFor() time.Duration {
+	if a == nil {
+		return 0
+	}
+	last := a.lastRefreshOK.Load()
+	if last == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(0, last))
 }
 
 func (a *Alerter) dedupSweepLoop(ctx context.Context) {

@@ -18,6 +18,18 @@ func envInt(key string, def int) int {
 	return n
 }
 
+func envIntNonNegative(key string, def int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def
+	}
+	return n
+}
+
 func envBool(key string, def bool) bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	if v == "" {

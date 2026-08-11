@@ -19,8 +19,10 @@ import (
 )
 
 const (
-	consumerGroup     = "kvisior-tracee"
-	rulesRefreshEvery = 30 * time.Second
+	consumerGroup        = "kvisior-tracee"
+	rulesRefreshEvery    = 30 * time.Second
+	rulesStaleWarnAfter  = 5 * time.Minute
+	liveMalformedLogName = "live_consumer"
 )
 
 type Consumer struct {
@@ -33,6 +35,13 @@ type Consumer struct {
 	rulesLoaded      atomic.Bool
 	lastSyscallRules atomic.Int64
 	lastTotalRules   atomic.Int64
+	lastRulesOK      atomic.Int64
+
+	dlqTopic     string
+	malformed    atomic.Int64
+	dlqDelivered atomic.Int64
+	dlqFailed    atomic.Int64
+	lastMalfLog  atomic.Int64
 }
 
 func New(brokers []string, topic string, pub hub.Publisher, m *rules.Matcher, st *store.Store) (*Consumer, error) {
@@ -52,7 +61,95 @@ func New(brokers []string, topic string, pub hub.Publisher, m *rules.Matcher, st
 		matcher:   m,
 		store:     st,
 		debugLogs: envBool("KVISIOR_KAFKA_DEBUG_LOGS", false),
+		dlqTopic:  os.Getenv("KAFKA_DLQ_TOPIC"),
 	}, nil
+}
+
+func (c *Consumer) reportMalformed(ctx context.Context, raw []byte, source string) {
+	total := c.malformed.Add(1)
+	c.quarantine(ctx, raw, source)
+
+	now := time.Now()
+	last := c.lastMalfLog.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < time.Minute {
+		return
+	}
+	if !c.lastMalfLog.CompareAndSwap(last, now.UnixNano()) {
+		return
+	}
+	preview := raw
+	if len(preview) > 256 {
+		preview = preview[:256]
+	}
+	slog.Error("malformed_event_skipped",
+		"component", "kvisior/kafka",
+		"source", source,
+		"malformed_total", total,
+		"dlq_topic", c.dlqTopic,
+		"bytes", len(raw),
+		"preview", string(preview))
+}
+
+func (c *Consumer) quarantine(ctx context.Context, raw []byte, source string) {
+	if c.dlqTopic == "" || c.client == nil {
+		return
+	}
+	rec := &kgo.Record{
+		Topic: c.dlqTopic,
+		Value: raw,
+		Headers: []kgo.RecordHeader{
+			{Key: "reason", Value: []byte("malformed_json")},
+			{Key: "source", Value: []byte(source)},
+		},
+	}
+	c.client.Produce(ctx, rec, func(_ *kgo.Record, err error) {
+		if err != nil {
+			c.dlqFailed.Add(1)
+			return
+		}
+		c.dlqDelivered.Add(1)
+	})
+}
+
+var (
+	liveMalformed   atomic.Int64
+	liveMalfLogLast atomic.Int64
+)
+
+func reportLiveMalformed(raw []byte) {
+	total := liveMalformed.Add(1)
+	now := time.Now()
+	last := liveMalfLogLast.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < time.Minute {
+		return
+	}
+	if !liveMalfLogLast.CompareAndSwap(last, now.UnixNano()) {
+		return
+	}
+	preview := raw
+	if len(preview) > 256 {
+		preview = preview[:256]
+	}
+	slog.Error("malformed_event_skipped",
+		"component", "kvisior/kafka-live",
+		"source", liveMalformedLogName,
+		"malformed_total", total,
+		"bytes", len(raw),
+		"preview", string(preview))
+}
+
+func LiveMalformedCount() int64 { return liveMalformed.Load() }
+
+func (c *Consumer) MalformedStats() (malformed, dlqDelivered, dlqFailed int64) {
+	return c.malformed.Load(), c.dlqDelivered.Load(), c.dlqFailed.Load()
+}
+
+func (c *Consumer) RulesStaleFor() time.Duration {
+	last := c.lastRulesOK.Load()
+	if last == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(0, last))
 }
 
 func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ring *binring.Ring, pw *podwatch.Manager, m *rules.Matcher) {
@@ -88,6 +185,7 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 			raw := r.Value
 			var ev map[string]interface{}
 			if json.Unmarshal(raw, &ev) != nil {
+				reportLiveMalformed(raw)
 				return
 			}
 			sc, _ := ev["syscall"].(string)
@@ -185,6 +283,7 @@ type sysViolSSE struct {
 func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 	var ev map[string]interface{}
 	if json.Unmarshal(raw, &ev) != nil {
+		c.reportMalformed(ctx, raw, "policy_consumer")
 		return nil
 	}
 	sc := stringField(ev, "syscall")
@@ -241,6 +340,16 @@ func (c *Consumer) refreshRules(ctx context.Context) {
 	defer cancel()
 	rows, err := c.store.LoadRules(rCtx)
 	if err != nil {
+		stale := c.RulesStaleFor()
+		if stale >= rulesStaleWarnAfter {
+			slog.Error("policy_snapshot_stale",
+				"component", "kvisior/kafka",
+				"stale_for", stale.Truncate(time.Second).String(),
+				"syscall_rules", c.lastSyscallRules.Load(),
+				"error", err,
+				"impact", "disabled_or_deleted_policies_still_enforced")
+			return
+		}
 		slog.Warn("rules_load_failed",
 			"component", "kvisior/kafka",
 			"error", err)
@@ -264,6 +373,7 @@ func (c *Consumer) refreshRules(ctx context.Context) {
 		}
 	}
 	c.matcher.Replace(syscallRules)
+	c.lastRulesOK.Store(time.Now().UnixNano())
 	firstLoad := !c.rulesLoaded.Swap(true)
 	prevSyscall := c.lastSyscallRules.Swap(int64(len(syscallRules)))
 	prevTotal := c.lastTotalRules.Swap(int64(len(rows)))

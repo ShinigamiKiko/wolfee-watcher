@@ -50,7 +50,31 @@ func (h *Hub) DedupSkipped() int64 { return h.cntDedup.Load() }
 func (h *Hub) Received() int64     { return h.cntReceived.Load() }
 func (h *Hub) Passed() int64       { return h.cntPassed.Load() }
 func (h *Hub) HubDropped() int64   { return h.cntDropped.Load() }
+func (h *Hub) HubFiltered() int64  { return h.cntFiltered.Load() }
+func (h *Hub) Backfilled() int64   { return h.cntBackfilled.Load() }
 func (h *Hub) KafkaTopic() string  { return h.kafkaTopic }
+
+func (h *Hub) DedupFlushes() int64 { return h.cntDedupFlush.Load() }
+
+func (h *Hub) DedupEntries() int {
+	h.dedupMu.Lock()
+	defer h.dedupMu.Unlock()
+	return len(h.dedup)
+}
+
+func (h *Hub) PolicyStaleSeconds() float64 {
+	if h.alerter == nil {
+		return 0
+	}
+	return h.alerter.StaleFor().Seconds()
+}
+
+func (h *Hub) AlertQueueStats() (buffered, capacity int, dropped, lost int64) {
+	if h.alerter == nil {
+		return 0, 0, 0, 0
+	}
+	return h.alerter.QueueStats()
+}
 
 func (h *Hub) KafkaProducerBuffered() (records, bytes int64) {
 	if h.producer == nil {

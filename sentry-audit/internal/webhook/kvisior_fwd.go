@@ -55,22 +55,22 @@ func (f *KvisiorForwarder) Close() {
 	f.q.Close()
 }
 
-func (f *KvisiorForwarder) deliverBatch(ctx context.Context, batches [][]json.RawMessage) bool {
+func (f *KvisiorForwarder) deliverBatch(ctx context.Context, batches [][]json.RawMessage) alertspkg.DeliveryResult {
 	events := make([]json.RawMessage, 0, len(batches))
 	for _, b := range batches {
 		events = append(events, b...)
 	}
 	body, err := json.Marshal(map[string]interface{}{"events": events})
 	if err != nil {
-		f.q.LogErrOnce("marshal failed, dropping %d event(s): %v", len(events), err)
-		return true
+		f.q.LogErrOnce("marshal failed for %d event(s): %v", len(events), err)
+		return alertspkg.DeliveryPermanent
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, f.pushURL, bytes.NewReader(body))
 	if err != nil {
-		f.q.LogErrOnce("build request failed, dropping %d event(s): %v", len(events), err)
-		return true
+		f.q.LogErrOnce("build request failed for %d event(s): %v", len(events), err)
+		return alertspkg.DeliveryPermanent
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if f.secret != "" {
@@ -79,15 +79,14 @@ func (f *KvisiorForwarder) deliverBatch(ctx context.Context, batches [][]json.Ra
 	resp, err := f.client.Do(req)
 	if err != nil {
 		f.q.LogErrOnce("push failed: %v", err)
-		return false
+		return alertspkg.DeliveryRetry
 	}
 
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		f.q.LogErrOnce("kvisior responded %d", resp.StatusCode)
-
-		return resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests
+	result := alertspkg.ClassifyHTTPStatus(resp.StatusCode)
+	if result != alertspkg.DeliveryOK {
+		f.q.LogErrOnce("kvisior responded %d (%s)", resp.StatusCode, result)
 	}
-	return true
+	return result
 }
