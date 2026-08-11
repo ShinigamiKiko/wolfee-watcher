@@ -99,11 +99,11 @@ func (f *Forwarder) OnDeliveryFailed(fn func(batch []AlertLog)) {
 	f.q.OnDrop(fn)
 }
 
-func (f *Forwarder) QueueStats() (buffered, capacity int, dropped int64) {
+func (f *Forwarder) QueueStats() (buffered, capacity int, dropped, lost int64) {
 	if f == nil || f.q == nil {
-		return 0, 0, 0
+		return 0, 0, 0, 0
 	}
-	return f.q.Len(), f.q.Cap(), f.q.Dropped()
+	return f.q.Len(), f.q.Cap(), f.q.Dropped(), f.q.Lost()
 }
 
 func (f *Forwarder) Close() {
@@ -113,18 +113,18 @@ func (f *Forwarder) Close() {
 	f.q.Close()
 }
 
-func (f *Forwarder) deliverBatch(ctx context.Context, batch []AlertLog) bool {
+func (f *Forwarder) deliverBatch(ctx context.Context, batch []AlertLog) DeliveryResult {
 	body, err := json.Marshal(map[string]interface{}{"alerts": batch})
 	if err != nil {
-		f.q.LogErrOnce("marshal failed, dropping %d alert(s): %v", len(batch), err)
-		return true
+		f.q.LogErrOnce("marshal failed for %d alert(s): %v", len(batch), err)
+		return DeliveryPermanent
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, f.url, bytes.NewReader(body))
 	if err != nil {
-		f.q.LogErrOnce("build request failed, dropping %d alert(s): %v", len(batch), err)
-		return true
+		f.q.LogErrOnce("build request failed for %d alert(s): %v", len(batch), err)
+		return DeliveryPermanent
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if f.secret != "" {
@@ -133,16 +133,30 @@ func (f *Forwarder) deliverBatch(ctx context.Context, batch []AlertLog) bool {
 	resp, err := f.hc.Do(req)
 	if err != nil {
 		f.q.LogErrOnce("post: %v", err)
-		return false
+		return DeliveryRetry
 	}
 
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		f.q.LogErrOnce("kvisior responded %d", resp.StatusCode)
-		return resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests
+	result := ClassifyHTTPStatus(resp.StatusCode)
+	if result != DeliveryOK {
+		f.q.LogErrOnce("kvisior responded %d (%s)", resp.StatusCode, result)
 	}
-	return true
+	return result
+}
+
+func ClassifyHTTPStatus(status int) DeliveryResult {
+	if status < 400 {
+		return DeliveryOK
+	}
+	switch status {
+	case http.StatusBadRequest,
+		http.StatusRequestEntityTooLarge,
+		http.StatusUnprocessableEntity,
+		http.StatusNotImplemented:
+		return DeliveryPermanent
+	}
+	return DeliveryRetry
 }
 
 func envInt(key string, def int) int {

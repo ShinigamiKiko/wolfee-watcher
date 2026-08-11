@@ -243,12 +243,14 @@ func main() {
 			log.Printf("[kvisior] podwatch load: %v", err)
 		}
 	}
+	var policyConsumer *kafkaconsumer.Consumer
 	if len(brokers) > 0 {
 
 		kc, err := kafkaconsumer.New(brokers, kafkaTopic, uiBus, matcher, st)
 		if err != nil {
 			log.Printf("[kvisior] kafka consumer init: %v — Forensics live feed disabled", err)
 		} else {
+			policyConsumer = kc
 			go kc.Run(ctx)
 
 			go kafkaconsumer.RunLive(ctx, brokers, kafkaTopic, evHub, binRing, podWatchMgr, matcher)
@@ -668,7 +670,16 @@ func main() {
 			w.Write([]byte(`{"status":"degraded","service":"kvisior","reason":"postgres unavailable"}`))
 			return
 		}
-		w.Write([]byte(`{"status":"ok","service":"kvisior"}`))
+		body := map[string]any{"status": "ok", "service": "kvisior"}
+		if policyConsumer != nil {
+			malformed, dlqDelivered, dlqFailed := policyConsumer.MalformedStats()
+			body["malformed_events"] = malformed
+			body["malformed_live_events"] = kafkaconsumer.LiveMalformedCount()
+			body["dlq_delivered"] = dlqDelivered
+			body["dlq_failed"] = dlqFailed
+			body["policy_stale_sec"] = policyConsumer.RulesStaleFor().Seconds()
+		}
+		json.NewEncoder(w).Encode(body)
 	})
 
 	distFS, err := fs.Sub(uiFiles, "dist")

@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -66,6 +68,10 @@ type Server struct {
 
 	eventQueue    chan queueItem
 	ingestWorkers int
+	workerWG      sync.WaitGroup
+	workerQuit    chan struct{}
+	quitOnce      sync.Once
+	traceeSrv     atomic.Pointer[http.Server]
 
 	querySem     chan struct{}
 	queryLimiter *ratelimit.Limiter
@@ -91,6 +97,7 @@ func New(ctx context.Context, h *hub.Hub, addr string) *Server {
 		startTime:     time.Now(),
 		eventQueue:    make(chan queueItem, queueSize),
 		ingestWorkers: workers,
+		workerQuit:    make(chan struct{}),
 		querySem:      make(chan struct{}, queryConc),
 		queryLimiter:  ratelimit.New(max(10, queryPerMin/6), queryPerMin),
 		queryTimeout:  time.Duration(queryTimeoutMS) * time.Millisecond,
@@ -98,6 +105,7 @@ func New(ctx context.Context, h *hub.Hub, addr string) *Server {
 	}
 
 	for i := 0; i < workers; i++ {
+		s.workerWG.Add(1)
 		go s.ingestWorker()
 	}
 
@@ -113,23 +121,75 @@ func New(ctx context.Context, h *hub.Hub, addr string) *Server {
 }
 
 func (s *Server) ingestWorker() {
+	defer s.workerWG.Done()
 	for {
 		select {
-		case <-s.ctx.Done():
-			return
 		case item, ok := <-s.eventQueue:
 			if !ok {
 				return
 			}
-			s.enrich(item)
-			ui := item.ev
-			if ui.Namespace != "" && s.podCache.IsSystemNS(ui.Namespace) {
-				continue
-			}
-			s.hub.Broadcast(ui)
-			s.eventsAccepted.Add(1)
+			s.process(item)
+		case <-s.workerQuit:
+			return
 		}
 	}
+}
+
+func (s *Server) process(item queueItem) {
+	s.enrich(item)
+	ui := item.ev
+	if ui.Namespace != "" && s.podCache.IsSystemNS(ui.Namespace) {
+		return
+	}
+	s.hub.Broadcast(ui)
+	s.eventsAccepted.Add(1)
+}
+
+func (s *Server) Shutdown(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+
+	if srv := s.traceeSrv.Load(); srv != nil {
+		shutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		if err := srv.Shutdown(shutCtx); err != nil {
+			slog.Warn("tracee_listener_shutdown_incomplete",
+				"component", "tracee-bridge/server",
+				"error", err)
+		}
+		cancel()
+	}
+
+	for len(s.eventQueue) > 0 && time.Now().Before(deadline) {
+		time.Sleep(25 * time.Millisecond)
+	}
+	remaining := len(s.eventQueue)
+	s.quitOnce.Do(func() { close(s.workerQuit) })
+	workersDone := make(chan struct{})
+	go func() {
+		s.workerWG.Wait()
+		close(workersDone)
+	}()
+	select {
+	case <-workersDone:
+	case <-time.After(time.Until(deadline)):
+		slog.Error("ingest_workers_drain_incomplete",
+			"component", "tracee-bridge/server",
+			"remaining", remaining,
+			"timeout", timeout.String(),
+			"impact", "in-flight events may not have reached kafka")
+		return
+	}
+
+	if remaining > 0 {
+		slog.Error("ingest_queue_drain_incomplete",
+			"component", "tracee-bridge/server",
+			"remaining", remaining,
+			"timeout", timeout.String(),
+			"impact", "events_lost_before_kafka")
+		return
+	}
+	slog.Info("ingest_queue_drained",
+		"component", "tracee-bridge/server",
+		"accepted_total", s.eventsAccepted.Load())
 }
 
 func (s *Server) enrich(item queueItem) {
@@ -179,21 +239,23 @@ func (s *Server) Run() error {
 	traceMux.HandleFunc("/tracee/event", httputil.CORS(s.handleTracee))
 	traceMux.HandleFunc("/health", httputil.CORS(s.handleHealth))
 
+	traceeSrv := &http.Server{
+		Addr:              ":8080",
+		Handler:           traceMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	s.traceeSrv.Store(traceeSrv)
+
 	go func() {
 		slog.Info("tracee_listener_started",
 			"component", "tracee-bridge/server",
 			"addr", ":8080",
 			"mtls", false)
-		srv := &http.Server{
-			Addr:              ":8080",
-			Handler:           traceMux,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       15 * time.Second,
-			WriteTimeout:      30 * time.Second,
-			IdleTimeout:       60 * time.Second,
-			MaxHeaderBytes:    1 << 20,
-		}
-		if err := srv.ListenAndServe(); err != nil {
+		if err := traceeSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("tracee_listener_failed",
 				"component", "tracee-bridge/server",
 				"addr", ":8080",

@@ -21,6 +21,10 @@ type statsProvider interface {
 	Stats() (processed, anomalies int64)
 }
 
+type deliveryStatsProvider interface {
+	DeliveryStats() (emitFailures, alertsPersisted, alertsLost int64)
+}
+
 type Server struct {
 	addr       string
 	ctx        context.Context

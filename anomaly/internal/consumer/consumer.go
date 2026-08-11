@@ -100,6 +100,10 @@ type Consumer struct {
 	processed atomic.Int64
 	anomalies atomic.Int64
 
+	emitFailures    atomic.Int64
+	alertsPersisted atomic.Int64
+	alertsLost      atomic.Int64
+
 	lastRecordAt  atomic.Int64
 	heartbeatOnce sync.Once
 
@@ -123,7 +127,7 @@ func New(ctx context.Context, brokers []string, topic string, pool *pgxpool.Pool
 		kgo.ConsumeTopics(topic),
 
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-		kgo.AutoCommitInterval(5*time.Second),
+		kgo.DisableAutoCommit(),
 
 		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 			slog.Info("kafka_partitions_assigned",
@@ -159,8 +163,45 @@ func New(ctx context.Context, brokers []string, topic string, pool *pgxpool.Pool
 		debugLogs: envBool("ANOMALY_DEBUG_LOGS", false),
 		ctx:       ctx,
 	}
+	c.fwd.OnDeliveryFailed(c.persistAlertBatch)
 	go c.cleanupMemfd()
 	return c
+}
+
+func (c *Consumer) persistAlertBatch(batch []alertspkg.AlertLog) {
+	if c.pool == nil {
+		slog.Error("alert_fallback_unavailable",
+			"component", "anomaly-detector/consumer",
+			"alerts", len(batch),
+			"reason", "no_database_pool")
+		return
+	}
+	for i := range batch {
+		al := batch[i]
+		ts := al.Timestamp
+		if ts.IsZero() {
+			ts = time.Now()
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		_, err := c.pool.Exec(ctx, `
+			INSERT INTO alerts
+			  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			ts, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
+			al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data)
+		cancel()
+		if err != nil {
+			c.alertsLost.Add(1)
+			slog.Error("alert_fallback_persist_failed",
+				"component", "anomaly-detector/consumer",
+				"rule", al.RuleName,
+				"namespace", al.Namespace,
+				"target", al.Target,
+				"error", err)
+			continue
+		}
+		c.alertsPersisted.Add(1)
+	}
 }
 
 func (c *Consumer) heartbeat(ctx context.Context) {
@@ -231,21 +272,57 @@ func (c *Consumer) Run(ctx context.Context) error {
 			}
 			continue
 		}
+		var processErr error
 		fetches.EachRecord(func(r *kgo.Record) {
+			if processErr != nil {
+				return
+			}
 			c.processed.Add(1)
 			c.lastRecordAt.Store(time.Now().UnixNano())
 			extID := fmt.Sprintf("%d:%d", r.Partition, r.Offset)
-			for _, a := range c.evaluateRaw(ctx, r.Value) {
+			for i, a := range c.evaluateRaw(ctx, r.Value) {
 				if c.isDuplicate(a) {
 					continue
 				}
+				if err := c.emit(ctx, a, fmt.Sprintf("%s:%d", extID, i)); err != nil {
+					c.emitFailures.Add(1)
+					processErr = fmt.Errorf("partition %d offset %d: %w", r.Partition, r.Offset, err)
+					return
+				}
+				c.markEmitted(a)
 				c.anomalies.Add(1)
-				c.emit(ctx, a, extID)
 			}
 		})
+
+		if processErr != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			slog.Error("anomaly_persist_failed",
+				"component", "anomaly-detector/consumer",
+				"action", "leave_offsets_uncommitted",
+				"emit_failures", c.emitFailures.Load(),
+				"error", processErr)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+			continue
+		}
+
+		if err := c.kafka.CommitUncommittedOffsets(ctx); err != nil && ctx.Err() == nil {
+			slog.Warn("offset_commit_failed",
+				"component", "anomaly-detector/consumer",
+				"error", err)
+		}
 	}
 }
 
 func (c *Consumer) Stats() (processed, anomalies int64) {
 	return c.processed.Load(), c.anomalies.Load()
+}
+
+func (c *Consumer) DeliveryStats() (emitFailures, alertsPersisted, alertsLost int64) {
+	return c.emitFailures.Load(), c.alertsPersisted.Load(), c.alertsLost.Load()
 }

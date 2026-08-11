@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -26,6 +27,10 @@ func (h *Hub) sseFanOutLoop() {
 		}
 		fetches.EachRecord(func(r *kgo.Record) {
 			data := r.Value
+			replayed := !r.Timestamp.IsZero() && r.Timestamp.Before(h.startedAt)
+			if replayed {
+				h.cntBackfilled.Add(1)
+			}
 
 			h.mu.Lock()
 			h.memHistory = append(h.memHistory, data)
@@ -36,7 +41,7 @@ func (h *Hub) sseFanOutLoop() {
 			}
 			h.mu.Unlock()
 
-			if h.alerter != nil && h.alerter.RuleCount() > 0 {
+			if !replayed && h.alerter != nil && h.alerter.RuleCount() > 0 {
 				var ev mapper.UIEvent
 				if err := json.Unmarshal(data, &ev); err == nil {
 					h.alerter.Evaluate(&ev)
@@ -161,6 +166,33 @@ func (h *Hub) GetWindowHistory(hours int, limit int64) ([][]byte, bool, error) {
 		return out, true, nil
 	}
 	return out, false, nil
+}
+
+func (h *Hub) RecentEvents(limit int64) ([][]byte, string) {
+	if limit <= 0 || limit > historyReplayCap {
+		limit = historyReplayCap
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	start := 0
+	if int64(len(h.memHistory)) > limit {
+		start = len(h.memHistory) - int(limit)
+	}
+	out := make([][]byte, 0, len(h.memHistory)-start)
+	lastID := "0"
+	for _, raw := range h.memHistory[start:] {
+		if !json.Valid(raw) {
+			continue
+		}
+		out = append(out, raw)
+		var e struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &e); err == nil && e.ID > 0 {
+			lastID = strconv.FormatInt(e.ID, 10)
+		}
+	}
+	return out, lastID
 }
 
 func (h *Hub) getHistory() [][]byte {

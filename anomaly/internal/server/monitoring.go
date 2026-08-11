@@ -29,16 +29,27 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	if reqTotal > 0 {
 		reqAvgMs = float64(s.reqLatency.Load()) / float64(reqTotal) / float64(time.Millisecond)
 	}
+	subscribers, sseDropped, sseEvicted := s.bcast.Stats()
+	var emitFailures, alertsPersisted, alertsLost int64
+	if ds, ok := s.cons.(deliveryStatsProvider); ok {
+		emitFailures, alertsPersisted, alertsLost = ds.DeliveryStats()
+	}
 	json.NewEncoder(w).Encode(map[string]any{
-		"processed":            processed,
-		"anomalies":            anomalies,
-		"baseline_deployments": deps,
-		"baseline_flows":       flows,
-		"baseline_states":      s.base.StateMap(),
-		"http_requests_total":  reqTotal,
-		"http_requests_errors": s.reqErrors.Load(),
-		"http_request_avg_ms":  reqAvgMs,
-		"uptime_sec":           int64(time.Since(s.started).Seconds()),
+		"processed":             processed,
+		"anomalies":             anomalies,
+		"baseline_deployments":  deps,
+		"baseline_flows":        flows,
+		"baseline_states":       s.base.StateMap(),
+		"http_requests_total":   reqTotal,
+		"http_requests_errors":  s.reqErrors.Load(),
+		"http_request_avg_ms":   reqAvgMs,
+		"uptime_sec":            int64(time.Since(s.started).Seconds()),
+		"emit_failures":         emitFailures,
+		"alerts_fallback_saved": alertsPersisted,
+		"alerts_lost":           alertsLost,
+		"sse_subscribers":       subscribers,
+		"sse_dropped":           sseDropped,
+		"sse_evicted":           sseEvicted,
 	})
 }
 

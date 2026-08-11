@@ -2,16 +2,23 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/wolfee-watcher/pkg/env"
 	"github.com/wolfee-watcher/pkg/logging"
 	"github.com/wolfee-watcher/tracee-bridge/internal/hub"
 	"github.com/wolfee-watcher/tracee-bridge/internal/server"
 )
+
+const shutdownTimeout = 15 * time.Second
 
 func main() {
 	logging.Setup("tracee-bridge")
@@ -39,14 +46,26 @@ func main() {
 		"postgres_configured", *pgDSN != "",
 		"kvisior_configured", true)
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	h := hub.New(ctx, strings.Split(*brokers, ","), *topic, *pgDSN)
 	srv := server.New(ctx, h, *addr)
 
-	if err := srv.Run(); err != nil {
+	runErr := srv.Run()
+	stop()
+
+	slog.Info("service_stopping",
+		"component", "tracee-bridge/main",
+		"drain_timeout", shutdownTimeout.String())
+	srv.Shutdown(shutdownTimeout)
+	h.Close(shutdownTimeout)
+
+	if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, http.ErrServerClosed) {
 		slog.Error("service_failed",
 			"component", "tracee-bridge/main",
-			"error", err)
+			"error", runErr)
 		os.Exit(1)
 	}
+	slog.Info("service_stopped", "component", "tracee-bridge/main")
 }

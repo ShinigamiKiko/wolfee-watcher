@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	alertspkg "github.com/wolfee-watcher/pkg/alerts"
@@ -13,6 +15,7 @@ import (
 )
 
 const (
+	ruleStaleWarnAfter  = 5 * time.Minute
 	ruleRefreshInterval = 30 * time.Second
 	evalInterval        = 60 * time.Second
 	dedupTTL            = 10 * time.Minute
@@ -53,6 +56,9 @@ type Alerter struct {
 	mu    sync.RWMutex
 	rules []deployRule
 
+	lastRefreshOK atomic.Int64
+	alertsLost    atomic.Int64
+
 	dedupMu sync.Mutex
 	dedup   map[string]time.Time
 }
@@ -64,6 +70,7 @@ func New(ctx context.Context, snap SnapshotProvider) *Alerter {
 		fwd:     alertspkg.NewForwarder(),
 		dedup:   make(map[string]time.Time),
 	}
+	a.fwd.OnDeliveryFailed(a.reportUndelivered)
 	if a.fetcher == nil || snap == nil {
 		log.Printf("[alerter] KVISIOR_URL not set — alert rules unavailable, alerting disabled")
 		return a
@@ -123,7 +130,7 @@ func (a *Alerter) refreshLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			if err := a.refresh(ctx); err != nil {
-				log.Printf("[alerter] rule refresh failed: %v", err)
+				a.reportStaleRules(err)
 			}
 		}
 	}
@@ -148,10 +155,61 @@ func (a *Alerter) refresh(ctx context.Context) error {
 	prevCount := len(a.rules)
 	a.rules = fresh
 	a.mu.Unlock()
+	a.lastRefreshOK.Store(time.Now().UnixNano())
 	if prevCount != len(fresh) {
 		log.Printf("[alerter] rule set changed: %d → %d alertOnly deploy rule(s)", prevCount, len(fresh))
 	}
 	return nil
+}
+
+func (a *Alerter) StaleFor() time.Duration {
+	if a == nil {
+		return 0
+	}
+	last := a.lastRefreshOK.Load()
+	if last == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(0, last))
+}
+
+func (a *Alerter) reportStaleRules(err error) {
+	stale := a.StaleFor()
+	if stale < ruleStaleWarnAfter {
+		log.Printf("[alerter] rule refresh failed: %v", err)
+		return
+	}
+	slog.Error("policy_snapshot_stale",
+		"component", "sensor/alerter",
+		"stale_for", stale.Truncate(time.Second).String(),
+		"rules", a.RuleCount(),
+		"error", err,
+		"impact", "disabled_or_deleted_policies_still_alerting")
+}
+
+func (a *Alerter) reportUndelivered(batch []alertspkg.AlertLog) {
+	for i := range batch {
+		al := batch[i]
+		a.alertsLost.Add(1)
+		slog.Error("alert_delivery_failed_no_fallback",
+			"component", "sensor/alerter",
+			"rule_id", al.RuleID,
+			"rule", al.RuleName,
+			"severity", al.Severity,
+			"namespace", al.Namespace,
+			"target", al.Target,
+			"detail", al.Detail,
+			"timestamp", al.Timestamp,
+			"lost_total", a.alertsLost.Load())
+	}
+}
+
+func (a *Alerter) Stats() (rules int, staleSec float64, buffered, capacity int, dropped, lost, unrecovered int64) {
+	if a == nil {
+		return 0, 0, 0, 0, 0, 0, 0
+	}
+	buffered, capacity, dropped, lost = a.fwd.QueueStats()
+	return a.RuleCount(), a.StaleFor().Seconds(), buffered, capacity, dropped, lost, a.alertsLost.Load()
 }
 
 func (a *Alerter) dedupSweepLoop(ctx context.Context) {

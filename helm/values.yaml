@@ -286,7 +286,7 @@ tracee:
     repository: aquasec/tracee
     tag: "0.24.1"
     pullPolicy: IfNotPresent
-  perfBufferSize: 8192
+  perfBufferSize: 4096
   memCacheSize: 512
   resources:
     requests:

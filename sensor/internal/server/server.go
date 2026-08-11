@@ -18,6 +18,10 @@ import (
 	"github.com/wolfee-watcher/sensor/internal/logstore"
 )
 
+type AlerterStats interface {
+	Stats() (rules int, staleSec float64, buffered, capacity int, dropped, lost, unrecovered int64)
+}
+
 type Server struct {
 	addr       string
 	ctx        context.Context
@@ -35,6 +39,19 @@ type Server struct {
 	reqLatency atomic.Int64
 	debugLogs  bool
 	started    time.Time
+	alerter    AlerterStats
+}
+
+func (s *Server) SetAlerterStats(a AlerterStats) {
+	s.mu.Lock()
+	s.alerter = a
+	s.mu.Unlock()
+}
+
+func (s *Server) alerterStats() AlerterStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.alerter
 }
 
 func (s *Server) GetSnapshot() *collector.Snapshot {
@@ -137,14 +154,25 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	if total > 0 {
 		avgMs = float64(s.reqLatency.Load()) / float64(total) / float64(time.Millisecond)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	stats := map[string]any{
 		"service":              "sensor",
 		"http_requests_total":  total,
 		"http_requests_errors": s.reqErrors.Load(),
 		"http_request_avg_ms":  avgMs,
 		"uptime":               time.Since(s.started).Round(time.Second).String(),
-	})
+	}
+	if a := s.alerterStats(); a != nil {
+		rules, staleSec, buffered, capacity, dropped, lost, unrecovered := a.Stats()
+		stats["alert_rules"] = rules
+		stats["policy_stale_sec"] = staleSec
+		stats["alert_queue_len"] = buffered
+		stats["alert_queue_cap"] = capacity
+		stats["alert_queue_dropped"] = dropped
+		stats["alert_queue_lost"] = lost
+		stats["alerts_unrecovered"] = unrecovered
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(stats)
 }
 
 type statusRecorder struct {

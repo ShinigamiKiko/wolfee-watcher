@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/wolfee-watcher/pkg/policy"
 )
 
 type Rule struct {
@@ -182,32 +184,20 @@ func matches(ev map[string]interface{}, rule Rule) bool {
 		}
 	}
 
-	if rule.Namespace != "" && !strings.Contains(ns, rule.Namespace) {
+	if !policy.NamespaceMatches(ns, rule.Namespace) {
 		return false
 	}
 
-	if rule.PodPattern != "" && !podGlobMatch(pod, rule.PodPattern) {
+	if !policy.PodMatches(pod, rule.PodPattern) {
 		return false
 	}
 
 	if rule.ProcessFilter != "" {
-		execSyscalls := map[string]bool{
-			"execve": true, "execveat": true, "sched_process_exec": true,
-		}
 		syscallPinned := rule.Syscall != "" && rule.Syscall != "*"
-		if !syscallPinned && !execSyscalls[syscall] {
+		if !syscallPinned && !policy.IsExecSyscall(syscall) {
 			return false
 		}
-		pf := strings.ToLower(rule.ProcessFilter)
-		proc := strings.ToLower(process)
-		ep := strings.ToLower(execpath)
-		cmd0 := strings.ToLower(strings.SplitN(cmdline, " ", 2)[0])
-		if proc != pf &&
-			!strings.HasSuffix(proc, "/"+pf) &&
-			!strings.Contains(ep, "/"+pf) &&
-			ep != pf &&
-			cmd0 != pf &&
-			!strings.HasSuffix(cmd0, "/"+pf) {
+		if !policy.ProcessMatches(rule.ProcessFilter, process, execpath, cmdline) {
 			return false
 		}
 	}
@@ -313,40 +303,6 @@ func valueContains(v interface{}, needle string) bool {
 		}
 	}
 	return false
-}
-
-func podGlobMatch(pod, pattern string) bool {
-	if !strings.Contains(pattern, "*") {
-		return strings.Contains(pod, pattern)
-	}
-	parts := strings.Split(pattern, "*")
-	anchorStart := !strings.HasPrefix(pattern, "*")
-	anchorEnd := !strings.HasSuffix(pattern, "*")
-	s := pod
-	for i, p := range parts {
-		if p == "" {
-			continue
-		}
-		switch {
-		case i == 0 && anchorStart:
-			if !strings.HasPrefix(s, p) {
-				return false
-			}
-			s = s[len(p):]
-		case i == len(parts)-1 && anchorEnd:
-			if !strings.HasSuffix(s, p) {
-				return false
-			}
-			s = s[:len(s)-len(p)]
-		default:
-			idx := strings.Index(s, p)
-			if idx < 0 {
-				return false
-			}
-			s = s[idx+len(p):]
-		}
-	}
-	return true
 }
 
 func splitTrim(s string) []string {

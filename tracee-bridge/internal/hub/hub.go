@@ -16,12 +16,14 @@ import (
 )
 
 const (
-	streamMaxMem     = int64(50_000)
-	historyReplayCap = int64(10_000)
-	chanBuf          = 64
-	dedupTTL         = 5 * time.Minute
-	defaultMaxDrops  = int32(256)
-	pgOpTimeout      = 3 * time.Second
+	streamMaxMem           = int64(50_000)
+	historyReplayCap       = int64(10_000)
+	chanBuf                = 64
+	defaultDedupTTL        = 5 * time.Minute
+	defaultDedupMaxEntries = 100_000
+	defaultMaxDrops        = int32(256)
+	pgOpTimeout            = 3 * time.Second
+	defaultHistoryBackfill = 5_000
 )
 
 var alwaysPass = map[string]bool{
@@ -66,17 +68,34 @@ var alwaysPass = map[string]bool{
 	"security_kernel_read_file": true,
 }
 
+var neverDedup = map[string]bool{
+	"ptrace": true, "process_vm_writev": true,
+	"init_module": true, "finit_module": true, "module_load": true,
+	"bpf": true, "security_bpf": true, "security_bpf_map": true,
+	"memfd_create": true,
+	"pivot_root": true, "unshare": true, "setns": true, "chroot": true,
+	"mount": true, "umount2": true, "security_sb_mount": true,
+	"setuid": true, "setgid": true, "setreuid": true, "setresuid": true, "setresgid": true,
+	"capset":         true,
+	"io_uring_setup": true, "io_uring_register": true,
+	"security_inode_rename": true, "security_inode_unlink": true,
+	"security_inode_mknod": true, "security_inode_symlink": true,
+	"security_kernel_read_file": true,
+}
+
 func isLSMHook(sc string) bool {
 	return strings.HasPrefix(sc, "security_")
 }
 
 type Hub struct {
-	mu          sync.RWMutex
-	clients     map[*client]struct{}
-	memHistory  [][]byte
-	dedupMu     sync.Mutex
-	dedup       map[string]time.Time
-	ctx         context.Context
+	mu              sync.RWMutex
+	clients         map[*client]struct{}
+	memHistory      [][]byte
+	dedupMu         sync.Mutex
+	dedup           map[string]time.Time
+	dedupTTL        time.Duration
+	dedupMaxEntries int
+	ctx             context.Context
 	producer    *kgo.Client
 	sseConsumer *kgo.Client
 	kafkaTopic  string
@@ -85,11 +104,15 @@ type Hub struct {
 	cntReceived    atomic.Int64
 	cntPassed      atomic.Int64
 	cntDropped     atomic.Int64
+	cntFiltered    atomic.Int64
 	cntDedup       atomic.Int64
 	cntSSEDrops    atomic.Int64
 	cntSSEEvict    atomic.Int64
+	cntBackfilled  atomic.Int64
+	cntDedupFlush  atomic.Int64
 	maxClientDrops int32
 	debugLogs      bool
+	startedAt      time.Time
 
 	alerter *alerter.Alerter
 }
@@ -116,18 +139,61 @@ type StreamEvent struct {
 	Data []byte
 }
 
+func (h *Hub) Close(timeout time.Duration) {
+	if h == nil {
+		return
+	}
+	if h.producer != nil {
+		flushCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		if err := h.producer.Flush(flushCtx); err != nil {
+			slog.Error("kafka_flush_incomplete",
+				"component", "tracee-bridge/hub",
+				"timeout", timeout.String(),
+				"error", err,
+				"impact", "buffered_events_lost")
+		} else {
+			slog.Info("kafka_producer_flushed",
+				"component", "tracee-bridge/hub",
+				"produced_total", h.cntPassed.Load())
+		}
+		cancel()
+		h.producer.Close()
+	}
+	if h.sseConsumer != nil {
+		h.sseConsumer.Close()
+	}
+	if h.alerter != nil {
+		h.alerter.Close()
+	}
+	if h.pool != nil {
+		h.pool.Close()
+	}
+}
+
 func New(ctx context.Context, brokers []string, topic string, pgDSN string) *Hub {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	dedupTTL := time.Duration(envIntNonNegative("HUB_DEDUP_TTL_SEC", int(defaultDedupTTL.Seconds()))) * time.Second
 	h := &Hub{
-		clients:        make(map[*client]struct{}),
-		dedup:          make(map[string]time.Time),
-		maxClientDrops: int32(envInt("SSE_CLIENT_MAX_DROPS", int(defaultMaxDrops))),
-		debugLogs:      envBool("TRACEE_BRIDGE_DEBUG_LOGS", false),
-		ctx:            ctx,
-		kafkaTopic:     topic,
+		clients:         make(map[*client]struct{}),
+		dedup:           make(map[string]time.Time),
+		dedupTTL:        dedupTTL,
+		dedupMaxEntries: envInt("HUB_DEDUP_MAX_ENTRIES", defaultDedupMaxEntries),
+		maxClientDrops:  int32(envInt("SSE_CLIENT_MAX_DROPS", int(defaultMaxDrops))),
+		debugLogs:       envBool("TRACEE_BRIDGE_DEBUG_LOGS", false),
+		ctx:             ctx,
+		kafkaTopic:      topic,
+		startedAt:       time.Now(),
 	}
+	if dedupTTL > 0 {
+		go h.dedupSweepLoop()
+	}
+	slog.Info("dedup_configured",
+		"component", "tracee-bridge/hub",
+		"ttl", dedupTTL.String(),
+		"max_entries", h.dedupMaxEntries,
+		"exempt_syscalls", len(neverDedup))
 
 	producer, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
@@ -164,15 +230,24 @@ func New(ctx context.Context, brokers []string, topic string, pgDSN string) *Hub
 		}
 	}()
 
+	backfill := envIntNonNegative("SSE_HISTORY_BACKFILL", defaultHistoryBackfill)
+	startOffset := kgo.NewOffset().AtEnd()
+	if backfill > 0 {
+		startOffset = startOffset.Relative(int64(-backfill))
+	}
 	sseConsumer, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumeTopics(topic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
+		kgo.ConsumeResetOffset(startOffset),
 	)
 	if err != nil {
 		log.Fatalf("[hub] kafka sse consumer init: %v", err)
 	}
 	h.sseConsumer = sseConsumer
+	slog.Info("sse_history_source_configured",
+		"component", "tracee-bridge/hub",
+		"backfill_per_partition", backfill,
+		"history_cap", streamMaxMem)
 	go h.sseFanOutLoop()
 	go h.logFunnelLoop()
 
