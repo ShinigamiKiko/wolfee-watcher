@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { podName, podNS, podContainers } from '../../utils/format';
+import { usePerms } from '../../context/PermissionsContext';
 import { TimelineBars }   from './TimelineBars';
 import { EventRow }       from './EventRow';
 import { BinaryFilter }   from './BinaryFilter';
@@ -27,7 +28,7 @@ const WATCHABLE_EVENT_NAMES = new Set([
   ...TP_NAME_SET,
 ]);
 
-const MAX_PULLED_EVENTS = 20_000;
+const MAX_PULLED_EVENTS = 99_999;
 const MAX_CATCHUP_PAGES = 5;
 
 const LIVE_ONLY_HINT = 'Недоступно: под удалён из кластера';
@@ -43,7 +44,7 @@ const FNS_COLUMNS = [
   { key: 'podIP',     label: 'Pod IP' },
 ];
 
-export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev, onBack }) {
+export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev, onEventsCleared, onBack }) {
   const [windowH,         setWindowH]         = useState(24);
   const [filterSev,       setFilterSev]       = useState(new Set());
   const [filterBins,      setFilterBins]      = useState(new Set());
@@ -69,6 +70,9 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const seenRowIdsRef    = useRef(new Set());
   const [watchNoStore,    setWatchNoStore]    = useState(false);
   const [watchLoaded,     setWatchLoaded]     = useState(false);
+  const [clearLoading,    setClearLoading]    = useState(false);
+  const [clearError,      setClearError]      = useState(null);
+  const { isAdmin } = usePerms() || {};
 
   const logsWrapRef = useRef(null);
 
@@ -255,6 +259,28 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     finally { setUpperLoading(false); }
   };
 
+  const clearEvents = async () => {
+    if (!window.confirm(`Clear all runtime and anomaly events for pod "${pNS}/${pName}"?\n\nFS Diff will not be deleted.`)) return;
+    setClearLoading(true);
+    setClearError(null);
+    try {
+      const res = await fetch(`/v1/forensic-events/clear?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, {
+        method: 'POST', credentials: 'same-origin',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setPulledEvents([]);
+      setWatchEvents([]);
+      eventCursorRef.current = 0;
+      seenRowIdsRef.current = new Set();
+      onEventsCleared?.(pName, pNS);
+    } catch (err) {
+      setClearError(err.message || 'Failed to clear events');
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
   const podEvents = useMemo(() => {
     const windowMs = windowH * 60 * 60 * 1000;
     const now = Date.now();
@@ -438,6 +464,10 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           )}
         </div>
         <div className="fns-pod-hdr-right">
+          {isAdmin && <button className="fns-btn" disabled={clearLoading}
+            style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={clearEvents}>
+            {clearLoading ? '⏳ Clearing…' : 'Clear all'}
+          </button>}
           <div className="fns-snap-wrap" ref={logsWrapRef}>
             <button className="fns-btn" disabled={logsLoading}
               onClick={() => { setLogsOpen(o => !o); setLogsError(null); }}>
@@ -455,6 +485,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
               </div>
             )}
           </div>
+          {clearError && <div className="fns-snap-error">{clearError}</div>}
           {!gone && (
             <button className="fns-btn fns-btn--upper" disabled={upperLoading} onClick={doUpperDir}>
               {upperLoading ? '⏳…' : '↓ Upper Dir'}
