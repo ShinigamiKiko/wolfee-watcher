@@ -279,9 +279,9 @@ type ForensicEventPage struct {
 }
 
 const (
-	initialPageLimit    = 5000
+	initialPageLimit    = 99999
 	incrementalPageSize = 500
-	maxPageLimit        = 10000
+	maxPageLimit        = 99999
 )
 
 func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
@@ -410,23 +410,40 @@ func WatchedSyscalls(selected PodWatchSelection) []string {
 	return append(out, selected.Tracepoints...)
 }
 
-func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSummary, error) {
-	watches, err := s.ListPodWatches(ctx)
-	if err != nil {
-		return nil, err
-	}
-	visible := func(item BinaryEventSummary) bool {
-		if isAlwaysWatched(item.Syscall) {
-			return true
-		}
-		for _, sc := range watches[item.Namespace+"/"+item.Pod].Syscalls {
-			if sc == item.Syscall {
-				return true
-			}
-		}
-		return false
-	}
+type PodEventDeleteResult struct {
+	Runtime int64
+	Anomaly int64
+}
 
+func (s *Store) DeletePodEvents(ctx context.Context, ns, pod string) (PodEventDeleteResult, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return PodEventDeleteResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	result := PodEventDeleteResult{}
+	tag, err := tx.Exec(ctx, `DELETE FROM binary_exec_events WHERE ns = $1 AND pod = $2`, ns, pod)
+	if err != nil {
+		return PodEventDeleteResult{}, err
+	}
+	result.Runtime = tag.RowsAffected()
+
+	tag, err = tx.Exec(ctx, `
+		DELETE FROM anomaly_events
+		WHERE data->>'src_namespace' = $1 AND data->>'src_pod' = $2`, ns, pod)
+	if err != nil {
+		return PodEventDeleteResult{}, err
+	}
+	result.Anomaly = tag.RowsAffected()
+
+	if err := tx.Commit(ctx); err != nil {
+		return PodEventDeleteResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSummary, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT
 			ns,
@@ -452,9 +469,6 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 		var item BinaryEventSummary
 		if err := rows.Scan(&item.Namespace, &item.Pod, &item.PodUID, &item.PodIP, &item.ContainerID, &item.Syscall, &item.Binary, &item.Count, &item.LastTS); err != nil {
 			return nil, err
-		}
-		if !visible(item) {
-			continue
 		}
 		out = append(out, item)
 	}

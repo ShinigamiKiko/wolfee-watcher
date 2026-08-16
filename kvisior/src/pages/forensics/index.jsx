@@ -41,7 +41,7 @@ export function Forensics() {
   }, []);
 
   useEffect(() => {
-    const load = () => fetch('/anomaly/api/anomalies?limit=1000', { credentials: 'same-origin' })
+    const load = () => fetch('/anomaly/api/anomalies?limit=99999', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.events) setAnomalies(d.events); })
       .catch(() => {});
@@ -104,7 +104,10 @@ export function Forensics() {
 
        {view === 'ns'     && <NsList namespaces={namespaces} pods={pods} eventSummary={eventSummary} anomalyEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openNS} onSeverityOpen={() => setSevModalOpen(true)} />}
        {view === 'pods'   && <PodList ns={activeNS} pods={pods} eventSummary={eventSummary} anomalyEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onSelect={openPod} />}
-      {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onBack={() => goBack('pods')} />}
+       {view === 'detail' && activePod && <PodDetail pod={activePod} ns={activeNS} allEvents={anomalyEvents} activeWatches={activeWatches} getSev={getSev} onEventsCleared={(name, namespace) => {
+         setAnomalies(prev => prev.filter(a => !(a.src_pod === name && a.src_namespace === namespace)));
+         setEventSummary(prev => prev.filter(e => !(e.pod === name && e.namespace === namespace)));
+       }} onBack={() => goBack('pods')} />}
 
       {sevModalOpen && <SeverityModal config={config} onSave={save} onClose={() => setSevModalOpen(false)} />}
     </div>

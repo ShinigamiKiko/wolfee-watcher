@@ -33,7 +33,7 @@ func parseAnomalyQuery(r *http.Request) (int64, int64) {
 	sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	limit := int64(200)
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, _ := strconv.ParseInt(l, 10, 64); n > 0 && n <= 1000 {
+		if n, _ := strconv.ParseInt(l, 10, 64); n > 0 && n <= 99999 {
 			limit = n
 		}
 	}

@@ -359,6 +359,32 @@ func main() {
 			_ = json.NewEncoder(w).Encode(map[string]any{"events": summary})
 		})))
 
+		mux.Handle("/v1/forensic-events/clear", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			ns, pod := r.URL.Query().Get("ns"), r.URL.Query().Get("pod")
+			if ns == "" || pod == "" {
+				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
+				return
+			}
+			deleted, err := st.DeletePodEvents(r.Context(), ns, pod)
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			summaryCache.mu.Lock()
+			summaryCache.events = nil
+			summaryCache.expires = time.Time{}
+			summaryCache.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"runtime_deleted": deleted.Runtime,
+				"anomaly_deleted": deleted.Anomaly,
+			})
+		}))))
+
 		mux.Handle("/v1/forensic-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
