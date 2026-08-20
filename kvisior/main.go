@@ -397,10 +397,15 @@ func main() {
 				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 				return
 			}
-			selected, _ := podWatchMgr.GetWatch(r.Context(), ns, pod)
+			selected, err := podWatchMgr.GetWatch(r.Context(), ns, pod)
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
 			page, err := st.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
-				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID, Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
+				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID,
+				Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
 			})
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 )
@@ -50,7 +49,7 @@ func (ins *Inspector) exchangeBearerToken(ctx context.Context, challenge, repo s
 		return "", fmt.Errorf("no realm in WWW-Authenticate")
 	}
 
-	tokenURL, err := url.Parse(realm)
+	tokenURL, err := validateTokenRealm(realm)
 	if err != nil {
 		return "", err
 	}

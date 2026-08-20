@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"time"
@@ -18,13 +20,11 @@ const (
 	renewBefore1h  = 1 * time.Hour
 )
 
-var certHTTPClient = &http.Client{Timeout: 30 * time.Second}
-
 func certServerAddr() string {
 	if v := os.Getenv("CERT_SERVER_ADDR"); v != "" {
 		return v
 	}
-	return "http://cert-server.wolfee-watcher.svc.cluster.local:8090"
+	return "https://cert-server.wolfee-watcher.svc.cluster.local:8090"
 }
 
 func saToken() (string, error) {
@@ -56,12 +56,32 @@ func fetchCert(ctx context.Context, svc ServiceType) (*issuedCert, error) {
 		return nil, fmt.Errorf("certwatch: marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, certServerAddr()+"/issue", bytes.NewReader(body))
+	addr := certServerAddr()
+	parsed, err := url.Parse(addr)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return nil, fmt.Errorf("certwatch: cert-server address must be HTTPS")
+	}
+	caPEM, err := os.ReadFile(os.Getenv(EnvCAFile))
+	if err != nil {
+		return nil, fmt.Errorf("certwatch: read CA for cert-server: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("certwatch: parse CA for cert-server")
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs:    pool,
+			MinVersion: tls.VersionTLS13,
+		}},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr+"/issue", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("certwatch: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := certHTTPClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("certwatch: POST /issue: %w", err)
 	}

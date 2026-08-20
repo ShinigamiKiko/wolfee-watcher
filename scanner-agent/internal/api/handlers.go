@@ -12,6 +12,12 @@ import (
 	internal "github.com/wolfee-watcher/scanner-agent/internal"
 )
 
+const (
+	maxScanBodyBytes = 1 << 20
+	maxScanRefs      = 1000
+	maxImageRefBytes = 2048
+)
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	n := len(s.results)
@@ -87,6 +93,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxScanBodyBytes)
 	var body struct {
 		Images []string `json:"images"`
 	}
@@ -114,6 +121,16 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			"message":  "No running images found in cluster. Are pods running?",
 		})
 		return
+	}
+	if len(refs) > maxScanRefs {
+		http.Error(w, `{"error":"too many images"}`, http.StatusRequestEntityTooLarge)
+		return
+	}
+	for _, ref := range refs {
+		if len(ref) > maxImageRefBytes {
+			http.Error(w, `{"error":"image reference is too long"}`, http.StatusRequestEntityTooLarge)
+			return
+		}
 	}
 
 	queued := s.enqueueScan(refs)

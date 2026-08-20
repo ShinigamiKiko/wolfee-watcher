@@ -12,4 +12,5 @@ const (
 	HoneyOperator   ServiceType = "honey-operator"
 	Kvisior         ServiceType = "kvisior"
 	ForensicWatcher ServiceType = "forensic-watcher"
+	CertServer      ServiceType = "cert-server"
 )

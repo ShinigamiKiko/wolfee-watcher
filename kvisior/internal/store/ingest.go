@@ -327,9 +327,12 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 		SELECT id, data
 		FROM binary_exec_events
 		WHERE ns = $1
-		  AND pod = $2
-		  AND syscall = ANY($3::text[])`
-	args := []interface{}{q.Namespace, q.Pod, q.Syscalls}
+		  AND pod = $2`
+	args := []interface{}{q.Namespace, q.Pod}
+	if len(q.Syscalls) > 0 {
+		args = append(args, q.Syscalls)
+		query += fmt.Sprintf(" AND syscall = ANY($%d::text[])", len(args))
+	}
 	if q.PodUID != "" {
 		args = append(args, q.PodUID)
 		query += fmt.Sprintf(" AND (pod_uid = $%d", len(args))
@@ -453,7 +456,7 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 			COALESCE(NULLIF(container, ''), NULLIF(data->>'containerId', '')) AS container_id,
 			COALESCE(syscall, '') AS sc,
 			COALESCE(NULLIF("binary", ''), NULLIF(process, ''), COALESCE(syscall, '')) AS bin,
-			COUNT(DISTINCT (floor(extract(epoch FROM ts) / 300)::bigint, cmdline)),
+			COUNT(*),
 			MAX(ts)
 		FROM binary_exec_events
 		WHERE ts > NOW() - INTERVAL '24 hours'

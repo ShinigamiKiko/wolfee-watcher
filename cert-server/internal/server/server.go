@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -91,6 +92,14 @@ func (s *Server) Run() error {
 	})
 
 	mux.HandleFunc("/issue", s.handleIssue)
+	certPEM, keyPEM, err := s.iss.Issue(mtls.CertServer)
+	if err != nil {
+		return fmt.Errorf("issue cert-server TLS certificate: %w", err)
+	}
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("load cert-server TLS certificate: %w", err)
+	}
 
 	log.Printf("[cert-server] listening on %s", s.addr)
 	srv := &http.Server{
@@ -100,8 +109,12 @@ func (s *Server) Run() error {
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		},
 	}
-	return srv.ListenAndServe()
+	return srv.ListenAndServeTLS("", "")
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {

@@ -9,9 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wolfee-watcher/sensor/internal/logstore"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const maxPodLogBytes = 4 << 20
 
 func (s *Server) handlePodLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -56,22 +59,31 @@ func (s *Server) tryServeLogsFromStore(w http.ResponseWriter, r *http.Request, n
 		return false
 	}
 	rawLines := make([]string, 0, len(lines))
+	limitedLines := make([]logstore.LogLine, 0, len(lines))
+	var totalBytes int
 	for _, l := range lines {
 		if l.Log == "" {
 			continue
 		}
+		text := l.Log
 		if l.Timestamp != "" {
-			rawLines = append(rawLines, l.Timestamp+" "+l.Log)
-		} else {
-			rawLines = append(rawLines, l.Log)
+			text = l.Timestamp + " " + text
 		}
+		if totalBytes+len(text)+1 > maxPodLogBytes {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			json.NewEncoder(w).Encode(map[string]any{"error": "pod logs exceed size limit"})
+			return true
+		}
+		totalBytes += len(text) + 1
+		rawLines = append(rawLines, text)
+		limitedLines = append(limitedLines, l)
 	}
 	json.NewEncoder(w).Encode(map[string]any{
 		"namespace": ns,
 		"pod":       name,
 		"container": container,
 		"source":    "postgres",
-		"lines":     lines,
+		"lines":     limitedLines,
 		"logs":      strings.Join(rawLines, "\n"),
 		"fetchedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -91,10 +103,15 @@ func (s *Server) serveLogsFromKubelet(w http.ResponseWriter, r *http.Request, ns
 		return
 	}
 	defer stream.Close()
-	raw, err := io.ReadAll(stream)
+	raw, err := io.ReadAll(io.LimitReader(stream, maxPodLogBytes+1))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		return
+	}
+	if len(raw) > maxPodLogBytes {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		json.NewEncoder(w).Encode(map[string]any{"error": "pod logs exceed size limit"})
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]any{
