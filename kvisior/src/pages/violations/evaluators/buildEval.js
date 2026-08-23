@@ -2,6 +2,7 @@ import { AUDIT_CHECKS } from '../../policy/constants';
 import { fpKey } from '../violationsConstants';
 
 const push = (arr, v) => { v._fp = fpKey(v, 'Build'); arr.push(v); };
+const MAX_PATTERN_LENGTH = 256;
 
 export function evalBuildViolations(buildPolicies, clusterImages, histories) {
   const histByRef = {};
@@ -46,6 +47,7 @@ export function evalBuildViolations(buildPolicies, clusterImages, histories) {
     if (!policy.buildInstruction?.trim()) continue;
 
     const pattern = policy.buildInstruction.trim();
+    if (pattern.length > MAX_PATTERN_LENGTH) continue;
 
     for (const img of images) {
       const ref  = img.ref || img.image || img.name || '';
@@ -69,14 +71,9 @@ export function evalBuildViolations(buildPolicies, clusterImages, histories) {
         continue;
       }
 
-      let regex;
-      try {
-        regex = new RegExp(pattern, 'i');
-      } catch {
-        regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      }
-
-      const matchedLayer = (hist.layers || []).find(l => regex.test(l.created_by || ''));
+      const normalizedPattern = pattern.toLowerCase();
+      const matchedLayer = (hist.layers || []).find(l =>
+        (l.created_by || '').toLowerCase().includes(normalizedPattern));
 
       if (matchedLayer) {
         const displayInstr = matchedLayer.created_by

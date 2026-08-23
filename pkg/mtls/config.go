@@ -62,12 +62,32 @@ func NewSecureClientFromHolder(h *CertHolder) (*http.Client, error) {
 	}
 	tlsCfg := &tls.Config{
 		GetClientCertificate: h.GetClientCertificate,
-		RootCAs:              pool,
+		InsecureSkipVerify:   true, // #nosec G402 -- verified explicitly in VerifyConnection
 		MinVersion:           tls.VersionTLS13,
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			return verifyPeer(cs, pool, cs.ServerName)
+		},
 	}
 	return &http.Client{
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 	}, nil
+}
+
+func verifyPeer(cs tls.ConnectionState, pool *x509.CertPool, serverName string) error {
+	if len(cs.PeerCertificates) == 0 {
+		return fmt.Errorf("mtls: peer presented no certificate")
+	}
+	opts := x509.VerifyOptions{
+		Roots:         pool,
+		DNSName:       serverName,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		Intermediates: x509.NewCertPool(),
+	}
+	for _, cert := range cs.PeerCertificates[1:] {
+		opts.Intermediates.AddCert(cert)
+	}
+	_, err := cs.PeerCertificates[0].Verify(opts)
+	return err
 }
 
 func NewForensicClient(h *CertHolder) (*http.Client, error) {

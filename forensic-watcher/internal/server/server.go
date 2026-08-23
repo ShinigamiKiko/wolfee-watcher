@@ -137,6 +137,12 @@ func (s *Server) Run(ctx context.Context) error {
 			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 			return
 		}
+		select {
+		case tarSlots <- struct{}{}:
+			defer func() { <-tarSlots }()
+		case <-r.Context().Done():
+			return
+		}
 		log.Printf("[forensic] TAR streaming upperDir=%s", upperDir)
 
 		filename := fmt.Sprintf("fs-diff-%s-%s-%d.tar.gz", ns, pod, time.Now().Unix())
@@ -225,10 +231,16 @@ var skipDirs = []string{
 }
 
 const maxTarFileBytes = 128 << 20
+const maxTarTotalBytes = 512 << 20
+const maxTarEntries = 10000
+
+var tarSlots = make(chan struct{}, 2)
 
 func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
+	var totalBytes int64
+	var entryCount int
 	walkErr := filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -237,6 +249,10 @@ func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+		entryCount++
+		if entryCount > maxTarEntries {
+			return fmt.Errorf("tar entry limit exceeded")
 		}
 
 		rel := strings.TrimPrefix(path, upperDir)
@@ -274,7 +290,6 @@ func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-
 		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 		if err != nil {
 			return nil
@@ -290,6 +305,9 @@ func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 			log.Printf("[streamTar] skip oversized %s (> %d bytes)", rel, maxTarFileBytes)
 			return nil
 		}
+		if totalBytes+int64(len(data)) > maxTarTotalBytes {
+			return fmt.Errorf("tar total size limit exceeded")
+		}
 
 		hdr := &tar.Header{
 			Name:    rel,
@@ -301,6 +319,7 @@ func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 			return err
 		}
 		_, err = tw.Write(data)
+		totalBytes += int64(len(data))
 		return err
 	})
 

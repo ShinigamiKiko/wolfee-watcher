@@ -10,4 +10,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bridge ./cmd/bridge
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /bridge /bridge
+USER 65534:65534
 ENTRYPOINT ["/bridge"]

@@ -42,7 +42,7 @@ export function BuildPolicyForm({ name, sev, onSave, onClose, initial }) {
           style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }}
           autoFocus />
         <div className="cpol-hint">
-          Regex supported. Examples: <code>curl</code> · <code>apt-get install</code> · <code>wget|curl</code> · <code>USER root</code>
+           Text matching is case-insensitive. Examples: <code>curl</code> · <code>apt-get install</code> · <code>USER root</code>
         </div>
       </div>
 

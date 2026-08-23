@@ -13,4 +13,5 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /sensor /sensor
 RUN chmod +x /sensor
+USER 65534:65534
 ENTRYPOINT ["/sensor"]

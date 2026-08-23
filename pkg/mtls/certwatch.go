@@ -72,8 +72,27 @@ func fetchCert(ctx context.Context, svc ServiceType) (*issuedCert, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
-			RootCAs:    pool,
-			MinVersion: tls.VersionTLS13,
+			// VerifyConnection performs the complete CA, hostname, and usage
+			// validation below while allowing the service-issued certificate to
+			// rotate without relying on the default verifier's state.
+			InsecureSkipVerify: true, // #nosec G402 -- verified explicitly below
+			MinVersion:         tls.VersionTLS13,
+			VerifyConnection: func(cs tls.ConnectionState) error {
+				if len(cs.PeerCertificates) == 0 {
+					return fmt.Errorf("certwatch: cert-server presented no certificate")
+				}
+				opts := x509.VerifyOptions{
+					Roots:         pool,
+					DNSName:       parsed.Hostname(),
+					KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+					Intermediates: x509.NewCertPool(),
+				}
+				for _, cert := range cs.PeerCertificates[1:] {
+					opts.Intermediates.AddCert(cert)
+				}
+				_, err := cs.PeerCertificates[0].Verify(opts)
+				return err
+			},
 		}},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr+"/issue", bytes.NewReader(body))

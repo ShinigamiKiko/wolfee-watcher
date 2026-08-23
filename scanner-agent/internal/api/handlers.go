@@ -254,7 +254,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	for _, res := range s.results {
 		b, _ := json.Marshal(internal.ScanEvent{Type: "result", Image: res.Image, Result: res})
-		fmt.Fprintf(w, "data: %s\n\n", b)
+		if _, err := io.WriteString(w, "data: "+string(b)+"\n\n"); err != nil {
+			return
+		}
 	}
 	s.mu.RUnlock()
 	if f, ok := w.(http.Flusher); ok {
@@ -268,7 +270,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			b, _ := json.Marshal(ev)
-			fmt.Fprintf(w, "data: %s\n\n", b)
+			if _, err := io.WriteString(w, "data: "+string(b)+"\n\n"); err != nil {
+				return
+			}
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
 			}

@@ -22,10 +22,9 @@ export function VulnImagesTab({
       {!imageDrill ? (() => {
         const filtered = imageRows.filter(r => {
           if (!q) return true;
-          try {
-            const re = new RegExp(q, 'i');
-            return re.test(r.image || '') || re.test(r.name || '') || re.test(r.ref || '') || re.test(r.tag || '');
-          } catch { return (r.image||r.name||'').toLowerCase().includes(q); }
+          const query = q.toLowerCase();
+          return [r.image, r.name, r.ref, r.tag].some(value =>
+            String(value || '').toLowerCase().includes(query));
         });
         return (
           <>

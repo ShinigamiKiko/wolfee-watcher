@@ -6,30 +6,24 @@ const fmtLayer = (raw = '') => raw
   .replace(/^\/bin\/sh -c\s+/, 'RUN ')
   .trim() || raw;
 
-function buildRegex(pattern) {
-  try {
-    return new RegExp(`(${pattern})`, 'gi');
-  } catch {
-    return new RegExp(`(${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-  }
-}
-
-function highlight(text, matchRe) {
-  if (!matchRe) return <span>{text}</span>;
-  matchRe.lastIndex = 0;
+function highlight(text, query) {
+  if (!query) return <span>{text}</span>;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
   const parts = [];
-  let last = 0, m;
-  while ((m = matchRe.exec(text)) !== null) {
-    if (m.index > last) parts.push(<span key={last}>{text.slice(last, m.index)}</span>);
+  let offset = 0;
+  let index;
+
+  while ((index = lowerText.indexOf(lowerQuery, offset)) !== -1) {
+    if (index > offset) parts.push(<span key={offset}>{text.slice(offset, index)}</span>);
     parts.push(
-      <mark key={m.index} style={{ background: 'rgba(245,158,11,.35)', color: 'var(--warning)', borderRadius: 3, padding: '0 2px', fontWeight: 700 }}>
-        {m[0]}
+      <mark key={index} style={{ background: 'rgba(245,158,11,.35)', color: 'var(--warning)', borderRadius: 3, padding: '0 2px', fontWeight: 700 }}>
+        {text.slice(index, index + query.length)}
       </mark>
     );
-    last = m.index + m[0].length;
-    if (m[0].length === 0) { matchRe.lastIndex++; break; }
+    offset = index + query.length;
   }
-  if (last < text.length) parts.push(<span key={last}>{text.slice(last)}</span>);
+  if (offset < text.length) parts.push(<span key={offset}>{text.slice(offset)}</span>);
   return parts.length ? parts : <span>{text}</span>;
 }
 
@@ -38,7 +32,7 @@ export function BuildDetail({ v, onClose }) {
 
   const { histories } = useScanner();
   const hist    = histories.find(h => h.image === v.image);
-  const matchRe = v.instruction ? buildRegex(v.instruction) : null;
+  const matchText = v.instruction?.trim().slice(0, 256) || '';
   const layers  = hist?.layers || [];
 
   return (
@@ -75,14 +69,14 @@ export function BuildDetail({ v, onClose }) {
               const instruction = fmtLayer(l.created_by);
               if (!instruction || instruction === 'nop') return null;
               const isEmpty = l.empty_layer;
-              const isMatch = !isEmpty && matchRe && (() => { matchRe.lastIndex = 0; return matchRe.test(l.created_by || ''); })();
+              const isMatch = !isEmpty && matchText && instruction.toLowerCase().includes(matchText.toLowerCase());
               return (
                 <div key={i} style={{ display: 'flex', borderLeft: isMatch ? '2px solid var(--warning)' : '2px solid transparent', padding: '0 10px 0 8px', opacity: isEmpty ? 0.45 : 1 }}>
                   <span style={{ color: 'var(--text-muted)', userSelect: 'none', marginRight: 14, minWidth: 22, textAlign: 'right', flexShrink: 0, opacity: .4, fontSize: 10 }}>
                     {i + 1}
                   </span>
                   <span style={{ color: isEmpty ? 'var(--text-muted)' : 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 }}>
-                    {isMatch ? highlight(instruction, matchRe) : instruction}
+                    {isMatch ? highlight(instruction, matchText) : instruction}
                   </span>
                 </div>
               );

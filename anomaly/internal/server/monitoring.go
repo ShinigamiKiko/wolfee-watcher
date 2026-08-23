@@ -2,7 +2,7 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -111,7 +111,9 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	ch := s.bcast.Subscribe()
 	defer s.bcast.Unsubscribe(ch)
-	fmt.Fprintf(w, ": connected\n\n")
+	if _, err := io.WriteString(w, ": connected\n\n"); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	ticker := time.NewTicker(15 * time.Second)
@@ -124,10 +126,14 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			if _, err := io.WriteString(w, "data: "+string(data)+"\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-ticker.C:
-			fmt.Fprintf(w, ": heartbeat\n\n")
+			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}

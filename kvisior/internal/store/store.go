@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -408,7 +409,12 @@ func (s *Store) SweepOldAuditRuns(ctx context.Context) (int64, error) {
 	return tag.RowsAffected(), nil
 }
 
+const MaxAuditRunsLimit = 500
+
 func (s *Store) ListAuditRuns(ctx context.Context, tool string, limit int) ([]json.RawMessage, error) {
+	if limit <= 0 || limit > MaxAuditRunsLimit {
+		limit = MaxAuditRunsLimit
+	}
 	q := `SELECT data FROM audit_runs`
 	args := []interface{}{}
 	if tool != "" {
@@ -416,10 +422,8 @@ func (s *Store) ListAuditRuns(ctx context.Context, tool string, limit int) ([]js
 		args = append(args, tool)
 	}
 	q += ` ORDER BY created_at DESC`
-	if limit > 0 {
-		args = append(args, limit)
-		q += fmt.Sprintf(` LIMIT $%d`, len(args))
-	}
+	args = append(args, limit)
+	q += fmt.Sprintf(` LIMIT $%d`, len(args))
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -485,7 +489,7 @@ func (s *Store) GetPodWatch(ctx context.Context, ns, pod string) (PodWatchSelect
 	err := s.pool.QueryRow(ctx,
 		`SELECT syscalls FROM pod_syscall_watches WHERE pod_key=$1`, ns+"/"+pod).Scan(&raw)
 	if err != nil {
-		return PodWatchSelection{}, err
+		return podWatchError(err)
 	}
 	var selection PodWatchSelection
 	if len(raw) > 0 && raw[0] == '{' {
@@ -500,6 +504,13 @@ func (s *Store) GetPodWatch(ctx context.Context, ns, pod string) (PodWatchSelect
 		}
 	}
 	return PodWatchSelection{}, fmt.Errorf("store: unmarshal watch for %s/%s", ns, pod)
+}
+
+func podWatchError(err error) (PodWatchSelection, error) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PodWatchSelection{}, nil
+	}
+	return PodWatchSelection{}, err
 }
 
 type PodWatchEntry struct {

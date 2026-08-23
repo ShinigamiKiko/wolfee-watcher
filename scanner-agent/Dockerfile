@@ -27,4 +27,5 @@ ENV TRIVY_CACHE_DIR=/trivy-cache \
     SCAN_WORKSPACE_DIR=/scan-workspace \
     BDU_LOCAL_PATH=/opt/bdu/vulxml.xml
 EXPOSE 9090
+USER 65534:65534
 ENTRYPOINT ["/scanner-agent"]

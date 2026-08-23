@@ -284,19 +284,13 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const podEvents = useMemo(() => {
     const windowMs = windowH * 60 * 60 * 1000;
     const now = Date.now();
-    const selected = new Set(watchedSyscalls);
-    const visibleForWatch = (e) => {
-      if (e._anomaly) return true;
-      if (!WATCHABLE_EVENT_NAMES.has(e.syscall)) return true;
-      return watchLoaded && selected.has(e.syscall);
-    };
     const sourceEvents = [...allEvents, ...pulledEvents];
     const binary = sourceEvents.filter(e => {
       if (e.pod !== pName || e.namespace !== pNS) return false;
       if (e.podUID && pUID && e.podUID !== pUID) return false;
       if (!e.podUID && e.containerId && pContainerID && e.containerId !== pContainerID) return false;
       if (!isWithinWindow(e.ts, now, windowMs)) return false;
-      return visibleForWatch(e);
+      return true;
     });
     const seen = new Set(binary.map(e => e._rid ?? e.id).filter(Boolean));
     const watch = watchEvents.filter(e => {
@@ -305,10 +299,10 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
       if (e.podUID && pUID && e.podUID !== pUID) return false;
       if (!e.podUID && e.containerId && pContainerID && e.containerId !== pContainerID) return false;
       if (!isWithinWindow(e.ts, now, windowMs)) return false;
-      return visibleForWatch(e);
+      return true;
     });
     return dedupRuntimeEvents([...binary, ...watch]);
-  }, [allEvents, pulledEvents, pName, pNS, pUID, pContainerID, windowH, watchEvents, watchedSyscalls, watchLoaded]);
+  }, [allEvents, pulledEvents, pName, pNS, pUID, pContainerID, windowH, watchEvents]);
 
   const containers = useMemo(() => {
     const fromSpec   = podContainers(pod);

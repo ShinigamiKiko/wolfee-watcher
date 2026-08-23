@@ -11,4 +11,6 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /forensic-watcher /forensic-watcher
 EXPOSE 9090
+# Reads host /proc, containerd snapshots, and pod logs mounted by the DaemonSet.
+# The Helm securityContext intentionally keeps this process root for host access.
 ENTRYPOINT ["/forensic-watcher"]

@@ -100,7 +100,7 @@ export function BridgeProvider({ children }) {
         if (!data) return;
 
         if (localStorage.getItem('swSseDebug') === '1') {
-          console.debug(`[sse] ${type}`, type === 'sensor_snapshot' ? `${ev.data.length}b` : (data.rule || data.id || ''));
+          console.debug('[sse]', type, type === 'sensor_snapshot' ? `${ev.data.length}b` : (data.rule || data.id || ''));
         }
 
         switch (type) {

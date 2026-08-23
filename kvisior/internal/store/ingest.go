@@ -279,9 +279,9 @@ type ForensicEventPage struct {
 }
 
 const (
-	initialPageLimit    = 99999
+	initialPageLimit    = 5000
 	incrementalPageSize = 500
-	maxPageLimit        = 99999
+	maxPageLimit        = 5000
 )
 
 func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
@@ -461,7 +461,8 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 		FROM binary_exec_events
 		WHERE ts > NOW() - INTERVAL '24 hours'
 		GROUP BY ns, pod, pod_uid, container_id, sc, bin
-		ORDER BY ns, pod, MAX(ts) DESC`)
+		ORDER BY ns, pod, MAX(ts) DESC
+		LIMIT 10000`)
 	if err != nil {
 		return nil, err
 	}
@@ -500,13 +501,19 @@ func (s *Store) InsertForensicEvents(ctx context.Context, ns, pod string, entrie
 	return err
 }
 
+const maxForensicEntries = 5000
+
 func (s *Store) QueryForensicEvents(ctx context.Context, ns, pod string) ([]ForensicEntry, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT path, op, size, mtime, sha256, snapped_at
-		 FROM forensic_events
-		 WHERE ns=$1 AND pod=$2 AND ts > NOW() - INTERVAL '24 hours'
+		`SELECT path, op, size, mtime, sha256, snapped_at FROM (
+			SELECT path, op, size, mtime, sha256, snapped_at, ts
+			FROM forensic_events
+			WHERE ns=$1 AND pod=$2 AND ts > NOW() - INTERVAL '24 hours'
+			ORDER BY ts DESC
+			LIMIT $3
+		 ) recent
 		 ORDER BY ts`,
-		ns, pod)
+		ns, pod, maxForensicEntries)
 	if err != nil {
 		return nil, err
 	}

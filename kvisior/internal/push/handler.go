@@ -2,7 +2,7 @@ package push
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -283,7 +283,7 @@ func honeypotEventID(ev honeypotEvent) string {
 		ev.DestIP, ev.DestPort, ev.Action, ev.Status,
 		ev.Data, ev.Username, ev.Password,
 	}, "\x1f")
-	sum := sha1.Sum([]byte(raw))
+	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
 
