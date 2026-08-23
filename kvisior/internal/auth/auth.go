@@ -42,7 +42,8 @@ type Store interface {
 }
 
 const (
-	CookieName = "kv8_session"
+	CookieName        = "kv8_session"
+	maxLoginBodyBytes = 16 << 10
 
 	SessionTTL = 12 * time.Hour
 
@@ -122,6 +123,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBodyBytes)
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`

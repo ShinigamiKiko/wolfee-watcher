@@ -24,4 +24,5 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN mkdir -p /var/log/honeypots /etc/honeypot && chmod 0777 /var/log/honeypots /tmp
 
+USER 65534:65534
 ENTRYPOINT ["python3", "-m", "honeypots"]

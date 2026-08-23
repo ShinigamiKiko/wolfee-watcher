@@ -9,4 +9,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /anomaly-det
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates curl wget
 COPY --from=builder /anomaly-detector /anomaly-detector
+USER 65534:65534
 ENTRYPOINT ["/anomaly-detector"]

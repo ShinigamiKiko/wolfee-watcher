@@ -19,4 +19,5 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 COPY --from=server /kvisior /kvisior
 EXPOSE 8080
+USER 65534:65534
 ENTRYPOINT ["/kvisior"]

@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -15,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wolfee-watcher/pkg/httputil"
 	"github.com/wolfee-watcher/honey-operator/internal/k8s"
+	"github.com/wolfee-watcher/pkg/httputil"
 	"github.com/wolfee-watcher/pkg/mtls"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -334,7 +335,7 @@ func eventKey(ev HoneypotEvent) string {
 		ev.DestIP, ev.DestPort, ev.Action, ev.Status,
 		ev.Data, ev.Username, ev.Password,
 	}, "\x1f")
-	sum := sha1.Sum([]byte(raw))
+	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -354,7 +355,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
-	fmt.Fprintf(w, ": connected\n\n")
+	if _, err := io.WriteString(w, ": connected\n\n"); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	for {
@@ -365,10 +368,14 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", ev)
+			if _, err := io.WriteString(w, "data: "+string(ev)+"\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-ticker.C:
-			fmt.Fprintf(w, ": heartbeat\n\n")
+			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}

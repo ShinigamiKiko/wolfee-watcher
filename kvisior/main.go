@@ -246,7 +246,7 @@ func main() {
 	var policyConsumer *kafkaconsumer.Consumer
 	if len(brokers) > 0 {
 
-		kc, err := kafkaconsumer.New(brokers, kafkaTopic, uiBus, matcher, st)
+		kc, err := kafkaconsumer.New(brokers, kafkaTopic, uiBus, matcher, st, podWatchMgr)
 		if err != nil {
 			log.Printf("[kvisior] kafka consumer init: %v — Forensics live feed disabled", err)
 		} else {
@@ -397,10 +397,15 @@ func main() {
 				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 				return
 			}
-			selected, _ := podWatchMgr.GetWatch(r.Context(), ns, pod)
+			selected, err := podWatchMgr.GetWatch(r.Context(), ns, pod)
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
 			page, err := st.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
-				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID, Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
+				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID,
+				Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
 			})
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
@@ -427,7 +432,7 @@ func main() {
 		})))
 	}
 
-	mux.Handle("/v1/pod-watch", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/pod-watch", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
 		if ns == "" || pod == "" {
@@ -466,7 +471,7 @@ func main() {
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-	})))
+	}))))
 
 	mux.Handle("/v1/pod-syscall-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
@@ -731,7 +736,15 @@ func main() {
 	})
 
 	log.Printf("[kvisior] listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("[kvisior] %v", err)
 	}
 }

@@ -10,4 +10,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /honey-operator ./cmd/operator
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /honey-operator /usr/local/bin/honey-operator
+USER 65534:65534
 ENTRYPOINT ["honey-operator"]

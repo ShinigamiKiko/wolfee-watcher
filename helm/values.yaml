@@ -1,7 +1,7 @@
 global:
   namespace: wolfee-watcher
 
-  certServerAddr: "http://cert-server.wolfee-watcher.svc.cluster.local:8090"
+  certServerAddr: "https://cert-server.wolfee-watcher.svc.cluster.local:8090"
 
   postgresDSN: "postgres://wolfee-watcher:wolfee-watcher@postgres.wolfee-watcher.svc.cluster.local:5432/wolfee-watcher?sslmode=disable"
 
@@ -225,7 +225,7 @@ ui:
     tag: latest
     pullPolicy: Never
   servicePort: 80
-  secureCookie: "false"
+  secureCookie: "true"
   ingress:
     enabled: true
     className: nginx

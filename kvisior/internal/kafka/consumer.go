@@ -30,6 +30,7 @@ type Consumer struct {
 	pub     hub.Publisher
 	matcher *rules.Matcher
 	store   *store.Store
+	watch   *podwatch.Manager
 
 	debugLogs        bool
 	rulesLoaded      atomic.Bool
@@ -44,7 +45,7 @@ type Consumer struct {
 	lastMalfLog  atomic.Int64
 }
 
-func New(brokers []string, topic string, pub hub.Publisher, m *rules.Matcher, st *store.Store) (*Consumer, error) {
+func New(brokers []string, topic string, pub hub.Publisher, m *rules.Matcher, st *store.Store, watch *podwatch.Manager) (*Consumer, error) {
 	cl, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup(consumerGroup),
@@ -60,6 +61,7 @@ func New(brokers []string, topic string, pub hub.Publisher, m *rules.Matcher, st
 		pub:       pub,
 		matcher:   m,
 		store:     st,
+		watch:     watch,
 		debugLogs: envBool("KVISIOR_KAFKA_DEBUG_LOGS", false),
 		dlqTopic:  os.Getenv("KAFKA_DLQ_TOPIC"),
 	}, nil
@@ -190,25 +192,26 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 			}
 			sc, _ := ev["syscall"].(string)
 			kind := eventKindFromMap(ev, sc)
+			ns, _ := ev["namespace"].(string)
+			pod, _ := ev["pod"].(string)
 
-			forensic := captureForForensics(kind, sc)
-			if ring != nil && forensic {
+			binary := rules.IsBinaryExec(sc)
+			watched := pw != nil && sc != "" && pw.ShouldCapture(ns, pod, kind, sc)
+			if ring != nil && binary {
 				ring.Add(raw, eventTime(ev))
 			}
 
 			if pw != nil {
-				ns, _ := ev["namespace"].(string)
-				pod, _ := ev["pod"].(string)
 				podUID, _ := ev["pod_uid"].(string)
 				if podUID == "" {
 					podUID, _ = ev["podUID"].(string)
 				}
-				if sc != "" && pw.ShouldCapture(ns, pod, kind, sc) {
+				if watched {
 					pw.Add(ns, pod, podUID, kind, sc, json.RawMessage(raw), eventTime(ev))
 				}
 			}
 
-			if forensic || (m != nil && m.AllowsSyscall(sc)) {
+			if binary || watched || (m != nil && m.AllowsSyscall(sc)) {
 				h.Publish(hub.Event{Type: "tracee_event", Data: json.RawMessage(raw)})
 			}
 		})
@@ -287,7 +290,10 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 		return nil
 	}
 	sc := stringField(ev, "syscall")
-	if captureForForensics(eventKindFromMap(ev, sc), sc) && c.store != nil {
+	ns := stringField(ev, "namespace")
+	pod := stringField(ev, "pod")
+	watched := c.watch != nil && ns != "" && pod != "" && c.watch.ShouldCapture(ns, pod, eventKindFromMap(ev, sc), sc)
+	if shouldPersistRuntimeEvent(sc, watched) && c.store != nil {
 		wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := c.store.InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
 		cancel()
@@ -305,8 +311,6 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 			"pod", ev["pod"])
 	}
 	for _, v := range matches {
-		ns, _ := ev["namespace"].(string)
-		pod, _ := ev["pod"].(string)
 		evTs := eventTime(ev)
 		fp := store.Fingerprint(v.RuleID, ns, pod, evTs)
 
@@ -325,6 +329,10 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 		c.pub.Publish(hub.Event{Type: "violation", Data: sseData})
 	}
 	return nil
+}
+
+func shouldPersistRuntimeEvent(syscall string, watched bool) bool {
+	return rules.IsBinaryExec(syscall) || watched
 }
 
 func stringField(ev map[string]interface{}, key string) string {

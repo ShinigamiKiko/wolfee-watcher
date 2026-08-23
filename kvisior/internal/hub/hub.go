@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -140,10 +141,14 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			b, _ := json.Marshal(e)
-			fmt.Fprintf(w, "data: %s\n\n", b)
+			if _, err := io.WriteString(w, "data: "+string(b)+"\n\n"); err != nil {
+				return
+			}
 			fl.Flush()
 		case <-ping.C:
-			fmt.Fprintf(w, ": ping\n\n")
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
 			fl.Flush()
 		case <-r.Context().Done():
 			return

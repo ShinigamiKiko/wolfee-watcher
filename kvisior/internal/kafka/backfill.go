@@ -15,51 +15,6 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 )
 
-var forensicSyscalls = map[string]struct{}{
-	"io_uring_setup": {}, "io_uring_enter": {}, "io_uring_register": {},
-}
-
-var forensicLSMHooks = map[string]struct{}{
-	"security_file_open": {}, "security_inode_unlink": {}, "security_inode_rename": {},
-	"security_inode_symlink": {}, "security_inode_mknod": {}, "security_bprm_check": {},
-	"security_mmap_file": {}, "security_file_mprotect": {}, "security_socket_create": {},
-	"security_socket_connect": {}, "security_socket_bind": {}, "security_socket_accept": {},
-	"security_socket_listen": {}, "security_socket_setsockopt": {}, "security_sb_mount": {},
-	"security_bpf": {}, "security_bpf_map": {}, "security_kernel_read_file": {},
-}
-
-var forensicTracepoints = map[string]struct{}{
-	"sched_process_exec": {},
-	"sched_process_fork": {},
-	"sched_process_exit": {},
-	"task_rename":        {},
-	"sched_switch":       {},
-	"module_load":        {},
-	"module_free":        {},
-	"cgroup_mkdir":       {},
-	"cgroup_rmdir":       {},
-	"cgroup_attach_task": {},
-}
-
-func captureForForensics(kind events.Kind, sc string) bool {
-	if rules.IsBinaryExec(sc) {
-		return true
-	}
-	switch kind {
-	case events.Syscall:
-		_, ok := forensicSyscalls[sc]
-		return ok
-	case events.LSMHook:
-		_, ok := forensicLSMHooks[sc]
-		return ok
-	case events.Tracepoint:
-		_, ok := forensicTracepoints[sc]
-		return ok
-	default:
-		return false
-	}
-}
-
 func BackfillHandler(ring *binring.Ring) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -127,7 +82,7 @@ func WarmRing(ctx context.Context, brokers []string, topic string, ring *binring
 			if raw, ok := ev["syscall"]; ok {
 				json.Unmarshal(raw, &sc)
 			}
-			if !captureForForensics(eventKind(ev, sc), sc) {
+			if !rules.IsBinaryExec(sc) {
 				return
 			}
 			ring.Add(rec.Value, rec.Timestamp)
@@ -144,17 +99,6 @@ func WarmRing(ctx context.Context, brokers []string, topic string, ring *binring
 
 	log.Printf("[backfill] warm ring complete: +%d binary events in %s (ring=%d)",
 		added, time.Since(start).Round(time.Second), ring.Len())
-}
-
-func eventKind(ev map[string]json.RawMessage, sc string) events.Kind {
-	var raw string
-	if data, ok := ev["event_kind"]; ok {
-		_ = json.Unmarshal(data, &raw)
-	}
-	if raw != "" {
-		return events.Kind(raw)
-	}
-	return events.KindFor(sc)
 }
 
 func eventKindFromMap(ev map[string]interface{}, sc string) events.Kind {

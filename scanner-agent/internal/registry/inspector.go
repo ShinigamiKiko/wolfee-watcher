@@ -3,9 +3,12 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -30,8 +33,17 @@ func (ins *Inspector) credFor(base string) string {
 }
 
 func New() *Inspector {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = safeDialContext
 	return &Inspector{
-		client:    &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		dockerCfg: loadDockerConfig(),
 	}
 }
@@ -61,6 +73,9 @@ func (ins *Inspector) FetchDigest(ctx context.Context, imageRef string) (string,
 	reg, repo, tag, err := parseImageRef(imageRef)
 	if err != nil {
 		return "", fmt.Errorf("parse ref %q: %w", imageRef, err)
+	}
+	if err := validateRegistry(reg); err != nil {
+		return "", fmt.Errorf("registry %q: %w", reg, err)
 	}
 	scheme := "https"
 	if isInsecureRegistry(reg) {
@@ -108,6 +123,9 @@ func (ins *Inspector) FetchHistory(ctx context.Context, imageRef string) ([]Hist
 	if err != nil {
 		return nil, fmt.Errorf("parse ref %q: %w", imageRef, err)
 	}
+	if err := validateRegistry(reg); err != nil {
+		return nil, fmt.Errorf("registry %q: %w", reg, err)
+	}
 
 	scheme := "https"
 	if isInsecureRegistry(reg) {
@@ -130,6 +148,100 @@ func (ins *Inspector) FetchHistory(ctx context.Context, imageRef string) ([]Hist
 		return nil, fmt.Errorf("config blob %s: %w", configDigest, err)
 	}
 	return history, nil
+}
+
+var errPrivateRegistryAddress = errors.New("registry resolves to a private or otherwise unsafe address")
+
+func validateRegistry(reg string) error {
+	host := reg
+	if h, _, err := net.SplitHostPort(reg); err == nil {
+		host = h
+	} else if strings.Contains(reg, ":") {
+		return fmt.Errorf("invalid registry host: %w", err)
+	}
+	if host == "" || strings.ContainsAny(host, "/\\@") {
+		return errors.New("invalid registry host")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if blockedIP(ip) {
+			return errPrivateRegistryAddress
+		}
+		return nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("resolve registry: %w", err)
+	}
+	if len(ips) == 0 {
+		return errors.New("registry has no addresses")
+	}
+	for _, ip := range ips {
+		if blockedIP(ip) {
+			return errPrivateRegistryAddress
+		}
+	}
+	return nil
+}
+
+func blockedIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() ||
+		ip4InRange(ip, net.IPv4(100, 64, 0, 0), 10)
+}
+
+func ip4InRange(ip, base net.IP, prefixLen int) bool {
+	ip = ip.To4()
+	base = base.To4()
+	if ip == nil || base == nil {
+		return false
+	}
+	mask := net.CIDRMask(prefixLen, 32)
+	return ip.Mask(mask).Equal(base.Mask(mask))
+}
+
+func safeDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if blockedIP(ip) {
+			return nil, errPrivateRegistryAddress
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+	}
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return nil, err
+	}
+	for _, ip := range ips {
+		if blockedIP(ip) {
+			return nil, errPrivateRegistryAddress
+		}
+	}
+	if len(ips) == 0 {
+		return nil, errors.New("host has no addresses")
+	}
+	var lastErr error
+	for _, ip := range ips {
+		conn, dialErr := (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, lastErr
+}
+
+func validateTokenRealm(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return nil, errors.New("token realm must be an absolute HTTPS URL")
+	}
+	if err := validateRegistry(u.Host); err != nil {
+		return nil, err
+	}
+	return u, nil
 }
 
 func (ins *Inspector) fetchManifest(ctx context.Context, base, repo, tag, token string) (string, error) {

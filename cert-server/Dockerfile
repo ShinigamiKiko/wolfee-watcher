@@ -13,4 +13,5 @@ RUN apk add --no-cache ca-certificates
 FROM scratch
 COPY --from=ca-certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /cert-server /cert-server
+USER 65534:65534
 ENTRYPOINT ["/cert-server"]

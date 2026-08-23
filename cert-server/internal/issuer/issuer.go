@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	CertLifetime = 3 * time.Hour
-	BeforeGrace  = 1 * time.Minute
+	CertLifetime       = 3 * time.Hour
+	serverCertLifetime = 2 * 365 * 24 * time.Hour
+	BeforeGrace        = 1 * time.Minute
 )
 
 type Issuer struct {
@@ -61,6 +62,10 @@ func (is *Issuer) Issue(svc mtls.ServiceType) (certPEM, keyPEM []byte, err error
 	}
 
 	now := time.Now()
+	lifetime := CertLifetime
+	if svc == mtls.CertServer {
+		lifetime = serverCertLifetime
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: string(svc)},
@@ -71,7 +76,7 @@ func (is *Issuer) Issue(svc mtls.ServiceType) (certPEM, keyPEM []byte, err error
 			string(svc) + ".wolfee-watcher.svc.cluster.local",
 		},
 		NotBefore: now.Add(-BeforeGrace),
-		NotAfter:  now.Add(CertLifetime),
+		NotAfter:  now.Add(lifetime),
 		KeyUsage:  x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,

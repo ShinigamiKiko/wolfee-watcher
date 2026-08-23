@@ -135,7 +135,12 @@ spec:
                   name: filebeat-es
                   key: password
           securityContext:
+            # Host container logs and the mounted Filebeat data directory may
+            # require root; keep privilege escalation disabled below.
             runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: 100m

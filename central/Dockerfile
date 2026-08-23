@@ -8,4 +8,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /central-migrate ./cmd
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 COPY --from=build /central-migrate /central-migrate
+USER 65534:65534
 ENTRYPOINT ["/central-migrate"]

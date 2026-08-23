@@ -279,9 +279,9 @@ type ForensicEventPage struct {
 }
 
 const (
-	initialPageLimit    = 99999
+	initialPageLimit    = 5000
 	incrementalPageSize = 500
-	maxPageLimit        = 99999
+	maxPageLimit        = 5000
 )
 
 func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
@@ -327,9 +327,12 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 		SELECT id, data
 		FROM binary_exec_events
 		WHERE ns = $1
-		  AND pod = $2
-		  AND syscall = ANY($3::text[])`
-	args := []interface{}{q.Namespace, q.Pod, q.Syscalls}
+		  AND pod = $2`
+	args := []interface{}{q.Namespace, q.Pod}
+	if len(q.Syscalls) > 0 {
+		args = append(args, q.Syscalls)
+		query += fmt.Sprintf(" AND syscall = ANY($%d::text[])", len(args))
+	}
 	if q.PodUID != "" {
 		args = append(args, q.PodUID)
 		query += fmt.Sprintf(" AND (pod_uid = $%d", len(args))
@@ -453,12 +456,13 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 			COALESCE(NULLIF(container, ''), NULLIF(data->>'containerId', '')) AS container_id,
 			COALESCE(syscall, '') AS sc,
 			COALESCE(NULLIF("binary", ''), NULLIF(process, ''), COALESCE(syscall, '')) AS bin,
-			COUNT(DISTINCT (floor(extract(epoch FROM ts) / 300)::bigint, cmdline)),
+			COUNT(*),
 			MAX(ts)
 		FROM binary_exec_events
 		WHERE ts > NOW() - INTERVAL '24 hours'
 		GROUP BY ns, pod, pod_uid, container_id, sc, bin
-		ORDER BY ns, pod, MAX(ts) DESC`)
+		ORDER BY ns, pod, MAX(ts) DESC
+		LIMIT 10000`)
 	if err != nil {
 		return nil, err
 	}
@@ -497,13 +501,19 @@ func (s *Store) InsertForensicEvents(ctx context.Context, ns, pod string, entrie
 	return err
 }
 
+const maxForensicEntries = 5000
+
 func (s *Store) QueryForensicEvents(ctx context.Context, ns, pod string) ([]ForensicEntry, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT path, op, size, mtime, sha256, snapped_at
-		 FROM forensic_events
-		 WHERE ns=$1 AND pod=$2 AND ts > NOW() - INTERVAL '24 hours'
+		`SELECT path, op, size, mtime, sha256, snapped_at FROM (
+			SELECT path, op, size, mtime, sha256, snapped_at, ts
+			FROM forensic_events
+			WHERE ns=$1 AND pod=$2 AND ts > NOW() - INTERVAL '24 hours'
+			ORDER BY ts DESC
+			LIMIT $3
+		 ) recent
 		 ORDER BY ts`,
-		ns, pod)
+		ns, pod, maxForensicEntries)
 	if err != nil {
 		return nil, err
 	}

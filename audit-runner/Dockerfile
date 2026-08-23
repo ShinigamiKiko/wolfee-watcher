@@ -21,4 +21,5 @@ FROM alpine:3.19
 COPY --from=builder       /audit-runner         /audit-runner
 COPY --from=kube-bench-dl /tmp/bench/kube-bench /tools/kube-bench
 COPY --from=kube-bench-dl /tmp/bench/cfg        /tools/cfg
+USER 65534:65534
 ENTRYPOINT ["/audit-runner"]
