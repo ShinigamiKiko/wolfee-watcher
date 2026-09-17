@@ -1,12 +1,13 @@
+import { apiFetch } from '../../data/cluster';
 
 async function apiList() {
-  const r = await fetch('/honey/api/honeypots', { credentials: 'same-origin' });
+  const r = await apiFetch('/honey/api/honeypots', { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`list: HTTP ${r.status}`);
   return r.json();
 }
 
 async function apiCreate(spec) {
-  const r = await fetch('/honey/api/honeypots', {
+  const r = await apiFetch('/honey/api/honeypots', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',
@@ -17,7 +18,7 @@ async function apiCreate(spec) {
 }
 
 async function apiDelete(name, ns) {
-  const r = await fetch(`/honey/api/honeypots/${name}?namespace=${ns}`, {
+  const r = await apiFetch(`/honey/api/honeypots/${name}?namespace=${ns}`, {
     method: 'DELETE',
     credentials: 'same-origin',
   });
@@ -26,7 +27,7 @@ async function apiDelete(name, ns) {
 }
 
 async function apiEvents(name, ns) {
-  const r = await fetch(`/honey/api/honeypots/${name}/events?namespace=${ns}`, {
+  const r = await apiFetch(`/honey/api/honeypots/${name}/events?namespace=${ns}`, {
     credentials: 'same-origin',
   });
   if (!r.ok) throw new Error(`events: HTTP ${r.status}`);
@@ -34,7 +35,7 @@ async function apiEvents(name, ns) {
 }
 
 async function apiPersistedEvents(name, ns) {
-  const r = await fetch(`/v1/honeypot-events?ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`, {
+  const r = await apiFetch(`/v1/honeypot-events?ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`, {
     credentials: 'same-origin',
   });
   if (!r.ok) throw new Error(`persisted: HTTP ${r.status}`);
@@ -42,7 +43,7 @@ async function apiPersistedEvents(name, ns) {
 }
 
 async function apiHideEvent(name, ns, id) {
-  const r = await fetch('/v1/honeypot-hidden', {
+  const r = await apiFetch('/v1/honeypot-hidden', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',
@@ -52,7 +53,7 @@ async function apiHideEvent(name, ns, id) {
 }
 
 async function apiHiddenEvents(name, ns) {
-  const r = await fetch(`/v1/honeypot-hidden?ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`, {
+  const r = await apiFetch(`/v1/honeypot-hidden?ns=${encodeURIComponent(ns)}&name=${encodeURIComponent(name)}`, {
     credentials: 'same-origin',
   });
   if (!r.ok) throw new Error(`hidden: HTTP ${r.status}`);

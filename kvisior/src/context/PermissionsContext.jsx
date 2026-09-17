@@ -1,3 +1,4 @@
+import { apiFetch } from '../data/cluster';
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 
 const PermCtx = createContext(null);
@@ -25,7 +26,7 @@ export function PermissionsProvider({ children }) {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/auth/me', { credentials: 'same-origin' });
+      const res = await apiFetch('/auth/me', { credentials: 'same-origin' });
       if (res.status === 401) {
         setMe(null);
         setError(null);
@@ -55,7 +56,7 @@ export function PermissionsProvider({ children }) {
   }, []);
 
   const signIn = useCallback(async (username, password) => {
-    const res = await fetch('/auth/login', {
+    const res = await apiFetch('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -69,7 +70,7 @@ export function PermissionsProvider({ children }) {
 
   const signOut = useCallback(async () => {
     try {
-      await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      await apiFetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
     } catch { }
     setMe(null);
   }, []);

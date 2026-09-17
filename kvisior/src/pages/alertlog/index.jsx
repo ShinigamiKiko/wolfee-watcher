@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { SevBadge } from '../../components/ui';
@@ -32,7 +33,7 @@ export function AlertLog() {
     const poll = async () => {
       try {
         const url = `/api/alerts?since=${encodeURIComponent(lastIdRef.current)}&limit=200`;
-        const r = await fetch(url, { credentials: 'same-origin' });
+        const r = await apiFetch(url, { credentials: 'same-origin' });
         if (!r.ok) {
           if (r.status !== 503) setError(`HTTP ${r.status}`);
           return;

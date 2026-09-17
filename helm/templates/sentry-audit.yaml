@@ -43,6 +43,8 @@ spec:
               value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
             - name: INTERNAL_PUSH_SECRET
               value: {{ .Values.global.internalPushSecret | quote }}
+            - name: CLUSTER_ID
+              value: {{ .Values.global.clusterId | quote }}
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
@@ -54,6 +55,12 @@ func New(pub, local hub.Publisher, m *rules.Matcher, am *rules.AuditMatcher, st 
 		store:        st,
 		writeSem:     make(chan struct{}, maxConcurrentWrites),
 	}
+}
+
+func (h *Handler) cluster(r *http.Request) *store.Scoped {
+	id := clusterctx.ForPush(r)
+	h.store.EnsureClusterCached(id)
+	return h.store.Cluster(id)
 }
 
 func (h *Handler) syncWrite(w http.ResponseWriter, r *http.Request, what string, fn func(context.Context) error) bool {
@@ -114,21 +121,21 @@ func (h *Handler) HandleEvents(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal(raw, &ev) == nil {
 
 			if sc, _ := ev["syscall"].(string); h.matcher.AllowsLiveStream(sc) {
-				h.hub.Publish(hub.Event{Type: "tracee_event", Data: raw})
+				h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "tracee_event", Data: raw})
 			}
 			for _, v := range h.matcher.Match(ev) {
 				ns, _ := ev["namespace"].(string)
 				pod, _ := ev["pod"].(string)
-				fp := store.Fingerprint(v.RuleID, ns, pod, time.Now())
+				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, ns, pod, time.Now())
 				ruleID, ruleName, sev := v.RuleID, v.Rule, v.Sev
 				rawCopy := append(json.RawMessage(nil), raw...)
 				if !h.syncWrite(w, r, "syscall violation", func(ctx context.Context) error {
-					return h.store.WriteViolationChecked(ctx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
+					return h.cluster(r).WriteViolationChecked(ctx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
 				}) {
 					return
 				}
 				sseData, _ := json.Marshal(sysViolSSE{Violation: v, Fingerprint: fp})
-				h.hub.Publish(hub.Event{Type: "violation", Data: sseData})
+				h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "violation", Data: sseData})
 			}
 		}
 	}
@@ -148,14 +155,19 @@ func (h *Handler) HandleAuditEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	for _, raw := range body.Events {
-		rawEv := append(json.RawMessage(nil), raw...)
-		if !h.syncWrite(w, r, "audit event", func(ctx context.Context) error {
-			return h.store.InsertAuditEvent(ctx, rawEv)
+	if len(body.Events) > 0 {
+		batch := make([]json.RawMessage, len(body.Events))
+		for i, raw := range body.Events {
+			batch[i] = append(json.RawMessage(nil), raw...)
+		}
+		if !h.syncWrite(w, r, "audit events", func(ctx context.Context) error {
+			return h.cluster(r).InsertAuditEvents(ctx, batch)
 		}) {
 			return
 		}
-		h.hub.Publish(hub.Event{Type: "audit_event", Data: raw})
+	}
+	for _, raw := range body.Events {
+		h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "audit_event", Data: raw})
 
 		var ev map[string]interface{}
 		if json.Unmarshal(raw, &ev) == nil {
@@ -164,16 +176,16 @@ func (h *Handler) HandleAuditEvents(w http.ResponseWriter, r *http.Request) {
 				if t, err := time.Parse(time.RFC3339, v.Timestamp); err == nil {
 					evTs = t
 				}
-				fp := store.Fingerprint(v.RuleID, v.Namespace, v.Name, evTs)
+				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, v.Namespace, v.Name, evTs)
 				ruleID, policy, sev, ns, name := v.RuleID, v.Policy, v.Sev, v.Namespace, v.Name
 				rawCopy := append(json.RawMessage(nil), raw...)
 				if !h.syncWrite(w, r, "audit violation", func(ctx context.Context) error {
-					return h.store.WriteViolationChecked(ctx, "audit", ruleID, policy, sev, ns, name, fp, rawCopy)
+					return h.cluster(r).WriteViolationChecked(ctx, "audit", ruleID, policy, sev, ns, name, fp, rawCopy)
 				}) {
 					return
 				}
 				sseData, _ := json.Marshal(auditViolSSE{AuditViolation: v, Fingerprint: fp})
-				h.hub.Publish(hub.Event{Type: "audit_violation", Data: sseData})
+				h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "audit_violation", Data: sseData})
 			}
 		}
 	}
@@ -191,7 +203,7 @@ func (h *Handler) HandleSensorSnapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h.localHub.Publish(hub.Event{Type: "sensor_snapshot", Data: snapshot})
+	h.localHub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "sensor_snapshot", Data: snapshot})
 	slog.Info("sensor_snapshot_ingested",
 		"component", "kvisior/push",
 		"bytes", len(snapshot))
@@ -212,7 +224,7 @@ func (h *Handler) HandleAnomalyEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, raw := range body.Events {
-		h.hub.Publish(hub.Event{Type: "anomaly_event", Data: raw})
+		h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "anomaly_event", Data: raw})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -245,12 +257,12 @@ func (h *Handler) HandleHoneypotEvents(w http.ResponseWriter, r *http.Request) {
 			ns, name, id, ts := ev.Namespace, ev.HoneypotName, ev.ID, ev.Timestamp
 			data := append(json.RawMessage(nil), enriched...)
 			if !h.syncWrite(w, r, "honeypot event", func(ctx context.Context) error {
-				return h.store.WriteHoneypotEvent(ctx, ns, name, id, ts, data)
+				return h.cluster(r).WriteHoneypotEvent(ctx, ns, name, id, ts, data)
 			}) {
 				return
 			}
 		}
-		h.hub.Publish(hub.Event{Type: "honeypot_event", Data: enriched})
+		h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "honeypot_event", Data: enriched})
 		slog.Info("honeypot_hit",
 			"component", "kvisior/push",
 			"honeypot", ev.HoneypotName,
@@ -316,10 +328,10 @@ func (h *Handler) HandleScan(w http.ResponseWriter, r *http.Request) {
 	}
 	data := append(json.RawMessage(nil), raw...)
 	if !h.syncWrite(w, r, "image scan", func(ctx context.Context) error {
-		if err := h.store.UpsertImageScan(ctx, meta.Image, scannedAt, data); err != nil {
+		if err := h.cluster(r).UpsertImageScan(ctx, meta.Image, scannedAt, data); err != nil {
 			return err
 		}
-		return h.store.InsertImageScanWorkloads(ctx, meta.Image, scannedAt, data)
+		return h.cluster(r).InsertImageScanWorkloads(ctx, meta.Image, scannedAt, data)
 	}) {
 		return
 	}
@@ -354,7 +366,7 @@ func (h *Handler) HandleAuditRun(w http.ResponseWriter, r *http.Request) {
 	}
 	data := append(json.RawMessage(nil), raw...)
 	if !h.syncWrite(w, r, "audit run", func(ctx context.Context) error {
-		return h.store.InsertAuditRun(ctx, meta.Tool, meta.RunID, meta.Status, meta.StartedAt, meta.DoneAt, data)
+		return h.cluster(r).InsertAuditRun(ctx, meta.Tool, meta.RunID, meta.Status, meta.StartedAt, meta.DoneAt, data)
 	}) {
 		return
 	}
@@ -383,7 +395,7 @@ func (h *Handler) HandleHistories(w http.ResponseWriter, r *http.Request) {
 			if json.Unmarshal(raw, &meta) != nil || meta.Image == "" {
 				continue
 			}
-			if err := h.store.UpsertImageHistory(ctx, meta.Image, raw); err != nil {
+			if err := h.cluster(r).UpsertImageHistory(ctx, meta.Image, raw); err != nil {
 				return err
 			}
 		}
@@ -420,7 +432,7 @@ func (h *Handler) HandleForensicEvents(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	if err := h.store.InsertForensicEvents(ctx, body.NS, body.Pod, body.Entries); err != nil {
+	if err := h.cluster(r).InsertForensicEvents(ctx, body.NS, body.Pod, body.Entries); err != nil {
 		slog.Error("forensic_events_insert_failed",
 			"component", "kvisior/push",
 			"namespace", body.NS,
@@ -443,13 +455,13 @@ func (h *Handler) HandleForensicWatch(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		source := r.URL.Query().Get("source")
 		if !h.syncWrite(w, r, "forensic watch", func(ctx context.Context) error {
-			return h.store.UpsertForensicWatch(ctx, ns, pod, source)
+			return h.cluster(r).UpsertForensicWatch(ctx, ns, pod, source)
 		}) {
 			return
 		}
 	case http.MethodDelete:
 		if !h.syncWrite(w, r, "forensic watch", func(ctx context.Context) error {
-			return h.store.DeleteForensicWatch(ctx, ns, pod)
+			return h.cluster(r).DeleteForensicWatch(ctx, ns, pod)
 		}) {
 			return
 		}
@@ -477,7 +489,7 @@ func (h *Handler) HandleForensicDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	entries, err := h.store.QueryForensicEvents(ctx, ns, pod)
+	entries, err := h.cluster(r).QueryForensicEvents(ctx, ns, pod)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
@@ -497,7 +509,7 @@ func (h *Handler) HandleForensicWatchesPull(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	watches, err := h.store.ListActiveForensicWatches(ctx)
+	watches, err := h.cluster(r).ListActiveForensicWatches(ctx)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
@@ -555,7 +567,7 @@ func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	if err := h.store.InsertContainerLogEntries(ctx, body.Node, body.NS, body.Pod, body.Container, body.Entries); err != nil {
+	if err := h.cluster(r).InsertContainerLogEntries(ctx, body.Node, body.NS, body.Pod, body.Container, body.Entries); err != nil {
 		slog.Error("container_logs_insert_failed",
 			"component", "kvisior/push",
 			"node", body.Node,
@@ -587,7 +599,7 @@ func (h *Handler) HandleLogsPull(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	lines, err := h.store.QueryContainerLogs(ctx, ns, pod, container, sinceSeconds)
+	lines, err := h.cluster(r).QueryContainerLogs(ctx, ns, pod, container, sinceSeconds)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
@@ -607,7 +619,7 @@ func (h *Handler) HandleLogCursors(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	cursors, err := h.store.LoadLogCursors(ctx, r.URL.Query().Get("node"))
+	cursors, err := h.cluster(r).LoadLogCursors(ctx, r.URL.Query().Get("node"))
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
@@ -635,7 +647,7 @@ func (h *Handler) HandleSnapshotCachePush(w http.ResponseWriter, r *http.Request
 	}
 	body := append([]byte(nil), data...)
 	if !h.syncWrite(w, r, "snapshot cache", func(ctx context.Context) error {
-		return h.store.PutSnapshotCache(ctx, snapshotCacheKey, body, etag)
+		return h.cluster(r).PutSnapshotCache(ctx, snapshotCacheKey, body, etag)
 	}) {
 		return
 	}
@@ -653,7 +665,7 @@ func (h *Handler) HandleSnapshotCachePull(w http.ResponseWriter, r *http.Request
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	data, etag, err := h.store.GetSnapshotCache(ctx, snapshotCacheKey)
+	data, etag, err := h.cluster(r).GetSnapshotCache(ctx, snapshotCacheKey)
 	if err != nil {
 		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 		return
@@ -716,7 +728,7 @@ func (h *Handler) HandleScannerStatePush(w http.ResponseWriter, r *http.Request)
 	}
 	key, data := body.Key, append(json.RawMessage(nil), body.Data...)
 	if !h.syncWrite(w, r, "scanner state", func(ctx context.Context) error {
-		return h.store.PutScannerState(ctx, key, data)
+		return h.cluster(r).PutScannerState(ctx, key, data)
 	}) {
 		return
 	}
@@ -739,7 +751,7 @@ func (h *Handler) HandleScannerStatePull(w http.ResponseWriter, r *http.Request)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	data, ok, err := h.store.GetScannerState(ctx, key)
+	data, ok, err := h.cluster(r).GetScannerState(ctx, key)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return

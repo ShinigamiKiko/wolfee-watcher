@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSensor } from '../../context/SensorContext';
 import { FSTEC } from './checksFSTEC';
@@ -66,8 +67,8 @@ export function Compliance() {
     setLoading(true); setError(null);
     try {
       const [scanRes, anomalyRes] = await Promise.all([
-        fetch('/scanner/results', { credentials: 'same-origin' }).catch(()=>null),
-        fetch('/anomaly/api/anomalies?limit=500', { credentials: 'same-origin', signal: AbortSignal.timeout(5000) }).catch(()=>null),
+        apiFetch('/scanner/results', { credentials: 'same-origin' }).catch(()=>null),
+        apiFetch('/anomaly/api/anomalies?limit=500', { credentials: 'same-origin', signal: AbortSignal.timeout(5000) }).catch(()=>null),
       ]);
       const data = {
         snap:    snapshot,

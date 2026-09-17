@@ -30,7 +30,7 @@ spec:
           imagePullPolicy: {{ .Values.centralMigrate.image.pullPolicy }}
           env:
             - name: POSTGRES_DSN
-              value: {{ .Values.global.postgresDSN | quote }}
+              value: {{ .Values.global.postgresDSN | default (include "kvisior.directDSN" (dict "ctx" . "creds" (dict "user" .Values.postgres.user "password" .Values.postgres.password))) | quote }}
             - name: EXPECTED_SCHEMA_VERSION
               value: {{ .Values.centralMigrate.schemaVersion | quote }}
             {{- with .Values.centralMigrate.adminBootstrapPassword }}

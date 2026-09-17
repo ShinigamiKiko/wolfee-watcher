@@ -1,3 +1,4 @@
+import { sseUrl } from '../../data/cluster';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSensor } from '../../context/SensorContext';
 import '../../styles/honeypot.scss';
@@ -49,7 +50,7 @@ export function Honeypot() {
   }, [selected]);
 
   useEffect(() => {
-    const es = new EventSource('/honey/api/honeypots/stream');
+    const es = new EventSource(sseUrl(sseUrl('/honey/api/honeypots/stream')));
 
     es.onmessage = (e) => {
       try {

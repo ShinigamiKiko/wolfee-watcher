@@ -80,7 +80,7 @@ func IssueServiceCert(caCertPEM, caKeyPEM []byte, svc ServiceType) (certPEM, key
 
 			CommonName:         string(svc),
 			Organization:       []string{caOrg},
-			OrganizationalUnit: []string{string(svc)},
+			OrganizationalUnit: []string{string(svc), ClusterOU(ClusterID())},
 		},
 		DNSNames: []string{
 			string(svc),

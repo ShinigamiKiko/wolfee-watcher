@@ -43,14 +43,14 @@ type AckItem struct {
 	ExpiresAt *float64 `json:"expiresAt"`
 }
 
-func (s *Store) ListAcks(ctx context.Context) ([]AckItem, error) {
-	rows, err := s.pool.Query(ctx,
+func (c *Scoped) ListAcks(ctx context.Context) ([]AckItem, error) {
+	rows, err := c.s.pool.Query(ctx,
 		`SELECT key, type,
 		        CASE WHEN expires_at IS NULL THEN NULL
 		             ELSE extract(epoch from expires_at)*1000
 		        END
 		   FROM violation_acks
-		  WHERE expires_at IS NULL OR expires_at > NOW()`)
+		  WHERE cluster_id = $1 AND (expires_at IS NULL OR expires_at > NOW())`, c.id)
 	if err != nil {
 		return nil, err
 	}
@@ -65,16 +65,17 @@ func (s *Store) ListAcks(ctx context.Context) ([]AckItem, error) {
 	return items, rows.Err()
 }
 
-func (s *Store) UpsertAck(ctx context.Context, key, typ string, expiresAt *time.Time) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO violation_acks(key, type, expires_at) VALUES($1,$2,$3)
-		 ON CONFLICT(key) DO UPDATE SET type = EXCLUDED.type, expires_at = EXCLUDED.expires_at`,
-		key, typ, expiresAt)
+func (c *Scoped) UpsertAck(ctx context.Context, key, typ string, expiresAt *time.Time) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO violation_acks(cluster_id, key, type, expires_at) VALUES($1,$2,$3,$4)
+		 ON CONFLICT(cluster_id, key) DO UPDATE SET type = EXCLUDED.type, expires_at = EXCLUDED.expires_at`,
+		c.id, key, typ, expiresAt)
 	return err
 }
 
-func (s *Store) DeleteAck(ctx context.Context, key string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM violation_acks WHERE key=$1`, key)
+func (c *Scoped) DeleteAck(ctx context.Context, key string) error {
+	_, err := c.s.pool.Exec(ctx,
+		`DELETE FROM violation_acks WHERE cluster_id=$1 AND key=$2`, c.id, key)
 	return err
 }
 
@@ -94,7 +95,7 @@ type AlertRow struct {
 	DeliveredAt *string `json:"deliveredAt,omitempty"`
 }
 
-func (s *Store) QueryAlerts(ctx context.Context, since int64, limit int) ([]AlertRow, int64, error) {
+func (c *Scoped) QueryAlerts(ctx context.Context, since int64, limit int) ([]AlertRow, int64, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
@@ -108,13 +109,13 @@ func (s *Store) QueryAlerts(ctx context.Context, since int64, limit int) ([]Aler
 		args []interface{}
 	)
 	if since == 0 {
-		q = `SELECT * FROM (SELECT ` + cols + ` FROM alerts ORDER BY id DESC LIMIT $1) r ORDER BY id`
-		args = []interface{}{limit}
+		q = `SELECT * FROM (SELECT ` + cols + ` FROM alerts WHERE cluster_id = $1 ORDER BY id DESC LIMIT $2) r ORDER BY id`
+		args = []interface{}{c.id, limit}
 	} else {
-		q = `SELECT ` + cols + ` FROM alerts WHERE id > $1 ORDER BY id LIMIT $2`
-		args = []interface{}{since, limit}
+		q = `SELECT ` + cols + ` FROM alerts WHERE cluster_id = $1 AND id > $2 ORDER BY id LIMIT $3`
+		args = []interface{}{c.id, since, limit}
 	}
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := c.s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, since, err
 	}

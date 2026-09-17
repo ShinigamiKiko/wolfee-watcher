@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
@@ -186,7 +187,7 @@ func (a *Aggregator) pollAnomaly(ctx context.Context) {
 				a.pendingWatches[ev.SrcNamespace+"/"+ev.SrcPod] = struct{}{}
 			}
 		}
-		a.hub.Publish(hub.Event{Type: "anomaly_event", Data: raw})
+		a.hub.Publish(hub.Event{Cluster: clusterctx.Local(), Type: "anomaly_event", Data: raw})
 		if json.Unmarshal(raw, &ev) == nil && ev.ID != "" {
 			a.anomalyCursor = ev.ID
 		}
@@ -214,7 +215,7 @@ func (a *Aggregator) pollSensor(ctx context.Context) {
 		log.Printf("[collector/sensor] fetch failed: %v", err)
 		return
 	}
-	a.hub.Publish(hub.Event{Type: "sensor_snapshot", Data: snapshot})
+	a.hub.Publish(hub.Event{Cluster: clusterctx.Local(), Type: "sensor_snapshot", Data: snapshot})
 	log.Printf("[collector/sensor] snapshot published: %d bytes, %s", len(snapshot), summarizeSnapshot(snapshot))
 }
 

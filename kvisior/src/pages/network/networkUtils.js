@@ -1,7 +1,8 @@
+import { apiFetch } from '../../data/cluster';
 export async function loadData() {
   const [graphRes, anomalyRes] = await Promise.all([
-    fetch('/anomaly/api/network-graph', { credentials: 'same-origin' }).catch(() => null),
-    fetch('/anomaly/api/anomalies?limit=200', { credentials: 'same-origin' }).catch(() => null),
+    apiFetch('/anomaly/api/network-graph', { credentials: 'same-origin' }).catch(() => null),
+    apiFetch('/anomaly/api/anomalies?limit=200', { credentials: 'same-origin' }).catch(() => null),
   ]);
   const graph   = graphRes?.ok  ? await graphRes.json()  : { nodes: [], edges: [] };
   const anomaly = anomalyRes?.ok ? await anomalyRes.json() : { events: [] };

@@ -164,6 +164,19 @@ kubectl port-forward -n wolfee-watcher svc/kvisior-ui 8080:80
 # open http://localhost:8080
 ```
 
+## Multiple clusters
+
+Set `global.clusterId` per release — it is written into every row and stamped
+into the certificates that cluster issues, so it must be unique and stable.
+For a hub serving several clusters, move PostgreSQL out of the chart and enable
+PgBouncer:
+
+```bash
+helm install wolfee-watcher ./helm -n wolfee-watcher   --set global.clusterId=prod-a   --set postgres.enabled=false   --set postgres.external.enabled=true   --set postgres.external.host=pg.internal.example.com   --set pgbouncer.enabled=true
+```
+
+Full description in [`docs/multicluster.md`](docs/multicluster.md).
+
 ## Important notes
 
 1. **mTLS is mandatory.** There is no plaintext-HTTP fallback: if

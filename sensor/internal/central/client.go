@@ -44,6 +44,7 @@ func (c *Client) newReq(ctx context.Context, method, path string, body io.Reader
 	}
 	if c.secret != "" {
 		req.Header.Set("X-Internal-Push-Secret", c.secret)
+		req.Header.Set("X-Cluster-ID", clusterID())
 	}
 	return req, nil
 }
@@ -126,4 +127,12 @@ func (c *Client) PullSnapshotCache(ctx context.Context) ([]byte, string, error) 
 		return nil, "", err
 	}
 	return data, resp.Header.Get("X-Snapshot-ETag"), nil
+}
+
+func clusterID() string {
+	id := strings.TrimSpace(os.Getenv("CLUSTER_ID"))
+	if id == "" {
+		return "default"
+	}
+	return id
 }

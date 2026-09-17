@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 )
 
-func (s *Store) WriteViolationChecked(ctx context.Context, vtype, ruleID, ruleName, sev, ns, pod, fingerprint string, data json.RawMessage) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO kvisior_violations(vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,data,last_seen)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-		 ON CONFLICT (fingerprint) WHERE fingerprint != '' DO UPDATE SET
+func (c *Scoped) WriteViolationChecked(ctx context.Context, vtype, ruleID, ruleName, sev, ns, pod, fingerprint string, data json.RawMessage) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO kvisior_violations(cluster_id,vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,data,last_seen)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+		 ON CONFLICT (cluster_id,fingerprint) WHERE fingerprint != '' DO UPDATE SET
 		    data      = EXCLUDED.data,
 		    last_seen = NOW(),
 		    state = CASE
@@ -26,7 +26,7 @@ func (s *Store) WriteViolationChecked(ctx context.Context, vtype, ruleID, ruleNa
 		              THEN NULL
 		              ELSE kvisior_violations.state_expires_at
 		            END`,
-		vtype, ruleID, ruleName, sev, ns, pod, fingerprint, data,
+		c.id, vtype, ruleID, ruleName, sev, ns, pod, fingerprint, data,
 	)
 	return err
 }

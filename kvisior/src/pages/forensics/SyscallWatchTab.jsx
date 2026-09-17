@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useEffect, useCallback } from 'react';
 import { SYSCALL_GROUPS } from './watchableSyscalls';
 
@@ -10,7 +11,7 @@ export function SyscallWatchTab({ ns, pod, onSelectedChange }) {
   const fetchWatch = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/v1/pod-watch?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}`, { credentials: 'same-origin' });
+      const res = await apiFetch(`/v1/pod-watch?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}`, { credentials: 'same-origin' });
       if (res.status === 503) { setNoStore(true); setLoading(false); return; }
       if (res.ok) {
         const data = await res.json();
@@ -31,13 +32,13 @@ export function SyscallWatchTab({ ns, pod, onSelectedChange }) {
     setSaving(true);
     try {
       if (next.length === 0) {
-        await fetch(`/v1/pod-watch?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}`, {
+        await apiFetch(`/v1/pod-watch?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}`, {
           method: 'DELETE', credentials: 'same-origin',
         });
         setSelected([]);
         onSelectedChange?.([]);
       } else {
-        const res = await fetch(`/v1/pod-watch?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}`, {
+        const res = await apiFetch(`/v1/pod-watch?ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}`, {
           method: 'PUT',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },

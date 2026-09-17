@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate }  from 'react-router-dom';
 import { useBridge }   from '../../context/BridgeContext';
@@ -49,7 +50,7 @@ export function Violations() {
   }, [suppressedRows]);
 
   const loadCategoryAcks = () => {
-    fetch('/api/acks', { credentials: 'same-origin' })
+    apiFetch('/api/acks', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!Array.isArray(data?.items)) return;
@@ -65,7 +66,7 @@ export function Violations() {
       .catch(() => {});
   };
   const loadSuppressedRows = () => {
-    fetch('/v1/violations?state=suppressed&limit=1000', { credentials: 'same-origin' })
+    apiFetch('/v1/violations?state=suppressed&limit=1000', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         const sup = new Map();
@@ -93,14 +94,14 @@ export function Violations() {
   useEffect(() => { setPage2(1); }, [outerTab, search, sevChecked, sortDir, sortCol]);
 
   const postState = (fp, state) =>
-    fetch(`/v1/violations?fp=${encodeURIComponent(fp)}&state=${state}`,
+    apiFetch(`/v1/violations?fp=${encodeURIComponent(fp)}&state=${state}`,
       { method: 'POST', credentials: 'same-origin' });
 
   const doSilent = (v, tab) => {
     const key = ackKey(v, tab);
     const expiresAt = Date.now() + 60 * 24 * 3600 * 1000;
     setSilenced(prev => new Map([...prev, [key, { type: 'silent', expiresAt }]]));
-    fetch('/api/acks', {
+    apiFetch('/api/acks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -131,7 +132,7 @@ export function Violations() {
         state: 'DISMISSED', expiresAt,
         row: { ...v, vtype: tab.toLowerCase(), fingerprint: fp },
       }));
-      fetch(`/v1/violations?fp=${encodeURIComponent(fp)}`,
+      apiFetch(`/v1/violations?fp=${encodeURIComponent(fp)}`,
         { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     }
   };
@@ -142,7 +143,7 @@ export function Violations() {
     setSuppressedRows(prev => { const m = new Map(prev); m.delete(key); return m; });
     const isCategoryKey = /^(sc|tp|lsm|bld|dep|aud)::/.test(key);
     if (isCategoryKey) {
-      fetch(`/api/acks?key=${encodeURIComponent(key)}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
+      apiFetch(`/api/acks?key=${encodeURIComponent(key)}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     } else {
       postState(key, 'ACTIVE').catch(() => {});
     }
@@ -167,7 +168,7 @@ export function Violations() {
     if (recordedRef.current.size > 5_000) recordedRef.current.clear();
     recordedRef.current.add(v._fp);
     const vtype = tab === 'Build' ? 'build' : 'deploy';
-    fetch('/v1/violations/record', {
+    apiFetch('/v1/violations/record', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -187,7 +188,7 @@ export function Violations() {
   const [apiRules, setApiRules] = useState([]);
   const [rulesLoaded, setRulesLoaded] = useState(false);
   useEffect(() => {
-    fetch('/api/policies', { credentials: 'same-origin' })
+    apiFetch('/api/policies', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (Array.isArray(data?.policies)) setApiRules(data.policies); })
       .catch(() => {})

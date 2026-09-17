@@ -9,6 +9,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { BridgeProvider } from './context/BridgeContext';
 import { ScannerProvider } from './context/ScannerContext';
 import { SensorProvider } from './context/SensorContext';
+import { ClusterProvider, useClusters } from './context/ClusterContext';
 
 import { Login }         from './pages/Login';
 import { Dashboard }     from './pages/Dashboard';
@@ -34,7 +35,16 @@ import { Settings }      from './pages/Settings';
 
 function AuthedShell() {
   return (
-    <BridgeProvider>
+    <ClusterProvider>
+      <ClusteredShell />
+    </ClusterProvider>
+  );
+}
+
+function ClusteredShell() {
+  const { current } = useClusters();
+  return (
+    <BridgeProvider key={current}>
       <ScannerProvider>
         <SensorProvider>
           <Topbar />

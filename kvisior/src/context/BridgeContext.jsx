@@ -1,3 +1,4 @@
+import { apiFetch, sseUrl } from '../data/cluster';
 import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchStats, fetchComponents, fetchK8sMetrics, fetchKafkaStats } from '../data/bridge';
 import { reconcileRules } from '../data/syscalls';
@@ -71,7 +72,7 @@ export function BridgeProvider({ children }) {
 
     const connect = () => {
       if (!alive) return;
-      es = new EventSource('/v1/stream');
+      es = new EventSource(sseUrl(sseUrl('/v1/stream')));
 
       es.onopen = () => {
         setConnected(true);
@@ -84,7 +85,7 @@ export function BridgeProvider({ children }) {
         es.close();
         errorCount++;
         if (errorCount % 3 === 0) {
-          fetch('/auth/me', { credentials: 'same-origin' })
+          apiFetch('/auth/me', { credentials: 'same-origin' })
             .then(r => { if (r.status === 401) window.dispatchEvent(new Event('sw-auth-failed')); })
             .catch(() => {});
         }
@@ -223,7 +224,7 @@ export function BridgeProvider({ children }) {
 
   useEffect(() => {
     let alive = true;
-    fetch('/v1/violations?type=syscall&limit=1000', { credentials: 'same-origin' })
+    apiFetch('/v1/violations?type=syscall&limit=1000', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!alive || !Array.isArray(data?.violations)) return;
@@ -255,7 +256,7 @@ export function BridgeProvider({ children }) {
 
   useEffect(() => {
     let alive = true;
-    fetch('/v1/violations?type=audit&limit=1000', { credentials: 'same-origin' })
+    apiFetch('/v1/violations?type=audit&limit=1000', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!alive || !Array.isArray(data?.violations)) return;

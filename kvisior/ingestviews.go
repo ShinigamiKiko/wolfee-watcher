@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
 
@@ -18,7 +19,7 @@ func auditEventsHandler(st *store.Store) http.HandlerFunc {
 		if since == "" {
 			since = "0"
 		}
-		events, lastID, err := st.QueryAuditEventsSince(r.Context(), since, 200)
+		events, lastID, err := st.Cluster(clusterctx.ForRead(r)).QueryAuditEventsSince(r.Context(), since, 200)
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return
@@ -43,7 +44,7 @@ func forensicDiffHandler(st *store.Store) http.HandlerFunc {
 			return
 		}
 		ns, pod := parts[0], parts[1]
-		entries, err := st.QueryForensicEvents(r.Context(), ns, pod)
+		entries, err := st.Cluster(clusterctx.ForRead(r)).QueryForensicEvents(r.Context(), ns, pod)
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return

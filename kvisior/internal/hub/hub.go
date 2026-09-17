@@ -14,8 +14,9 @@ import (
 )
 
 type Event struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
+	Type    string          `json:"type"`
+	Cluster string          `json:"cluster,omitempty"`
+	Data    json.RawMessage `json:"data"`
 }
 
 type Publisher interface {
@@ -130,6 +131,8 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	want := strings.TrimSpace(r.URL.Query().Get("cluster"))
+
 	ch := h.Subscribe(r.Context())
 	ping := time.NewTicker(25 * time.Second)
 	defer ping.Stop()
@@ -139,6 +142,9 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case e, ok := <-ch:
 			if !ok {
 				return
+			}
+			if want != "" && want != "*" && e.Cluster != "" && e.Cluster != want {
+				continue
 			}
 			b, _ := json.Marshal(e)
 			if _, err := io.WriteString(w, "data: "+string(b)+"\n\n"); err != nil {

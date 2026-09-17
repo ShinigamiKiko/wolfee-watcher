@@ -1,12 +1,13 @@
+import { apiFetch } from '../../data/cluster';
 async function apiGetSilents() {
-  const res = await fetch('/anomaly/api/silents', { credentials: 'same-origin' });
+  const res = await apiFetch('/anomaly/api/silents', { credentials: 'same-origin' });
   if (!res.ok) throw new Error(`silents: ${res.status}`);
   const data = await res.json();
   return data.items || [];
 }
 
 async function apiPostSilent(type, key, summary) {
-  const res = await fetch('/anomaly/api/silents', {
+  const res = await apiFetch('/anomaly/api/silents', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',
@@ -16,7 +17,7 @@ async function apiPostSilent(type, key, summary) {
 }
 
 async function apiDeleteSilent(type, key) {
-  const res = await fetch(`/anomaly/api/silents?type=${encodeURIComponent(type)}&key=${encodeURIComponent(key)}`, {
+  const res = await apiFetch(`/anomaly/api/silents?type=${encodeURIComponent(type)}&key=${encodeURIComponent(key)}`, {
     method: 'DELETE',
     credentials: 'same-origin',
   });
@@ -24,7 +25,7 @@ async function apiDeleteSilent(type, key) {
 }
 
 async function apiDeleteAnomaly(id) {
-  const res = await fetch(`/anomaly/api/anomalies/delete?id=${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/anomaly/api/anomalies/delete?id=${encodeURIComponent(id)}`, {
     method: 'POST',
     credentials: 'same-origin',
   });
@@ -32,7 +33,7 @@ async function apiDeleteAnomaly(id) {
 }
 
 async function apiSilenceAnomaly(id) {
-  const res = await fetch(`/anomaly/api/anomalies/silence?id=${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/anomaly/api/anomalies/silence?id=${encodeURIComponent(id)}`, {
     method: 'POST',
     credentials: 'same-origin',
   });
@@ -40,7 +41,7 @@ async function apiSilenceAnomaly(id) {
 }
 
 async function apiUnsilenceAnomaly(id) {
-  const res = await fetch(`/anomaly/api/anomalies/unsilence?id=${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/anomaly/api/anomalies/unsilence?id=${encodeURIComponent(id)}`, {
     method: 'POST',
     credentials: 'same-origin',
   });
@@ -48,14 +49,14 @@ async function apiUnsilenceAnomaly(id) {
 }
 
 async function apiGetSilentAnomalies() {
-  const res = await fetch('/anomaly/api/anomalies/silent', { credentials: 'same-origin' });
+  const res = await apiFetch('/anomaly/api/anomalies/silent', { credentials: 'same-origin' });
   if (!res.ok) throw new Error(`silent anomalies: ${res.status}`);
   const data = await res.json();
   return data.events || [];
 }
 
 async function apiIngestAnomaly(ev) {
-  const res = await fetch('/anomaly/api/anomalies/ingest', {
+  const res = await apiFetch('/anomaly/api/anomalies/ingest', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',

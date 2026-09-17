@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 export * from './list';
 
 export function matchesRule(event, rule) {
@@ -107,7 +108,7 @@ function valueContains(v, needle) {
 }
 
 export function saveRuntimeRules(rules) {
-  return fetch('/api/policies', {
+  return apiFetch('/api/policies', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ policies: rules }),
@@ -126,7 +127,7 @@ export function saveRuntimeRules(rules) {
 
 export async function fetchRulesFromAPI() {
   try {
-    const r = await fetch('/api/policies', { credentials: 'same-origin' });
+    const r = await apiFetch('/api/policies', { credentials: 'same-origin' });
     if (!r.ok) return null;
     const data = await r.json();
     if (!Array.isArray(data.policies)) return null;

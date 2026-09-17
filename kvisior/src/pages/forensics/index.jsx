@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useEffect } from 'react';
 import '../../styles/forensics/forensics.scss';
 import { useSensor }  from '../../context/SensorContext';
@@ -31,7 +32,7 @@ export function Forensics() {
   const [activeWatches, setActiveWatches] = useState([]);
 
   useEffect(() => {
-    const load = () => fetch('/v1/forensic-summary', { credentials: 'same-origin' })
+    const load = () => apiFetch('/v1/forensic-summary', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.events) setEventSummary(d.events); })
       .catch(() => {});
@@ -41,7 +42,7 @@ export function Forensics() {
   }, []);
 
   useEffect(() => {
-    const load = () => fetch('/anomaly/api/anomalies?limit=99999', { credentials: 'same-origin' })
+    const load = () => apiFetch('/anomaly/api/anomalies?limit=99999', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.events) setAnomalies(d.events); })
       .catch(() => {});
@@ -58,7 +59,7 @@ export function Forensics() {
     let alive = true;
     const load = async () => {
       try {
-        const res = await fetch('/v1/forensic-watches', { credentials: 'same-origin' });
+        const res = await apiFetch('/v1/forensic-watches', { credentials: 'same-origin' });
         if (!res.ok) return;
         const data = await res.json();
         if (alive) setActiveWatches(data.watches || []);

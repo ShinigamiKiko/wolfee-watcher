@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,6 +34,11 @@ const (
 
 type Store struct {
 	pool *pgxpool.Pool
+}
+
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 func New(ctx context.Context, dsn string) (*Store, error) {
@@ -62,17 +68,20 @@ func NewFromPool(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {
 
 func (s *Store) Close() { s.pool.Close() }
 
-func Fingerprint(ruleID, ns, pod string, ts time.Time) string {
+func Fingerprint(cluster, ruleID, ns, pod string, ts time.Time) string {
+	if cluster == "" {
+		cluster = DefaultCluster
+	}
 	bucket := ts.Truncate(time.Hour).Unix()
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d", ruleID, ns, pod, bucket)))
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d", cluster, ruleID, ns, pod, bucket)))
 	return fmt.Sprintf("%x", h[:12])
 }
 
-func (s *Store) WriteViolation(ctx context.Context, vtype, ruleID, ruleName, sev, ns, pod, fingerprint string, data json.RawMessage) {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO kvisior_violations(vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,data,last_seen)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-		 ON CONFLICT (fingerprint) WHERE fingerprint != '' DO UPDATE SET
+func (c *Scoped) WriteViolation(ctx context.Context, vtype, ruleID, ruleName, sev, ns, pod, fingerprint string, data json.RawMessage) {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO kvisior_violations(cluster_id,vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,data,last_seen)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+		 ON CONFLICT (cluster_id,fingerprint) WHERE fingerprint != '' DO UPDATE SET
 		    data      = EXCLUDED.data,
 		    last_seen = NOW(),
 		    state = CASE
@@ -89,14 +98,14 @@ func (s *Store) WriteViolation(ctx context.Context, vtype, ruleID, ruleName, sev
 		              THEN NULL
 		              ELSE kvisior_violations.state_expires_at
 		            END`,
-		vtype, ruleID, ruleName, sev, ns, pod, fingerprint, data,
+		c.id, vtype, ruleID, ruleName, sev, ns, pod, fingerprint, data,
 	)
 	if err != nil {
-		log.Printf("[store] write violation: %v", err)
+		log.Printf("[store] write violation (cluster=%s): %v", c.id, err)
 	}
 }
 
-func (s *Store) SetViolationState(ctx context.Context, fingerprint, state string, ttl time.Duration) error {
+func (c *Scoped) SetViolationState(ctx context.Context, fingerprint, state string, ttl time.Duration) error {
 	if fingerprint == "" {
 		return nil
 	}
@@ -108,13 +117,13 @@ func (s *Store) SetViolationState(ctx context.Context, fingerprint, state string
 		t := time.Now().Add(ttl)
 		expires = &t
 	}
-	_, err := s.pool.Exec(ctx,
+	_, err := c.s.pool.Exec(ctx,
 		`UPDATE kvisior_violations
-		    SET state            = $2,
-		        state_expires_at = $3,
+		    SET state            = $3,
+		        state_expires_at = $4,
 		        state_changed_at = NOW()
-		  WHERE fingerprint = $1`,
-		fingerprint, state, expires)
+		  WHERE cluster_id = $1 AND fingerprint = $2`,
+		c.id, fingerprint, state, expires)
 	return err
 }
 
@@ -133,7 +142,7 @@ type ViolationRow struct {
 	Data           json.RawMessage `json:"data"`
 }
 
-func (s *Store) QueryViolations(ctx context.Context, vtype, stateFilter string, sinceID int64, limit int) ([]ViolationRow, error) {
+func (c *Scoped) QueryViolations(ctx context.Context, vtype, stateFilter string, sinceID int64, limit int) ([]ViolationRow, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
@@ -153,8 +162,8 @@ func (s *Store) QueryViolations(ctx context.Context, vtype, stateFilter string, 
 	}
 	q := `SELECT id, ts, vtype, rule_id, rule_name, sev, namespace, pod, fingerprint, state, state_expires_at, data
 	      FROM kvisior_violations
-	      WHERE id > $1` + stateClause
-	args := []interface{}{sinceID}
+	      WHERE cluster_id = $1 AND id > $2` + stateClause
+	args := []interface{}{c.id, sinceID}
 	if vtype != "" {
 		args = append(args, vtype)
 		q += fmt.Sprintf(" AND vtype=$%d", len(args))
@@ -162,7 +171,7 @@ func (s *Store) QueryViolations(ctx context.Context, vtype, stateFilter string, 
 	args = append(args, limit)
 	q += fmt.Sprintf(" ORDER BY id ASC LIMIT $%d", len(args))
 
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := c.s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,16 +188,21 @@ func (s *Store) QueryViolations(ctx context.Context, vtype, stateFilter string, 
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteViolation(ctx context.Context, fingerprint string) error {
+func (c *Scoped) DeleteViolation(ctx context.Context, fingerprint string) error {
 	if fingerprint == "" {
 		return nil
 	}
-	_, err := s.pool.Exec(ctx, `DELETE FROM kvisior_violations WHERE fingerprint = $1`, fingerprint)
+	_, err := c.s.pool.Exec(ctx,
+		`DELETE FROM kvisior_violations WHERE cluster_id = $1 AND fingerprint = $2`, c.id, fingerprint)
 	return err
 }
 
 func (s *Store) SweepExpiredStates(ctx context.Context) (int64, error) {
-	tag, err := s.pool.Exec(ctx,
+	return sweepExpiredStates(ctx, s.pool)
+}
+
+func sweepExpiredStates(ctx context.Context, db execer) (int64, error) {
+	tag, err := db.Exec(ctx,
 		`DELETE FROM kvisior_violations
 		  WHERE (state IN ('FP','ACK','DISMISSED')
 		         AND state_expires_at IS NOT NULL
@@ -219,63 +233,69 @@ func (s *Store) RunRetention(ctx context.Context) {
 
 const retentionLockKey int64 = 0x77770001
 
-func (s *Store) tryAdvisoryLock(ctx context.Context, key int64) (func(), bool) {
-	conn, err := s.pool.Acquire(ctx)
+func (s *Store) withRetentionLock(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, false
+		return err
 	}
+	defer tx.Rollback(ctx)
 	var got bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&got); err != nil || !got {
-		conn.Release()
-		return nil, false
+	if err := tx.QueryRow(ctx,
+		`SELECT pg_try_advisory_xact_lock($1)`, retentionLockKey).Scan(&got); err != nil {
+		return err
 	}
-	return func() {
-		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, key)
-		conn.Release()
-	}, true
+	if !got {
+		return nil
+	}
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) sweepOnce(ctx context.Context) {
-	release, ok := s.tryAdvisoryLock(ctx, retentionLockKey)
-	if !ok {
-		return
-	}
-	defer release()
-	if n, err := s.SweepExpiredStates(ctx); err != nil {
+	err := s.withRetentionLock(ctx, func(tx pgx.Tx) error {
+		if n, err := sweepExpiredStates(ctx, tx); err != nil {
+			return fmt.Errorf("violation states: %w", err)
+		} else if n > 0 {
+			log.Printf("[store] retention sweep: %d expired rows dropped", n)
+		}
+		if n, err := sweepOldAuditRuns(ctx, tx); err != nil {
+			return fmt.Errorf("audit runs: %w", err)
+		} else if n > 0 {
+			log.Printf("[store] audit-run retention sweep: %d expired rows dropped", n)
+		}
+		if n, err := sweepOldHoneypotEvents(ctx, tx); err != nil {
+			return fmt.Errorf("honeypot events: %w", err)
+		} else if n > 0 {
+			log.Printf("[store] honeypot-event retention sweep: %d expired rows dropped", n)
+		}
+		return sweepIngested(ctx, tx)
+	})
+	if err != nil {
 		log.Printf("[store] retention sweep: %v", err)
-	} else if n > 0 {
-		log.Printf("[store] retention sweep: %d expired rows dropped", n)
 	}
-	if n, err := s.SweepOldAuditRuns(ctx); err != nil {
-		log.Printf("[store] audit-run retention sweep: %v", err)
-	} else if n > 0 {
-		log.Printf("[store] audit-run retention sweep: %d expired rows dropped", n)
-	}
-	if n, err := s.SweepOldHoneypotEvents(ctx); err != nil {
-		log.Printf("[store] honeypot-event retention sweep: %v", err)
-	} else if n > 0 {
-		log.Printf("[store] honeypot-event retention sweep: %d expired rows dropped", n)
-	}
-	s.sweepIngested(ctx)
+	s.sweepUnpartitioned(ctx)
 }
 
-func (s *Store) UpsertImageScan(ctx context.Context, image string, scannedAt time.Time, data json.RawMessage) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO image_scans(image, scanned_at, data, updated_at)
-		 VALUES ($1, $2, $3, NOW())
-		 ON CONFLICT (image) DO UPDATE SET
+func (c *Scoped) UpsertImageScan(ctx context.Context, image string, scannedAt time.Time, data json.RawMessage) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO image_scans(cluster_id, image, scanned_at, data, updated_at)
+		 VALUES ($1, $2, $3, $4, NOW())
+		 ON CONFLICT (cluster_id, image) DO UPDATE SET
 		    scanned_at = EXCLUDED.scanned_at,
 		    data       = EXCLUDED.data,
 		    updated_at = NOW()`,
-		image, scannedAt, data)
+		c.id, image, scannedAt, data)
 	return err
 }
 
-func (s *Store) ListImageScans(ctx context.Context) ([]json.RawMessage, error) {
-	return s.listJSONBlobs(ctx, `SELECT data FROM image_scans ORDER BY scanned_at DESC`)
+func (c *Scoped) ListImageScans(ctx context.Context) ([]json.RawMessage, error) {
+	return c.listJSONBlobs(ctx,
+		`SELECT data FROM image_scans WHERE cluster_id = $1 ORDER BY scanned_at DESC`, c.id)
 }
 
-func (s *Store) InsertImageScanWorkloads(ctx context.Context, image string, scannedAt time.Time, data json.RawMessage) error {
+func (c *Scoped) InsertImageScanWorkloads(ctx context.Context, image string, scannedAt time.Time, data json.RawMessage) error {
 	var payload struct {
 		Workloads []struct {
 			Image      string    `json:"image"`
@@ -303,14 +323,14 @@ func (s *Store) InsertImageScanWorkloads(ctx context.Context, image string, scan
 		if err != nil {
 			return fmt.Errorf("encode image workload: %w", err)
 		}
-		if _, err := s.pool.Exec(ctx, `
+		if _, err := c.s.pool.Exec(ctx, `
 			INSERT INTO image_scan_workloads
-			  (image, namespace, pod, pod_uid, pod_ip, node, observed_at, data)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-			ON CONFLICT (image, namespace, pod_uid, observed_at) DO UPDATE SET
+			  (cluster_id, image, namespace, pod, pod_uid, pod_ip, node, observed_at, data)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			ON CONFLICT (cluster_id, image, namespace, pod_uid, observed_at) DO UPDATE SET
 			  pod = EXCLUDED.pod, pod_ip = EXCLUDED.pod_ip,
 			  node = EXCLUDED.node, data = EXCLUDED.data`,
-			workloadImage, workload.Namespace, workload.Pod, workload.PodUID,
+			c.id, workloadImage, workload.Namespace, workload.Pod, workload.PodUID,
 			workload.PodIP, workload.Node, observedAt, workloadData); err != nil {
 			return err
 		}
@@ -318,11 +338,11 @@ func (s *Store) InsertImageScanWorkloads(ctx context.Context, image string, scan
 	return nil
 }
 
-func (s *Store) ListImageScanWorkloads(ctx context.Context, image string) ([]json.RawMessage, error) {
-	rows, err := s.pool.Query(ctx, `
+func (c *Scoped) ListImageScanWorkloads(ctx context.Context, image string) ([]json.RawMessage, error) {
+	rows, err := c.s.pool.Query(ctx, `
 		SELECT data FROM image_scan_workloads
-		WHERE ($1 = '' OR image = $1)
-		ORDER BY observed_at DESC LIMIT 5000`, image)
+		WHERE cluster_id = $1 AND ($2 = '' OR image = $2)
+		ORDER BY observed_at DESC LIMIT 5000`, c.id, image)
 	if err != nil {
 		return nil, err
 	}
@@ -338,31 +358,33 @@ func (s *Store) ListImageScanWorkloads(ctx context.Context, image string) ([]jso
 	return out, rows.Err()
 }
 
-func (s *Store) UpsertImageHistory(ctx context.Context, image string, data json.RawMessage) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO image_histories(image, data, updated_at)
-		 VALUES ($1, $2, NOW())
-		 ON CONFLICT (image) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-		image, data)
+func (c *Scoped) UpsertImageHistory(ctx context.Context, image string, data json.RawMessage) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO image_histories(cluster_id, image, data, updated_at)
+		 VALUES ($1, $2, $3, NOW())
+		 ON CONFLICT (cluster_id, image) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+		c.id, image, data)
 	return err
 }
 
-func (s *Store) ListImageHistories(ctx context.Context) ([]json.RawMessage, error) {
-	return s.listJSONBlobs(ctx, `SELECT data FROM image_histories ORDER BY updated_at DESC`)
+func (c *Scoped) ListImageHistories(ctx context.Context) ([]json.RawMessage, error) {
+	return c.listJSONBlobs(ctx,
+		`SELECT data FROM image_histories WHERE cluster_id = $1 ORDER BY updated_at DESC`, c.id)
 }
 
-func (s *Store) PutScannerState(ctx context.Context, key string, data json.RawMessage) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO scanner_state(key, data, updated_at)
-		 VALUES ($1, $2, NOW())
-		 ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-		key, data)
+func (c *Scoped) PutScannerState(ctx context.Context, key string, data json.RawMessage) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO scanner_state(cluster_id, key, data, updated_at)
+		 VALUES ($1, $2, $3, NOW())
+		 ON CONFLICT (cluster_id, key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+		c.id, key, data)
 	return err
 }
 
-func (s *Store) GetScannerState(ctx context.Context, key string) (json.RawMessage, bool, error) {
+func (c *Scoped) GetScannerState(ctx context.Context, key string) (json.RawMessage, bool, error) {
 	var d json.RawMessage
-	err := s.pool.QueryRow(ctx, `SELECT data FROM scanner_state WHERE key = $1`, key).Scan(&d)
+	err := c.s.pool.QueryRow(ctx,
+		`SELECT data FROM scanner_state WHERE cluster_id = $1 AND key = $2`, c.id, key).Scan(&d)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, false, nil
@@ -374,7 +396,7 @@ func (s *Store) GetScannerState(ctx context.Context, key string) (json.RawMessag
 
 const auditRunsKeepPerTool = 50
 
-func (s *Store) InsertAuditRun(ctx context.Context, tool, runID, status string, startedAt, doneAt time.Time, data json.RawMessage) error {
+func (c *Scoped) InsertAuditRun(ctx context.Context, tool, runID, status string, startedAt, doneAt time.Time, data json.RawMessage) error {
 	var sa, da *time.Time
 	if !startedAt.IsZero() {
 		sa = &startedAt
@@ -382,23 +404,27 @@ func (s *Store) InsertAuditRun(ctx context.Context, tool, runID, status string, 
 	if !doneAt.IsZero() {
 		da = &doneAt
 	}
-	if _, err := s.pool.Exec(ctx,
-		`INSERT INTO audit_runs(tool, run_id, status, started_at, done_at, data)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		tool, runID, status, sa, da, data); err != nil {
+	if _, err := c.s.pool.Exec(ctx,
+		`INSERT INTO audit_runs(cluster_id, tool, run_id, status, started_at, done_at, data)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		c.id, tool, runID, status, sa, da, data); err != nil {
 		return err
 	}
-	_, err := s.SweepOldAuditRuns(ctx)
+	_, err := c.s.SweepOldAuditRuns(ctx)
 	return err
 }
 
 func (s *Store) SweepOldAuditRuns(ctx context.Context) (int64, error) {
-	tag, err := s.pool.Exec(ctx,
+	return sweepOldAuditRuns(ctx, s.pool)
+}
+
+func sweepOldAuditRuns(ctx context.Context, db execer) (int64, error) {
+	tag, err := db.Exec(ctx,
 		`DELETE FROM audit_runs
 		  WHERE created_at < NOW() - $1::interval
 		     OR id NOT IN (
 		         SELECT id FROM (
-		             SELECT id, ROW_NUMBER() OVER (PARTITION BY tool ORDER BY created_at DESC) AS rn
+		             SELECT id, ROW_NUMBER() OVER (PARTITION BY cluster_id, tool ORDER BY created_at DESC) AS rn
 		             FROM audit_runs
 		         ) ranked WHERE rn <= $2
 		     )`,
@@ -411,20 +437,20 @@ func (s *Store) SweepOldAuditRuns(ctx context.Context) (int64, error) {
 
 const MaxAuditRunsLimit = 500
 
-func (s *Store) ListAuditRuns(ctx context.Context, tool string, limit int) ([]json.RawMessage, error) {
+func (c *Scoped) ListAuditRuns(ctx context.Context, tool string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 || limit > MaxAuditRunsLimit {
 		limit = MaxAuditRunsLimit
 	}
-	q := `SELECT data FROM audit_runs`
-	args := []interface{}{}
+	q := `SELECT data FROM audit_runs WHERE cluster_id = $1`
+	args := []interface{}{c.id}
 	if tool != "" {
-		q += ` WHERE tool = $1`
 		args = append(args, tool)
+		q += fmt.Sprintf(` AND tool = $%d`, len(args))
 	}
 	q += ` ORDER BY created_at DESC`
 	args = append(args, limit)
 	q += fmt.Sprintf(` LIMIT $%d`, len(args))
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := c.s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -468,26 +494,28 @@ type PodWatchSelection struct {
 	Tracepoints []string `json:"tracepoints"`
 }
 
-func (s *Store) SetPodWatch(ctx context.Context, ns, pod string, selection PodWatchSelection) error {
+func (c *Scoped) SetPodWatch(ctx context.Context, ns, pod string, selection PodWatchSelection) error {
 	key := ns + "/" + pod
 	data, _ := json.Marshal(selection)
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO pod_syscall_watches(pod_key,namespace,pod,syscalls,updated_at)
-		 VALUES($1,$2,$3,$4,NOW())
-		 ON CONFLICT(pod_key) DO UPDATE SET syscalls=$4, updated_at=NOW()`,
-		key, ns, pod, string(data))
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO pod_syscall_watches(cluster_id,pod_key,namespace,pod,syscalls,updated_at)
+		 VALUES($1,$2,$3,$4,$5,NOW())
+		 ON CONFLICT(cluster_id,pod_key) DO UPDATE SET syscalls=$5, updated_at=NOW()`,
+		c.id, key, ns, pod, string(data))
 	return err
 }
 
-func (s *Store) DeletePodWatch(ctx context.Context, ns, pod string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM pod_syscall_watches WHERE pod_key=$1`, ns+"/"+pod)
+func (c *Scoped) DeletePodWatch(ctx context.Context, ns, pod string) error {
+	_, err := c.s.pool.Exec(ctx,
+		`DELETE FROM pod_syscall_watches WHERE cluster_id=$1 AND pod_key=$2`, c.id, ns+"/"+pod)
 	return err
 }
 
-func (s *Store) GetPodWatch(ctx context.Context, ns, pod string) (PodWatchSelection, error) {
+func (c *Scoped) GetPodWatch(ctx context.Context, ns, pod string) (PodWatchSelection, error) {
 	var raw string
-	err := s.pool.QueryRow(ctx,
-		`SELECT syscalls FROM pod_syscall_watches WHERE pod_key=$1`, ns+"/"+pod).Scan(&raw)
+	err := c.s.pool.QueryRow(ctx,
+		`SELECT syscalls FROM pod_syscall_watches WHERE cluster_id=$1 AND pod_key=$2`,
+		c.id, ns+"/"+pod).Scan(&raw)
 	if err != nil {
 		return podWatchError(err)
 	}
@@ -518,8 +546,9 @@ type PodWatchEntry struct {
 	UpdatedAt time.Time
 }
 
-func (s *Store) ListPodWatches(ctx context.Context) (map[string]PodWatchEntry, error) {
-	rows, err := s.pool.Query(ctx, `SELECT pod_key, syscalls, updated_at FROM pod_syscall_watches`)
+func (c *Scoped) ListPodWatches(ctx context.Context) (map[string]PodWatchEntry, error) {
+	rows, err := c.s.pool.Query(ctx,
+		`SELECT pod_key, syscalls, updated_at FROM pod_syscall_watches WHERE cluster_id=$1`, c.id)
 	if err != nil {
 		return nil, err
 	}
@@ -549,32 +578,36 @@ func (s *Store) ListPodWatches(ctx context.Context) (map[string]PodWatchEntry, e
 	return m, nil
 }
 
-func (s *Store) HideHoneypotEvent(ctx context.Context, ns, honeypot, eventID string) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO honeypot_hidden_events(namespace,honeypot,event_id)
-		 VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,
-		ns, honeypot, eventID)
+func (c *Scoped) HideHoneypotEvent(ctx context.Context, ns, honeypot, eventID string) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO honeypot_hidden_events(cluster_id,namespace,honeypot,event_id)
+		 VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+		c.id, ns, honeypot, eventID)
 	return err
 }
 
-func (s *Store) WriteHoneypotEvent(ctx context.Context, ns, honeypot, eventID, ts string, data json.RawMessage) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO honeypot_events(namespace,honeypot,event_id,ts,data)
-		 VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
-		ns, honeypot, eventID, ts, data)
+func (c *Scoped) WriteHoneypotEvent(ctx context.Context, ns, honeypot, eventID, ts string, data json.RawMessage) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO honeypot_events(cluster_id,namespace,honeypot,event_id,ts,data)
+		 VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+		c.id, ns, honeypot, eventID, ts, data)
 	return err
 }
 
-func (s *Store) ListHoneypotEvents(ctx context.Context, ns, honeypot string) ([]json.RawMessage, error) {
-	return s.listJSONBlobs(ctx,
+func (c *Scoped) ListHoneypotEvents(ctx context.Context, ns, honeypot string) ([]json.RawMessage, error) {
+	return c.listJSONBlobs(ctx,
 		`SELECT data FROM honeypot_events
-		  WHERE namespace=$1 AND honeypot=$2
+		  WHERE cluster_id=$1 AND namespace=$2 AND honeypot=$3
 		  ORDER BY ts ASC, created_at ASC`,
-		ns, honeypot)
+		c.id, ns, honeypot)
 }
 
 func (s *Store) SweepOldHoneypotEvents(ctx context.Context) (int64, error) {
-	tag, err := s.pool.Exec(ctx,
+	return sweepOldHoneypotEvents(ctx, s.pool)
+}
+
+func sweepOldHoneypotEvents(ctx context.Context, db execer) (int64, error) {
+	tag, err := db.Exec(ctx,
 		`DELETE FROM honeypot_events WHERE created_at < NOW() - $1::interval`,
 		fmt.Sprintf("%d seconds", int64(HoneypotEventsTTL.Seconds())))
 	if err != nil {
@@ -583,10 +616,10 @@ func (s *Store) SweepOldHoneypotEvents(ctx context.Context) (int64, error) {
 	return tag.RowsAffected(), nil
 }
 
-func (s *Store) HiddenHoneypotEvents(ctx context.Context, ns, honeypot string) ([]string, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT event_id FROM honeypot_hidden_events WHERE namespace=$1 AND honeypot=$2`,
-		ns, honeypot)
+func (c *Scoped) HiddenHoneypotEvents(ctx context.Context, ns, honeypot string) ([]string, error) {
+	rows, err := c.s.pool.Query(ctx,
+		`SELECT event_id FROM honeypot_hidden_events WHERE cluster_id=$1 AND namespace=$2 AND honeypot=$3`,
+		c.id, ns, honeypot)
 	if err != nil {
 		return nil, err
 	}

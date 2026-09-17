@@ -117,6 +117,7 @@ func (s *Store) pull(ctx context.Context) (json.RawMessage, error) {
 	}
 	if s.secret != "" {
 		req.Header.Set("X-Internal-Push-Secret", s.secret)
+		req.Header.Set("X-Cluster-ID", clusterID())
 	}
 	resp, err := s.hc.Do(req)
 	if err != nil {
@@ -134,4 +135,12 @@ func (s *Store) pull(ctx context.Context) (json.RawMessage, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+func clusterID() string {
+	id := strings.TrimSpace(os.Getenv("CLUSTER_ID"))
+	if id == "" {
+		return "default"
+	}
+	return id
 }

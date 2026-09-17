@@ -12,6 +12,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/wolfee-watcher/kvisior/internal/binring"
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/podwatch"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
@@ -212,7 +213,7 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 			}
 
 			if binary || watched || (m != nil && m.AllowsSyscall(sc)) {
-				h.Publish(hub.Event{Type: "tracee_event", Data: json.RawMessage(raw)})
+				h.Publish(hub.Event{Cluster: clusterctx.Local(), Type: "tracee_event", Data: json.RawMessage(raw)})
 			}
 		})
 	}
@@ -295,7 +296,7 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 	watched := c.watch != nil && ns != "" && pod != "" && c.watch.ShouldCapture(ns, pod, eventKindFromMap(ev, sc), sc)
 	if shouldPersistRuntimeEvent(sc, watched) && c.store != nil {
 		wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := c.store.InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
+		err := c.store.Cluster(clusterctx.Local()).InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
 		cancel()
 		if err != nil {
 			return fmt.Errorf("write binary event: %w", err)
@@ -312,13 +313,13 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 	}
 	for _, v := range matches {
 		evTs := eventTime(ev)
-		fp := store.Fingerprint(v.RuleID, ns, pod, evTs)
+		fp := store.Fingerprint(clusterctx.Local(), v.RuleID, ns, pod, evTs)
 
 		ruleID, ruleName, sev := v.RuleID, v.Rule, v.Sev
 		rawCopy := append(json.RawMessage(nil), raw...)
 		if c.store != nil {
 			wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err := c.store.WriteViolationChecked(wCtx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
+			err := c.store.Cluster(clusterctx.Local()).WriteViolationChecked(wCtx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
 			cancel()
 			if err != nil {
 				return fmt.Errorf("write violation rule=%s ns=%s pod=%s: %w", ruleID, ns, pod, err)
@@ -326,7 +327,7 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 		}
 
 		sseData, _ := json.Marshal(sysViolSSE{Violation: v, Fingerprint: fp})
-		c.pub.Publish(hub.Event{Type: "violation", Data: sseData})
+		c.pub.Publish(hub.Event{Cluster: clusterctx.Local(), Type: "violation", Data: sseData})
 	}
 	return nil
 }

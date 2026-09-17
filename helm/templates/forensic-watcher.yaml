@@ -57,6 +57,8 @@ spec:
               value: {{ .Values.global.internalPushSecret | quote }}
             - name: PROC_MOUNTS
               value: /host-proc/1/mounts
+            - name: CLUSTER_ID
+              value: {{ .Values.global.clusterId | quote }}
             - name: LOG_EXCLUDE_NAMESPACES
               value: {{ .Values.forensicWatcher.logExcludeNamespaces | default "" | quote }}
           volumeMounts:

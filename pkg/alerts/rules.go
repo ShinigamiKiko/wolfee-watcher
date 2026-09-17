@@ -40,6 +40,7 @@ func (f *RuleFetcher) Fetch(ctx context.Context) ([]json.RawMessage, error) {
 	}
 	if f.secret != "" {
 		req.Header.Set("X-Internal-Push-Secret", f.secret)
+		req.Header.Set("X-Cluster-ID", clusterID())
 	}
 	resp, err := f.hc.Do(req)
 	if err != nil {

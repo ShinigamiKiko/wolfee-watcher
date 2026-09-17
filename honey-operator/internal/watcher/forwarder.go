@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	alertspkg "github.com/wolfee-watcher/pkg/alerts"
@@ -71,6 +73,7 @@ func (f *kvisiorForwarder) deliverBatch(ctx context.Context, batch []json.RawMes
 	req.Header.Set("Content-Type", "application/json")
 	if f.secret != "" {
 		req.Header.Set("X-Internal-Push-Secret", f.secret)
+		req.Header.Set("X-Cluster-ID", clusterID())
 	}
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -85,4 +88,12 @@ func (f *kvisiorForwarder) deliverBatch(ctx context.Context, batch []json.RawMes
 		f.q.LogErrOnce("kvisior responded %d (%s)", resp.StatusCode, result)
 	}
 	return result
+}
+
+func clusterID() string {
+	id := strings.TrimSpace(os.Getenv("CLUSTER_ID"))
+	if id == "" {
+		return "default"
+	}
+	return id
 }

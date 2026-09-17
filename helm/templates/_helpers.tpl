@@ -18,19 +18,18 @@ app.kubernetes.io/component: {{ .app }}
 {{- end -}}
 
 {{- define "kvisior.serviceDSN" -}}
-{{- $ns := include "kvisior.namespace" .ctx -}}
-postgres://{{ .creds.user }}:{{ .creds.password }}@postgres.{{ $ns }}.svc.cluster.local:5432/{{ .ctx.Values.postgres.database }}?sslmode=disable
+postgres://{{ .creds.user }}:{{ .creds.password }}@{{ include "kvisior.pgAppHost" .ctx }}:{{ include "kvisior.pgAppPort" .ctx }}/{{ .ctx.Values.postgres.database }}{{ include "kvisior.pgAppParams" .ctx }}
 {{- end -}}
 
 {{- define "kvisior.waitForSchema" -}}
-{{- if .ctx.Values.postgres.enabled -}}
+{{- if .ctx.Values.centralMigrate.enabled -}}
 - name: wait-for-schema
   image: "{{ .ctx.Values.postgres.image.repository }}:{{ .ctx.Values.postgres.image.tag }}"
   imagePullPolicy: {{ .ctx.Values.postgres.image.pullPolicy }}
   command: ["sh", "-c", "until psql \"$WAIT_DSN\" -tAc \"SELECT 1 FROM schema_migrations WHERE version = '$WAIT_SCHEMA_VERSION'\" 2>/dev/null | grep -q 1; do echo waiting-for-schema-$WAIT_SCHEMA_VERSION; sleep 2; done"]
   env:
     - name: WAIT_DSN
-      value: {{ include "kvisior.serviceDSN" . | quote }}
+      value: {{ include "kvisior.directDSN" . | quote }}
     - name: WAIT_SCHEMA_VERSION
       value: {{ .ctx.Values.centralMigrate.schemaVersion | quote }}
   securityContext:
@@ -46,7 +45,8 @@ postgres://{{ .creds.user }}:{{ .creds.password }}@postgres.{{ $ns }}.svc.cluste
 {{- define "kvisior.waitForDeps" -}}
 {{- $ns := include "kvisior.namespace" . -}}
 {{- $checks := list -}}
-{{- if .Values.postgres.enabled -}}{{- $checks = append $checks (printf "until nc -z -w 3 postgres.%s.svc.cluster.local 5432; do echo waiting-for-postgres; sleep 2; done" $ns) -}}{{- end -}}
+{{- $checks = append $checks (printf "until nc -z -w 3 %s %s; do echo waiting-for-postgres; sleep 2; done" (include "kvisior.pgDirectHost" .) (include "kvisior.pgDirectPort" .)) -}}
+{{- if .Values.pgbouncer.enabled -}}{{- $checks = append $checks (printf "until nc -z -w 3 pgbouncer.%s.svc.cluster.local %v; do echo waiting-for-pgbouncer; sleep 2; done" $ns .Values.pgbouncer.port) -}}{{- end -}}
 {{- if .Values.kafka.enabled -}}{{- $checks = append $checks (printf "until nc -z -w 3 kafka.%s.svc.cluster.local 9092; do echo waiting-for-kafka; sleep 2; done" $ns) -}}{{- end -}}
 - name: wait-for-deps
   image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"

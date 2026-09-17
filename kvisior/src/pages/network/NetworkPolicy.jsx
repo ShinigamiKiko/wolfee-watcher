@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSensor } from '../../context/SensorContext';
 import { normalizePolicies, buildGraph } from './networkPolicyUtils';
@@ -65,7 +66,7 @@ export function NetworkRuntime() {
 
   const refreshSnapshot = useCallback(async () => {
     const tryOnce = async () => {
-      const r = await fetch('/sensor/api/snapshot', { credentials: 'same-origin' });
+      const r = await apiFetch('/sensor/api/snapshot', { credentials: 'same-origin' });
       if (r.status === 503) return { retry: true };
       if (!r.ok) {
         setError(`refresh failed: HTTP ${r.status}`);
@@ -89,7 +90,7 @@ export function NetworkRuntime() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch('/anomaly/api/anomalies?limit=200', { credentials: 'same-origin' }).catch(() => null);
+      const res = await apiFetch('/anomaly/api/anomalies?limit=200', { credentials: 'same-origin' }).catch(() => null);
       const anom = res?.ok ? await res.json() : { events: [] };
       setAnomalies(anom.events || []);
     } catch(e) { setError(e.message); }
@@ -101,7 +102,7 @@ export function NetworkRuntime() {
     let lastID = '0';
     const poll = async () => {
       try {
-        const res = await fetch(`/anomaly/api/anomalies?since=${lastID}&limit=100`, { credentials: 'same-origin' });
+        const res = await apiFetch(`/anomaly/api/anomalies?since=${lastID}&limit=100`, { credentials: 'same-origin' });
         if (!res.ok) return;
         const data = await res.json();
         const evs = data.events || [];

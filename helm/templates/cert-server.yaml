@@ -36,6 +36,8 @@ spec:
               value: /etc/wolfee-watcher/ca/ca.crt
             - name: CA_KEY_FILE
               value: /etc/wolfee-watcher/ca/ca.key
+            - name: CLUSTER_ID
+              value: {{ .Values.global.clusterId | quote }}
           volumeMounts:
             - name: ca-secret
               mountPath: /etc/wolfee-watcher/ca

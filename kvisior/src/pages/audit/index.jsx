@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import '../../styles/audit.scss';
 import { AuditBoundary, STATUS_COLOR, fmt } from './auditConstants';
@@ -23,7 +24,7 @@ function AuditInner() {
 
   const pollStatus = useCallback(async () => {
     try {
-      const r = await fetch('/audit/api/audit/current', { credentials: 'same-origin' });
+      const r = await apiFetch('/audit/api/audit/current', { credentials: 'same-origin' });
       if (!r.ok) return;
       const d = await r.json();
 
@@ -55,7 +56,7 @@ function AuditInner() {
   }, []);
 
   useEffect(() => {
-    fetch('/audit/api/audit/current', { credentials: 'same-origin' })
+    apiFetch('/audit/api/audit/current', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) return;
@@ -94,7 +95,7 @@ function AuditInner() {
 
     const endpoint = tool==='bench' ? '/audit/api/audit/run/bench' : '/audit/api/audit/run/hunter';
     try {
-      await fetch(endpoint, { method: 'POST', credentials: 'same-origin' });
+      await apiFetch(endpoint, { method: 'POST', credentials: 'same-origin' });
       clearInterval(pollRef.current);
       pollRef.current = setInterval(pollStatus, 3000);
     } catch {

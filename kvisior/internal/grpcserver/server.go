@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/wolfee-watcher/kvisior/api/wolfeewatcher"
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
@@ -98,21 +99,23 @@ func (s *PushServer) PushEvents(stream pb.PushService_PushEventsServer) error {
 			var ev map[string]interface{}
 			if json.Unmarshal(raw, &ev) == nil {
 				if sc, _ := ev["syscall"].(string); s.matcher.AllowsLiveStream(sc) {
-					s.hub.Publish(hub.Event{Type: "tracee_event", Data: raw})
+					s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "tracee_event", Data: raw})
 				}
 				for _, v := range s.matcher.Match(ev) {
 					ns, _ := ev["namespace"].(string)
 					pod, _ := ev["pod"].(string)
-					fp := store.Fingerprint(v.RuleID, ns, pod, time.Now())
+					cl := clusterctx.ForGRPC(stream.Context())
+					s.store.EnsureClusterCached(cl)
+					fp := store.Fingerprint(cl, v.RuleID, ns, pod, time.Now())
 					ruleID, ruleName, sev := v.RuleID, v.Rule, v.Sev
 					rawCopy := append(json.RawMessage(nil), raw...)
 					if err := s.syncWrite(stream.Context(), "syscall violation", func(ctx context.Context) error {
-						return s.store.WriteViolationChecked(ctx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
+						return s.store.Cluster(cl).WriteViolationChecked(ctx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
 					}); err != nil {
 						return err
 					}
 					sseData, _ := json.Marshal(sysViolSSE{Violation: v, Fingerprint: fp})
-					s.hub.Publish(hub.Event{Type: "violation", Data: sseData})
+					s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "violation", Data: sseData})
 				}
 			}
 			accepted++
@@ -142,26 +145,28 @@ func (s *PushServer) PushAuditEvents(stream pb.PushService_PushAuditEventsServer
 					if t, err := time.Parse(time.RFC3339, v.Timestamp); err == nil {
 						evTs = t
 					}
-					fp := store.Fingerprint(v.RuleID, v.Namespace, v.Name, evTs)
+					cl := clusterctx.ForGRPC(stream.Context())
+					s.store.EnsureClusterCached(cl)
+					fp := store.Fingerprint(cl, v.RuleID, v.Namespace, v.Name, evTs)
 					ruleID, policy, sev, ns, name := v.RuleID, v.Policy, v.Sev, v.Namespace, v.Name
 					rawCopy := append(json.RawMessage(nil), raw...)
 					if err := s.syncWrite(stream.Context(), "audit violation", func(ctx context.Context) error {
-						return s.store.WriteViolationChecked(ctx, "audit", ruleID, policy, sev, ns, name, fp, rawCopy)
+						return s.store.Cluster(cl).WriteViolationChecked(ctx, "audit", ruleID, policy, sev, ns, name, fp, rawCopy)
 					}); err != nil {
 						return err
 					}
 					sseData, _ := json.Marshal(auditViolSSE{AuditViolation: v, Fingerprint: fp})
-					s.hub.Publish(hub.Event{Type: "audit_violation", Data: sseData})
+					s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "audit_violation", Data: sseData})
 				}
 			}
-			s.hub.Publish(hub.Event{Type: "audit_event", Data: raw})
+			s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "audit_event", Data: raw})
 			accepted++
 		}
 	}
 }
 
-func (s *PushServer) PushSensorSnapshot(_ context.Context, req *pb.SensorSnapshotRequest) (*pb.PushAck, error) {
-	s.localHub.Publish(hub.Event{Type: "sensor_snapshot", Data: req.Snapshot})
+func (s *PushServer) PushSensorSnapshot(ctx context.Context, req *pb.SensorSnapshotRequest) (*pb.PushAck, error) {
+	s.localHub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(ctx), Type: "sensor_snapshot", Data: req.Snapshot})
 	slog.Info("grpc_sensor_snapshot_received",
 		"component", "kvisior/grpc-push",
 		"bytes", len(req.Snapshot))
@@ -183,7 +188,7 @@ func (s *PushServer) PushAnomalyEvents(stream pb.PushService_PushAnomalyEventsSe
 			return err
 		}
 		for _, raw := range req.Events {
-			s.hub.Publish(hub.Event{Type: "anomaly_event", Data: raw})
+			s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "anomaly_event", Data: raw})
 			accepted++
 		}
 	}

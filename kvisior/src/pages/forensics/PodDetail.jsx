@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { podName, podNS, podContainers } from '../../utils/format';
 import { usePerms } from '../../context/PermissionsContext';
@@ -106,7 +107,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     try {
       const uid = pUID ? `&pod_uid=${encodeURIComponent(pUID)}` : '';
       const container = pContainerID ? `&container_id=${encodeURIComponent(pContainerID)}` : '';
-      const res = await fetch(`/v1/pod-syscall-events?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}${uid}${container}`, { credentials: 'same-origin' });
+      const res = await apiFetch(`/v1/pod-syscall-events?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}${uid}${container}`, { credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         const parsed = (data.events || []).map(e => typeof e === 'string' ? JSON.parse(e) : e);
@@ -125,7 +126,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   useEffect(() => {
     setWatchLoaded(false);
     let cancelled = false;
-    fetch(`/v1/pod-watch?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, { credentials: 'same-origin' })
+    apiFetch(`/v1/pod-watch?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, { credentials: 'same-origin' })
       .then(r => {
         if (r.status === 503) { if (!cancelled) setWatchNoStore(true); return null; }
         return r.ok ? r.json() : null;
@@ -155,7 +156,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
       const podUID = pUID ? `&pod_uid=${encodeURIComponent(pUID)}` : '';
       const container = pContainerID ? `&container_id=${encodeURIComponent(pContainerID)}` : '';
       const qs = `?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}${podUID}${container}&since_id=${eventCursorRef.current}`;
-      const res = await fetch(`/v1/forensic-events${qs}`, { credentials: 'same-origin' });
+      const res = await apiFetch(`/v1/forensic-events${qs}`, { credentials: 'same-origin' });
       if (!res.ok) return false;
       const data = await res.json();
       if (!alive) return false;
@@ -198,9 +199,9 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     const url = `/v1/pod-watch?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`;
     try {
       if (next.length === 0) {
-        await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+        await apiFetch(url, { method: 'DELETE', credentials: 'same-origin' });
       } else {
-        await fetch(url, {
+        await apiFetch(url, {
           method: 'PUT', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -221,7 +222,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const fetchDiff = async () => {
     setDiffLoading(true);
     try {
-      const res = await fetch(`/sensor/api/forensic/diff/${pNS}/${pName}`, { credentials: 'same-origin' });
+      const res = await apiFetch(`/sensor/api/forensic/diff/${pNS}/${pName}`, { credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         setDiff(data.entries || []);
@@ -232,13 +233,13 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
 
   const doWatch = async () => {
     try {
-      const res = await fetch(`/sensor/api/forensic/watch/${pNS}/${pName}`, { method: 'POST', credentials: 'same-origin' });
+      const res = await apiFetch(`/sensor/api/forensic/watch/${pNS}/${pName}`, { method: 'POST', credentials: 'same-origin' });
       if (res.ok) { setWatching(true); setWatchSource('manual'); setContentTab('fsdiff'); fetchDiff(); }
     } catch {}
   };
   const doUnwatch = async () => {
     try {
-      await fetch(`/sensor/api/forensic/watch/${pNS}/${pName}`, { method: 'DELETE', credentials: 'same-origin' });
+      await apiFetch(`/sensor/api/forensic/watch/${pNS}/${pName}`, { method: 'DELETE', credentials: 'same-origin' });
       setWatching(false);
       setWatchSource(null);
     } catch {}
@@ -247,7 +248,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const doUpperDir = async () => {
     setUpperLoading(true);
     try {
-      const res = await fetch(`/sensor/api/forensic/tar/${pNS}/${pName}`, { credentials: 'same-origin' });
+      const res = await apiFetch(`/sensor/api/forensic/tar/${pNS}/${pName}`, { credentials: 'same-origin' });
       if (!res.ok) { alert('Upper dir failed: ' + res.status); return; }
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
@@ -264,7 +265,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     setClearLoading(true);
     setClearError(null);
     try {
-      const res = await fetch(`/v1/forensic-events/clear?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, {
+      const res = await apiFetch(`/v1/forensic-events/clear?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}`, {
         method: 'POST', credentials: 'same-origin',
       });
       const data = await res.json().catch(() => ({}));
@@ -381,8 +382,8 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     const prevBase = `/sensor/api/pods/${pNS}/${pName}/logs?previous=true&sinceSeconds=${sinceSeconds}${qs}`;
     try {
       const [curRes, prevRes] = await Promise.all([
-        fetch(base, { credentials: 'same-origin' }).catch(() => null),
-        gone ? null : fetch(prevBase, { credentials: 'same-origin' }).catch(() => null),
+        apiFetch(base, { credentials: 'same-origin' }).catch(() => null),
+        gone ? null : apiFetch(prevBase, { credentials: 'same-origin' }).catch(() => null),
       ]);
       const parseLines = (json, isPrev) => {
         if (!json) return [];

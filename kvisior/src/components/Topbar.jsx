@@ -1,6 +1,8 @@
+import { apiFetch } from '../data/cluster';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePerms } from '../context/PermissionsContext';
+import { ClusterPicker } from './ClusterPicker';
 import '../assets/logo/logo.scss';
 
 export function Topbar() {
@@ -12,7 +14,7 @@ export function Topbar() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/v1/version', { credentials: 'same-origin' })
+    apiFetch('/v1/version', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled && d?.version) setVersion(d.version); })
       .catch(() => {});
@@ -48,6 +50,7 @@ export function Topbar() {
       </div>
       <div className="topbar-divider" />
       <div className="topbar-right">
+        <ClusterPicker />
         <div className="dropdown-wrap" ref={ref}>
           <div className="user-btn" onClick={() => setMenuOpen(v => !v)}>
             <div className="user-avatar">{initials}</div>

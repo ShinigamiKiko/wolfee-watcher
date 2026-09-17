@@ -99,6 +99,9 @@ In addition to Kubernetes audit monitoring, Wolfee-Watcher includes:
 The database is not included in this repository. To enable FSTEC enrichment,
 download the latest database file from the official FSTEC website and make it
 available to `scanner-agent`.
+One kvisior and one PostgreSQL can serve several clusters: every row carries a
+`cluster_id` taken from the pushing agent's certificate, and the UI has a cluster
+switcher. See [`docs/multicluster.md`](docs/multicluster.md).
 
 ## Quick start (single-node dev)
 

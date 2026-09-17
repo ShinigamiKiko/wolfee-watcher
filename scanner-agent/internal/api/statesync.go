@@ -63,6 +63,7 @@ func (c *kvClient) postAsync(path, label string, body []byte) {
 		req.Header.Set("Content-Type", "application/json")
 		if c.secret != "" {
 			req.Header.Set("X-Internal-Push-Secret", c.secret)
+			req.Header.Set("X-Cluster-ID", clusterID())
 		}
 		resp, err := c.hc.Do(req)
 		if err != nil {
@@ -129,6 +130,7 @@ func (c *kvClient) PullScannerState(key string, out interface{}) bool {
 	}
 	if c.secret != "" {
 		req.Header.Set("X-Internal-Push-Secret", c.secret)
+		req.Header.Set("X-Cluster-ID", clusterID())
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -158,4 +160,12 @@ func (c *kvClient) logErrOnce(format string, args ...interface{}) {
 	}
 	c.lastEr = time.Now()
 	log.Printf("[kv-sync] "+format, args...)
+}
+
+func clusterID() string {
+	id := strings.TrimSpace(os.Getenv("CLUSTER_ID"))
+	if id == "" {
+		return "default"
+	}
+	return id
 }

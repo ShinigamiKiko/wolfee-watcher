@@ -22,6 +22,7 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/apihandler"
 	"github.com/wolfee-watcher/kvisior/internal/auth"
 	"github.com/wolfee-watcher/kvisior/internal/binring"
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/collector"
 	"github.com/wolfee-watcher/kvisior/internal/grpcserver"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
@@ -48,38 +49,55 @@ type backend struct {
 	timeout time.Duration
 }
 
-type forensicSummaryCache struct {
-	mu      sync.RWMutex
+type forensicSummaryEntry struct {
 	events  []store.BinaryEventSummary
 	expires time.Time
+}
+
+type forensicSummaryCache struct {
+	mu      sync.RWMutex
+	entries map[string]forensicSummaryEntry
 	sf      singleflight.Group
 }
 
-func (c *forensicSummaryCache) get(ctx context.Context, st *store.Store) ([]store.BinaryEventSummary, error) {
+func (c *forensicSummaryCache) lookup(cluster string) ([]store.BinaryEventSummary, bool) {
 	c.mu.RLock()
-	if time.Now().Before(c.expires) {
-		events := c.events
-		c.mu.RUnlock()
+	defer c.mu.RUnlock()
+	e, ok := c.entries[cluster]
+	if !ok || !time.Now().Before(e.expires) {
+		return nil, false
+	}
+	return e.events, true
+}
+
+func (c *forensicSummaryCache) invalidate(cluster string) {
+	c.mu.Lock()
+	delete(c.entries, cluster)
+	c.mu.Unlock()
+}
+
+func (c *forensicSummaryCache) get(ctx context.Context, sc *store.Scoped) ([]store.BinaryEventSummary, error) {
+	if events, ok := c.lookup(sc.ID()); ok {
 		return events, nil
 	}
-	c.mu.RUnlock()
-	result, err, _ := c.sf.Do("forensic-summary", func() (interface{}, error) {
-		c.mu.RLock()
-		if time.Now().Before(c.expires) {
-			events := c.events
-			c.mu.RUnlock()
+	result, err, _ := c.sf.Do("forensic-summary/"+sc.ID(), func() (interface{}, error) {
+		if events, ok := c.lookup(sc.ID()); ok {
 			return events, nil
 		}
-		c.mu.RUnlock()
 		qctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
-		events, err := st.QueryBinaryEventSummary(qctx)
+		events, err := sc.QueryBinaryEventSummary(qctx)
 		if err != nil {
 			return nil, err
 		}
 		c.mu.Lock()
-		c.events = events
-		c.expires = time.Now().Add(30 * time.Second)
+		if c.entries == nil {
+			c.entries = make(map[string]forensicSummaryEntry)
+		}
+		c.entries[sc.ID()] = forensicSummaryEntry{
+			events:  events,
+			expires: time.Now().Add(30 * time.Second),
+		}
 		c.mu.Unlock()
 		return events, nil
 	})
@@ -101,6 +119,7 @@ var backends = []backend{
 
 func main() {
 	logging.Setup("kvisior")
+	clusterctx.Init()
 	addr := os.Getenv("KVISIOR_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -207,6 +226,11 @@ func main() {
 			} else {
 				defer pgPool.Close()
 				log.Printf("[kvisior] PostgreSQL connected — serving /api/* directly from DB")
+				regCtx, cancelReg := context.WithTimeout(ctx, 5*time.Second)
+				if err := st.EnsureCluster(regCtx, clusterctx.Local()); err != nil {
+					log.Printf("[kvisior] register local cluster %q: %v", clusterctx.Local(), err)
+				}
+				cancelReg()
 				go st.RunRetention(ctx)
 
 				go alertspkg.RunCleanup(ctx, pgPool)
@@ -217,10 +241,30 @@ func main() {
 		log.Printf("[kvisior] POSTGRES_DSN not set — /api/* proxied to tracee-bridge")
 	}
 
+	ctrlPool := pgPool
+	if ctrlDSN := os.Getenv("POSTGRES_CONTROL_DSN"); ctrlDSN != "" {
+		p, err := pgxpool.New(ctx, ctrlDSN)
+		if err != nil {
+			log.Printf("[kvisior] control-plane postgres pool: %v — falling back to the data pool", err)
+		} else {
+			pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err = p.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				log.Printf("[kvisior] control-plane postgres ping: %v — falling back to the data pool", err)
+				p.Close()
+			} else {
+				defer p.Close()
+				ctrlPool = p
+				log.Printf("[kvisior] control-plane (accounts, sessions, tokens) on a separate pool")
+			}
+		}
+	}
+
 	secureCookie := os.Getenv("KVISIOR_SECURE_COOKIE") == "true"
 	var authMgr *auth.Manager
-	if pgPool != nil {
-		authMgr = auth.New(accounts.NewStore(pgPool), secureCookie)
+	if ctrlPool != nil {
+		authMgr = auth.New(accounts.NewStore(ctrlPool), secureCookie)
 	} else {
 
 		authMgr = auth.New(nil, secureCookie)
@@ -237,7 +281,7 @@ func main() {
 
 	binRing := binring.New()
 	watchRing := watchring.New(ctx)
-	podWatchMgr := podwatch.New(st, watchRing)
+	podWatchMgr := podwatch.New(st.Cluster(clusterctx.Local()), watchRing)
 	if st != nil {
 		if err := podWatchMgr.Load(ctx); err != nil {
 			log.Printf("[kvisior] podwatch load: %v", err)
@@ -327,7 +371,7 @@ func main() {
 				return
 			}
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-			events, err := st.QueryBinaryExecEvents(r.Context(), store.BinaryExecQuery{
+			events, err := st.Cluster(clusterctx.ForRead(r)).QueryBinaryExecEvents(r.Context(), store.BinaryExecQuery{
 				Namespace: r.URL.Query().Get("namespace"),
 				Pod:       r.URL.Query().Get("pod"),
 				PodUID:    r.URL.Query().Get("pod_uid"),
@@ -350,7 +394,7 @@ func main() {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			summary, err := summaryCache.get(r.Context(), st)
+			summary, err := summaryCache.get(r.Context(), st.Cluster(clusterctx.ForRead(r)))
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
@@ -369,15 +413,12 @@ func main() {
 				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 				return
 			}
-			deleted, err := st.DeletePodEvents(r.Context(), ns, pod)
+			deleted, err := st.Cluster(clusterctx.ForRead(r)).DeletePodEvents(r.Context(), ns, pod)
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
 			}
-			summaryCache.mu.Lock()
-			summaryCache.events = nil
-			summaryCache.expires = time.Time{}
-			summaryCache.mu.Unlock()
+			summaryCache.invalidate(clusterctx.ForRead(r))
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"runtime_deleted": deleted.Runtime,
@@ -403,7 +444,7 @@ func main() {
 				return
 			}
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
-			page, err := st.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
+			page, err := st.Cluster(clusterctx.ForRead(r)).QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
 				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID,
 				Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
 			})
@@ -422,7 +463,7 @@ func main() {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			watches, err := st.ListActiveForensicWatches(r.Context())
+			watches, err := st.Cluster(clusterctx.ForRead(r)).ListActiveForensicWatches(r.Context())
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
@@ -504,7 +545,7 @@ func main() {
 				http.Error(w, `{"error":"ns and name required"}`, http.StatusBadRequest)
 				return
 			}
-			ids, err := st.HiddenHoneypotEvents(r.Context(), ns, name)
+			ids, err := st.Cluster(clusterctx.ForRead(r)).HiddenHoneypotEvents(r.Context(), ns, name)
 			if err != nil {
 				http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 				return
@@ -527,7 +568,7 @@ func main() {
 				http.Error(w, `{"error":"ns, name and id required"}`, http.StatusBadRequest)
 				return
 			}
-			if err := st.HideHoneypotEvent(r.Context(), body.NS, body.Name, body.ID); err != nil {
+			if err := st.Cluster(clusterctx.ForRead(r)).HideHoneypotEvent(r.Context(), body.NS, body.Name, body.ID); err != nil {
 				http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 				return
 			}
@@ -552,7 +593,7 @@ func main() {
 			http.Error(w, `{"error":"ns and name required"}`, http.StatusBadRequest)
 			return
 		}
-		events, err := st.ListHoneypotEvents(r.Context(), ns, name)
+		events, err := st.Cluster(clusterctx.ForRead(r)).ListHoneypotEvents(r.Context(), ns, name)
 		if err != nil {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 			return
@@ -577,7 +618,7 @@ func main() {
 				return
 			}
 
-			if err := st.SetViolationState(r.Context(), fp, store.StateDismissed, store.StateDismissedDuration); err != nil {
+			if err := st.Cluster(clusterctx.ForRead(r)).SetViolationState(r.Context(), fp, store.StateDismissed, store.StateDismissedDuration); err != nil {
 				http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
 				return
 			}
@@ -597,7 +638,7 @@ func main() {
 			case store.StateACK:
 				ttl = store.StateACKDuration
 			}
-			if err := st.SetViolationState(r.Context(), fp, state, ttl); err != nil {
+			if err := st.Cluster(clusterctx.ForRead(r)).SetViolationState(r.Context(), fp, state, ttl); err != nil {
 				http.Error(w, `{"error":"state update failed"}`, http.StatusInternalServerError)
 				return
 			}
@@ -608,7 +649,7 @@ func main() {
 			stateFilter := r.URL.Query().Get("state")
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-			rows, err := st.QueryViolations(r.Context(), vtype, stateFilter, sinceID, limit)
+			rows, err := st.Cluster(clusterctx.ForRead(r)).QueryViolations(r.Context(), vtype, stateFilter, sinceID, limit)
 			if err != nil {
 				http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 				return
@@ -647,7 +688,7 @@ func main() {
 		if len(body.Data) == 0 {
 			body.Data = json.RawMessage(`{}`)
 		}
-		st.WriteViolation(r.Context(), body.VType, body.RuleID, body.RuleName, body.Sev, body.NS, body.Pod, body.Fingerprint, body.Data)
+		st.Cluster(clusterctx.ForRead(r)).WriteViolation(r.Context(), body.VType, body.RuleID, body.RuleName, body.Sev, body.NS, body.Pod, body.Fingerprint, body.Data)
 		w.WriteHeader(http.StatusNoContent)
 	}))))
 	mux.HandleFunc("/auth/login", authMgr.HandleLogin)
@@ -662,6 +703,10 @@ func main() {
 	mux.Handle("/api/users/", adminMut(authMgr.HandleUsersSub))
 	mux.Handle("/api/groups", adminMut(authMgr.HandleGroups))
 	mux.Handle("/api/groups/", adminMut(authMgr.HandleGroupItem))
+	if st != nil {
+		mux.Handle("/api/clusters", adminMut(clustersHandler(st)))
+		mux.Handle("/api/clusters/", adminMut(clusterItemHandler(st)))
+	}
 	mux.Handle("/api/tokens", adminMut(authMgr.HandleTokens))
 	mux.Handle("/api/tokens/", adminMut(authMgr.HandleTokenItem))
 

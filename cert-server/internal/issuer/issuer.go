@@ -68,7 +68,10 @@ func (is *Issuer) Issue(svc mtls.ServiceType) (certPEM, keyPEM []byte, err error
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: string(svc)},
+		Subject: pkix.Name{
+			CommonName:         string(svc),
+			OrganizationalUnit: []string{mtls.ClusterOU(mtls.ClusterID())},
+		},
 		DNSNames: []string{
 			string(svc),
 			string(svc) + ".wolfee-watcher",
