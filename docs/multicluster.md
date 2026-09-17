@@ -41,8 +41,9 @@ to a CA the hub trusts — either share one CA across clusters, or issue each
 spoke an intermediate from a common root.
 
 What is already multi-cluster: violations, alerts, audit events, forensic
-history, container logs, image scans, honeypot events, anomaly events, scanner
-state, and every UI view built on them.
+history, container logs, binary exec events, image scans and their workload
+mappings, honeypot events, anomaly events, scanner state, and every UI view
+built on them.
 
 What is not yet: the live proxy paths. `/api/`, `/scanner/`, `/sensor/`,
 `/sentry/`, `/anomaly/`, `/honey/` and `/audit/` still resolve to in-cluster
@@ -71,9 +72,10 @@ while it is down.
 
 `alerts` is deliberately not partitioned. It is a delivery queue with a
 five-minute TTL, so partitioning buys nothing; it gets aggressive per-table
-autovacuum settings and a lower fillfactor instead. `forensic_events` and
-`anomaly_events` keep row-level retention because their dedup constraints span
-time and cannot include the partition key.
+autovacuum settings and a lower fillfactor instead. `forensic_events`,
+`anomaly_events` and `binary_exec_events` keep row-level retention because their
+dedup constraints span time and cannot include the partition key; they are swept
+in bounded `ctid` batches outside the retention transaction.
 
 ### Uniqueness
 
@@ -127,14 +129,17 @@ authentication down with it.
 | `alerts` | 5 min | row delete, tuned autovacuum |
 | `container_logs` | 24 h | drop partition |
 | `audit_events` | 24 h | drop partition |
-| `forensic_events` | 24 h | row delete |
+| `forensic_events` | 24 h | batched row delete |
+| `binary_exec_events` | 24 h | batched row delete |
 | `audit_runs` | 14 d, 50 per tool per cluster | row delete |
 | `kvisior_violations` | 30 d | row delete |
 | `honeypot_events` | 30 d | row delete |
 
 ## Upgrading an existing install
 
-Schema `0012-multicluster` converts in place and is idempotent. Existing rows get
+Schema `0012-multicluster` converts in place and is idempotent. It has been run
+against a copy of the k8s-test stand's live database (schema
+`0011-image-scan-workloads`) with every row preserved. Existing rows get
 `cluster_id = 'default'`; set `global.clusterId` to the real id before upgrading
 if you want the existing data attributed to a named cluster instead.
 
