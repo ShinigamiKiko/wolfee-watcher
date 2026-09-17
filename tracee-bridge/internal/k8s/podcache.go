@@ -41,8 +41,8 @@ type learnedInfo struct {
 }
 
 const (
-	learnedTTL = 10 * time.Minute
-	pidTTL     = 5 * time.Minute
+	learnedTTL  = 10 * time.Minute
+	pidTTL      = 5 * time.Minute
 	pidCacheMax = 20000
 )
 

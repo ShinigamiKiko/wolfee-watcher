@@ -3,6 +3,7 @@ package baseline
 import (
 	"context"
 	"encoding/json"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"strings"
 	"time"
@@ -101,16 +102,16 @@ func (s *Store) persistOne(ctx context.Context, key string, b *BaselineInfo) {
 	}
 	_, err = s.pool.Exec(ctx, `
 INSERT INTO network_baselines
-(key, ns, dep_name, dep_id, observation_period_end, user_locked, baseline_peers, forbidden_peers, baseline_binaries, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-ON CONFLICT (key) DO UPDATE SET
+(cluster_id, key, ns, dep_name, dep_id, observation_period_end, user_locked, baseline_peers, forbidden_peers, baseline_binaries, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+ON CONFLICT (cluster_id, key) DO UPDATE SET
 observation_period_end = EXCLUDED.observation_period_end,
 user_locked            = EXCLUDED.user_locked,
 baseline_peers         = EXCLUDED.baseline_peers,
 forbidden_peers        = EXCLUDED.forbidden_peers,
 baseline_binaries      = EXCLUDED.baseline_binaries,
 updated_at             = NOW()`,
-		key, b.Namespace, b.DeploymentName, b.DeploymentID,
+		mtls.ClusterID(), key, b.Namespace, b.DeploymentName, b.DeploymentID,
 		b.ObservationPeriodEnd, b.UserLocked, bpJSON, fpJSON, bbJSON,
 	)
 	if err != nil {

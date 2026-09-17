@@ -56,16 +56,16 @@ var alwaysPass = map[string]bool{
 	"security_inode_rename": true, "security_inode_symlink": true,
 	"security_inode_mknod": true,
 	"security_bprm_check":  true, "security_mmap_file": true,
-	"security_file_mprotect": true,
-	"security_socket_create": true,
-	"security_socket_connect": true,
-	"security_socket_bind": true,
-	"security_socket_accept": true,
-	"security_socket_listen": true,
+	"security_file_mprotect":     true,
+	"security_socket_create":     true,
+	"security_socket_connect":    true,
+	"security_socket_bind":       true,
+	"security_socket_accept":     true,
+	"security_socket_listen":     true,
 	"security_socket_setsockopt": true,
-	"security_bpf": true,
-	"security_bpf_map": true,
-	"security_kernel_read_file": true,
+	"security_bpf":               true,
+	"security_bpf_map":           true,
+	"security_kernel_read_file":  true,
 }
 
 var neverDedup = map[string]bool{
@@ -73,7 +73,7 @@ var neverDedup = map[string]bool{
 	"init_module": true, "finit_module": true, "module_load": true,
 	"bpf": true, "security_bpf": true, "security_bpf_map": true,
 	"memfd_create": true,
-	"pivot_root": true, "unshare": true, "setns": true, "chroot": true,
+	"pivot_root":   true, "unshare": true, "setns": true, "chroot": true,
 	"mount": true, "umount2": true, "security_sb_mount": true,
 	"setuid": true, "setgid": true, "setreuid": true, "setresuid": true, "setresgid": true,
 	"capset":         true,
@@ -96,10 +96,10 @@ type Hub struct {
 	dedupTTL        time.Duration
 	dedupMaxEntries int
 	ctx             context.Context
-	producer    *kgo.Client
-	sseConsumer *kgo.Client
-	kafkaTopic  string
-	pool        *pgxpool.Pool
+	producer        *kgo.Client
+	sseConsumer     *kgo.Client
+	kafkaTopic      string
+	pool            *pgxpool.Pool
 
 	cntReceived    atomic.Int64
 	cntPassed      atomic.Int64

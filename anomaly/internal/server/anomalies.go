@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,8 +12,9 @@ func (s *Server) handleAnomalies(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	sinceID, limit := parseAnomalyQuery(r)
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT id, data FROM anomaly_events WHERE id > $1 AND silenced_at IS NULL ORDER BY id LIMIT $2`,
-		sinceID, limit,
+		`SELECT id, data FROM anomaly_events
+		 WHERE cluster_id = $1 AND id > $2 AND silenced_at IS NULL ORDER BY id LIMIT $3`,
+		mtls.ClusterID(), sinceID, limit,
 	)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -78,7 +80,8 @@ func (s *Server) handleAnomalyDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "id required")
 		return
 	}
-	tag, err := s.pool.Exec(r.Context(), `DELETE FROM anomaly_events WHERE id = $1`, id)
+	tag, err := s.pool.Exec(r.Context(),
+		`DELETE FROM anomaly_events WHERE cluster_id = $1 AND id = $2`, mtls.ClusterID(), id)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -122,11 +125,11 @@ func (s *Server) handleAnomalyIngest(w http.ResponseWriter, r *http.Request) {
 	}
 	var id int64
 	err = s.pool.QueryRow(r.Context(),
-		`INSERT INTO anomaly_events (ts, kind, data, ext_id)
- VALUES ($1, $2, $3, $4)
- ON CONFLICT (ext_id) DO UPDATE SET data = EXCLUDED.data
+		`INSERT INTO anomaly_events (cluster_id, ts, kind, data, ext_id)
+ VALUES ($1, $2, $3, $4, $5)
+ ON CONFLICT (cluster_id, ext_id) DO UPDATE SET data = EXCLUDED.data
  RETURNING id`,
-		ts, kind, data, extID,
+		mtls.ClusterID(), ts, kind, data, extID,
 	).Scan(&id)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -139,7 +142,9 @@ func (s *Server) handleAnomaliesSilent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_, limit := parseAnomalyQuery(r)
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT id, data FROM anomaly_events WHERE silenced_at IS NOT NULL ORDER BY silenced_at DESC LIMIT $1`,
+		`SELECT id, data FROM anomaly_events
+		 WHERE cluster_id = $1 AND silenced_at IS NOT NULL ORDER BY silenced_at DESC LIMIT $2`,
+		mtls.ClusterID(),
 		limit,
 	)
 	if err != nil {
@@ -173,11 +178,12 @@ func (s *Server) setEventSilenced(w http.ResponseWriter, r *http.Request, silenc
 		writeJSONError(w, http.StatusBadRequest, "id required")
 		return
 	}
-	query := `UPDATE anomaly_events SET silenced_at = NOW() WHERE id = $1 AND silenced_at IS NULL`
+	query := `UPDATE anomaly_events SET silenced_at = NOW()
+	          WHERE cluster_id = $1 AND id = $2 AND silenced_at IS NULL`
 	if !silence {
-		query = `UPDATE anomaly_events SET silenced_at = NULL WHERE id = $1`
+		query = `UPDATE anomaly_events SET silenced_at = NULL WHERE cluster_id = $1 AND id = $2`
 	}
-	tag, err := s.pool.Exec(r.Context(), query, id)
+	tag, err := s.pool.Exec(r.Context(), query, mtls.ClusterID(), id)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -207,7 +213,8 @@ func (s *Server) handleSilents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSilentsList(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT type, key, summary, created_at FROM anomaly_silents ORDER BY created_at DESC`)
+		`SELECT type, key, summary, created_at FROM anomaly_silents
+		 WHERE cluster_id = $1 ORDER BY created_at DESC`, mtls.ClusterID())
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -245,10 +252,10 @@ func (s *Server) handleSilentsUpsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := s.pool.Exec(r.Context(),
-		`INSERT INTO anomaly_silents (type, key, summary)
- VALUES ($1, $2, $3)
- ON CONFLICT (type, key) DO UPDATE SET summary = EXCLUDED.summary`,
-		body.Type, body.Key, body.Summary)
+		`INSERT INTO anomaly_silents (cluster_id, type, key, summary)
+ VALUES ($1, $2, $3, $4)
+ ON CONFLICT (cluster_id, type, key) DO UPDATE SET summary = EXCLUDED.summary`,
+		mtls.ClusterID(), body.Type, body.Key, body.Summary)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -263,7 +270,9 @@ func (s *Server) handleSilentsDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "type and key required")
 		return
 	}
-	tag, err := s.pool.Exec(r.Context(), `DELETE FROM anomaly_silents WHERE type = $1 AND key = $2`, typ, key)
+	tag, err := s.pool.Exec(r.Context(),
+		`DELETE FROM anomaly_silents WHERE cluster_id = $1 AND type = $2 AND key = $3`,
+		mtls.ClusterID(), typ, key)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return

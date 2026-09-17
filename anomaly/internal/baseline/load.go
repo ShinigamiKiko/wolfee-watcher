@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 )
 
@@ -13,7 +14,8 @@ func (s *Store) Load(ctx context.Context) error {
 	}
 	rows, err := s.pool.Query(ctx,
 		`SELECT key, ns, dep_name, dep_id, observation_period_end, user_locked,
-        baseline_peers, forbidden_peers, baseline_binaries FROM network_baselines`)
+        baseline_peers, forbidden_peers, baseline_binaries FROM network_baselines
+        WHERE cluster_id = $1`, mtls.ClusterID())
 	if err != nil {
 		return fmt.Errorf("baseline load: %w", err)
 	}

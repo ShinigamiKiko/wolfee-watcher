@@ -3,6 +3,7 @@ package alerter
 import (
 	"context"
 	"encoding/json"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"log/slog"
 	"strings"
@@ -179,9 +180,9 @@ func (a *Alerter) persist(al alertspkg.AlertLog) {
 	defer cancel()
 	_, err := a.pool.Exec(ctx, `
 		INSERT INTO alerts
-		  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		alertTimestamp(al.Timestamp), al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
+		  (cluster_id, ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		mtls.ClusterID(), alertTimestamp(al.Timestamp), al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
 		al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data,
 	)
 	if err != nil {

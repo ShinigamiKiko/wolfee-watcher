@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"strconv"
 	"time"
@@ -21,11 +22,11 @@ func (c *Consumer) insertAnomaly(ctx context.Context, a *AnomalyEvent, data []by
 	for attempt := 1; attempt <= emitDBAttempts; attempt++ {
 		var id int64
 		err := c.pool.QueryRow(ctx,
-			`INSERT INTO anomaly_events (ts, kind, data, ext_id)
-			 VALUES ($1,$2,$3,$4)
-			 ON CONFLICT (ext_id) DO NOTHING
+			`INSERT INTO anomaly_events (cluster_id, ts, kind, data, ext_id)
+			 VALUES ($1,$2,$3,$4,$5)
+			 ON CONFLICT (cluster_id, ext_id) DO NOTHING
 			 RETURNING id`,
-			a.Ts, string(a.Kind), data, extID,
+			mtls.ClusterID(), a.Ts, string(a.Kind), data, extID,
 		).Scan(&id)
 		if err == nil {
 			return id, true, nil

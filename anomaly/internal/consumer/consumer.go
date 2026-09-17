@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"log/slog"
 	"sync"
@@ -185,9 +186,9 @@ func (c *Consumer) persistAlertBatch(batch []alertspkg.AlertLog) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		_, err := c.pool.Exec(ctx, `
 			INSERT INTO alerts
-			  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-			ts, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
+			  (cluster_id, ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			mtls.ClusterID(), ts, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
 			al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data)
 		cancel()
 		if err != nil {

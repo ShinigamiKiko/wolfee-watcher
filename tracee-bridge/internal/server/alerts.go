@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"net/http"
 	"strconv"
 
@@ -40,17 +41,18 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 			`SELECT * FROM (
 			    SELECT `+colList+`
 			    FROM alerts
+			    WHERE cluster_id = $1
 			    ORDER BY id DESC
-			    LIMIT $1
+			    LIMIT $2
 			 ) recent
-			 ORDER BY id`, limit)
+			 ORDER BY id`, mtls.ClusterID(), limit)
 	} else {
 		rows, err = pool.Query(r.Context(),
 			`SELECT `+colList+`
 			 FROM alerts
-			 WHERE id > $1
+			 WHERE cluster_id = $1 AND id > $2
 			 ORDER BY id
-			 LIMIT $2`, since, limit)
+			 LIMIT $3`, mtls.ClusterID(), since, limit)
 	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
