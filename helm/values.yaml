@@ -105,7 +105,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0009-multicluster"
+  schemaVersion: "0012-multicluster"
   adminBootstrapPassword: ""
   resources:
     requests:

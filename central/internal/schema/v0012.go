@@ -1,11 +1,11 @@
 package schema
 
 func init() {
-	DDL = append(DDL, v0009DDL...)
-	DDL = append(DDL, v0009PartitionDDL...)
+	DDL = append(DDL, v0012DDL...)
+	DDL = append(DDL, v0012PartitionDDL...)
 }
 
-var v0009DDL = []string{
+var v0012DDL = []string{
 
 	`CREATE TABLE IF NOT EXISTS clusters (
 	id           TEXT PRIMARY KEY,

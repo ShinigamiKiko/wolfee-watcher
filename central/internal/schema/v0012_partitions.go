@@ -2,7 +2,7 @@ package schema
 
 const PartitionedTables = "container_logs, audit_events"
 
-var v0009PartitionDDL = []string{
+var v0012PartitionDDL = []string{
 
 	`DO $$
 	DECLARE

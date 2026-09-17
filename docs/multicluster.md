@@ -134,7 +134,7 @@ authentication down with it.
 
 ## Upgrading an existing install
 
-Schema `0009-multicluster` converts in place and is idempotent. Existing rows get
+Schema `0012-multicluster` converts in place and is idempotent. Existing rows get
 `cluster_id = 'default'`; set `global.clusterId` to the real id before upgrading
 if you want the existing data attributed to a named cluster instead.
 
