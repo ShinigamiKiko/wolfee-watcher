@@ -147,3 +147,19 @@ The conversion rewrites `container_logs` and `audit_events` into partitioned
 tables, copying rows into hourly partitions. Anything already past the 26-hour
 retention window is dropped during the conversion, which is within both tables'
 24-hour TTL.
+
+Two things to know when upgrading a release installed from an older chart:
+
+- `postgres.storage.size` cannot be changed on an existing StatefulSet. Pass the
+  size the release already uses, or recreate the StatefulSet first with
+  `kubectl delete sts postgres -n <ns> --cascade=orphan`, which leaves the pod
+  and the PVC running.
+- A release installed from a chart that stamped `helm.sh/chart` onto the
+  `volumeClaimTemplates` needs that same orphan delete once, because the label
+  changes with every chart version and volume claim templates are immutable.
+  This chart no longer sets it.
+
+Verified end to end on the k8s-test stand: schema `0012-multicluster` applied to
+the live database, all thirteen pods healthy, and every event ingested since the
+upgrade carries `cluster_id = k8s-test` while the existing history stays under
+`default`.

@@ -127,7 +127,6 @@ spec:
     - metadata:
         name: data
         labels:
-          {{- include "kvisior.labels" . | nindent 10 }}
           app.kubernetes.io/name: postgres
       spec:
         accessModes:
