@@ -27,6 +27,11 @@ spec:
         - name: wolfee-ca-bundle
           configMap:
             name: {{ include "kvisior.caBundleName" . }}
+        {{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+        - name: postgres-ca
+          configMap:
+            name: postgres-ca
+        {{- end }}
       containers:
         - name: detector
           image: "{{ include "kvisior.image" .Values.anomalyDetector.image }}"
@@ -39,6 +44,11 @@ spec:
             - name: wolfee-ca-bundle
               mountPath: /etc/wolfee-watcher/ca-bundle
               readOnly: true
+            {{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+            - name: postgres-ca
+              mountPath: /etc/wolfee-watcher/pg-ca
+              readOnly: true
+            {{- end }}
           env:
             - name: DETECTOR_ADDR
               value: "0.0.0.0:8080"

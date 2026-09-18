@@ -228,7 +228,9 @@ func main() {
 				defer pgPool.Close()
 				log.Printf("[kvisior] PostgreSQL connected — serving /api/* directly from DB")
 				regCtx, cancelReg := context.WithTimeout(ctx, 5*time.Second)
-				if err := st.EnsureCluster(regCtx, clusterctx.Local()); err != nil {
+				if clusterctx.Hub() {
+					log.Printf("[kvisior] hub mode: not registering a local cluster")
+				} else if err := st.EnsureCluster(regCtx, clusterctx.Local()); err != nil {
 					log.Printf("[kvisior] register local cluster %q: %v", clusterctx.Local(), err)
 				}
 				cancelReg()
@@ -240,6 +242,10 @@ func main() {
 		}
 	} else {
 		log.Printf("[kvisior] POSTGRES_DSN not set — /api/* proxied to tracee-bridge")
+	}
+
+	if clusterctx.Hub() && st == nil {
+		log.Fatalf("[kvisior] hub mode needs the database: set POSTGRES_DSN and run central-migrate first")
 	}
 
 	ctrlPool := pgPool
@@ -282,11 +288,13 @@ func main() {
 		anomalyBase, sensorBase,
 		auditMatcher, st,
 	)
-	go agg.Run(ctx)
+	if !clusterctx.Hub() {
+		go agg.Run(ctx)
+	}
 
 	watchRing := watchring.New(ctx)
 	podWatchMgr := podwatch.New(st.Cluster(clusterctx.Local()), watchRing)
-	if st != nil {
+	if st != nil && !clusterctx.Hub() {
 		if err := podWatchMgr.Load(ctx); err != nil {
 			log.Printf("[kvisior] podwatch load: %v", err)
 		}
@@ -313,7 +321,9 @@ func main() {
 	if grpcAddr == "" {
 		grpcAddr = ":9091"
 	}
-	if _, err := grpcserver.Start(ctx, grpcAddr, grpcCreds, uiBus, evHub, matcher, auditMatcher, st); err != nil {
+	if clusterctx.Hub() {
+		log.Printf("[kvisior] hub mode: gRPC push listener disabled")
+	} else if _, err := grpcserver.Start(ctx, grpcAddr, grpcCreds, uiBus, evHub, matcher, auditMatcher, st); err != nil {
 		log.Fatalf("[kvisior] grpc: %v", err)
 	}
 
@@ -784,6 +794,26 @@ func main() {
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
+	}
+	if tlsAddr := os.Getenv("KVISIOR_TLS_ADDR"); tlsAddr != "" {
+		certFile, keyFile := os.Getenv("KVISIOR_TLS_CERT_FILE"), os.Getenv("KVISIOR_TLS_KEY_FILE")
+		if certFile == "" || keyFile == "" {
+			log.Fatalf("[kvisior] KVISIOR_TLS_ADDR=%s needs KVISIOR_TLS_CERT_FILE and KVISIOR_TLS_KEY_FILE", tlsAddr)
+		}
+		tlsSrv := &http.Server{
+			Addr:              tlsAddr,
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    1 << 20,
+			TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+		}
+		go func() {
+			log.Printf("[kvisior] TLS listener on %s", tlsAddr)
+			if err := tlsSrv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("[kvisior] TLS listener: %v", err)
+			}
+		}()
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("[kvisior] %v", err)

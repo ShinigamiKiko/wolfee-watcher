@@ -84,6 +84,17 @@ plus whichever agents that cluster should run. Service names, certificate SANs
 and the default cert-server address follow `POD_NAMESPACE`, so the release can
 live in any namespace. Spokes can share the hub's CA or use an intermediate.
 
+## External hub
+
+The hub can run outside Kubernetes: `KVISIOR_MODE=hub` gives a kvisior with no
+local cluster — no collector, Kafka consumers, pod watches or push endpoints —
+that serves the UI from the database and forwards every live request to the
+selected cluster's edge. It refuses to start without the database. Edges then
+expose federation on a TLS NodePort (`ui.federation`) restricted by network
+policy to the hub's address, and verify the database certificate
+(`postgres.external.sslMode: verify-ca` with `caBundle`). See
+[`deploy/hub/README.md`](../deploy/hub/README.md).
+
 ## Database
 
 ### Partitioning

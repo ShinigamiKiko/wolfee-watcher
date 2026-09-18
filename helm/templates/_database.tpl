@@ -38,16 +38,22 @@ pgbouncer.{{ include "kvisior.namespace" . }}.svc.cluster.local
 {{- end -}}
 {{- end -}}
 
+{{- define "kvisior.pgRootCert" -}}
+{{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle -}}
+&sslrootcert=/etc/wolfee-watcher/pg-ca/ca.crt
+{{- end -}}
+{{- end -}}
+
 {{- define "kvisior.pgAppParams" -}}
 {{- if .Values.pgbouncer.enabled -}}
 ?sslmode=disable&default_query_exec_mode=exec
 {{- else -}}
-?sslmode={{ include "kvisior.pgSSLMode" . }}
+?sslmode={{ include "kvisior.pgSSLMode" . }}{{ include "kvisior.pgRootCert" . }}
 {{- end -}}
 {{- end -}}
 
 {{- define "kvisior.directDSN" -}}
-postgres://{{ .creds.user }}:{{ .creds.password }}@{{ include "kvisior.pgDirectHost" .ctx }}:{{ include "kvisior.pgDirectPort" .ctx }}/{{ .ctx.Values.postgres.database }}?sslmode={{ include "kvisior.pgSSLMode" .ctx }}
+postgres://{{ .creds.user }}:{{ .creds.password }}@{{ include "kvisior.pgDirectHost" .ctx }}:{{ include "kvisior.pgDirectPort" .ctx }}/{{ .ctx.Values.postgres.database }}?sslmode={{ include "kvisior.pgSSLMode" .ctx }}{{ include "kvisior.pgRootCert" .ctx }}
 {{- end -}}
 
 {{- define "kvisior.clusterEnv" -}}

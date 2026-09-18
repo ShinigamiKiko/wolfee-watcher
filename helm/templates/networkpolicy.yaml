@@ -31,6 +31,16 @@ spec:
           port: 8080
         - protocol: TCP
           port: 9091
+    {{- if .Values.ui.federation.nodePort }}
+    - from:
+        {{- range .Values.ui.federation.allowedSources }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8443
+    {{- end }}
     {{- with .Values.networkPolicy.federationNamespaces }}
     - from:
         {{- range . }}

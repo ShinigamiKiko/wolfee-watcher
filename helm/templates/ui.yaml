@@ -31,6 +31,16 @@ spec:
         - name: wolfee-ca-bundle
           configMap:
             name: {{ include "kvisior.caBundleName" . }}
+        {{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+        - name: postgres-ca
+          configMap:
+            name: postgres-ca
+        {{- end }}
+        {{- if .Values.ui.federation.nodePort }}
+        - name: federation-tls
+          secret:
+            secretName: {{ .Values.ui.federation.tlsSecret }}
+        {{- end }}
       containers:
         - name: ui
           image: "{{ include "kvisior.image" .Values.ui.image }}"
@@ -38,11 +48,26 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+            {{- if .Values.ui.federation.nodePort }}
+            - containerPort: 8443
+              name: federation
+              protocol: TCP
+            {{- end }}
               protocol: TCP
           volumeMounts:
             - name: wolfee-ca-bundle
               mountPath: /etc/wolfee-watcher/ca-bundle
               readOnly: true
+            {{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+            - name: postgres-ca
+              mountPath: /etc/wolfee-watcher/pg-ca
+              readOnly: true
+            {{- end }}
+            {{- if .Values.ui.federation.nodePort }}
+            - name: federation-tls
+              mountPath: /etc/wolfee-watcher/federation-tls
+              readOnly: true
+            {{- end }}
           env:
             - name: KVISIOR_ADDR
               value: ":8080"
@@ -83,6 +108,14 @@ spec:
               value: {{ .Values.kafka.brokers | quote }}
             - name: KAFKA_TOPIC
               value: {{ .Values.kafka.topic | quote }}
+            {{- if .Values.ui.federation.nodePort }}
+            - name: KVISIOR_TLS_ADDR
+              value: ":8443"
+            - name: KVISIOR_TLS_CERT_FILE
+              value: /etc/wolfee-watcher/federation-tls/tls.crt
+            - name: KVISIOR_TLS_KEY_FILE
+              value: /etc/wolfee-watcher/federation-tls/tls.key
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -164,4 +197,26 @@ spec:
                 port:
                   number: {{ .Values.ui.servicePort }}
 {{- end }}
+{{- end }}
+{{- if and .Values.ui.enabled .Values.ui.federation.nodePort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kvisior-federation
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kvisior-ui
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: kvisior-ui
+  ports:
+    - name: federation
+      port: 8443
+      targetPort: 8443
+      nodePort: {{ .Values.ui.federation.nodePort }}
+      protocol: TCP
 {{- end }}

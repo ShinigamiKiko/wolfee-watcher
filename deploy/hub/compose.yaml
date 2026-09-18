@@ -1,0 +1,82 @@
+name: wolfee-hub
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: always
+    network_mode: host
+    environment:
+      POSTGRES_DB: wolfee-watcher
+      POSTGRES_USER: wolfee-watcher
+      POSTGRES_PASSWORD: ${PG_OWNER_PASSWORD:?set PG_OWNER_PASSWORD in hub.env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command:
+      - postgres
+      - -c
+      - listen_addresses=*
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/wolfee/pg-tls/server.crt
+      - -c
+      - ssl_key_file=/etc/wolfee/pg-tls/server.key
+      - -c
+      - hba_file=/etc/wolfee/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - wal_compression=on
+      - -c
+      - autovacuum_max_workers=6
+      - -c
+      - autovacuum_naptime=15s
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - ${WOLFEE_DATA:-/srv/wolfee}/pg:/var/lib/postgresql/data
+      - ${WOLFEE_DATA:-/srv/wolfee}/pki/pg:/etc/wolfee/pg-tls:ro
+      - ./pg_hba.conf:/etc/wolfee/pg_hba.conf:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "wolfee-watcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: localhost/wolfee-watcher/central-migrate:latest
+    restart: "no"
+    network_mode: host
+    environment:
+      POSTGRES_DSN: postgres://wolfee-watcher:${PG_OWNER_PASSWORD}@127.0.0.1:5432/wolfee-watcher?sslmode=disable
+      SERVICE_DB_PASSWORD_UI: ${PG_UI_PASSWORD:?set PG_UI_PASSWORD in hub.env}
+      SERVICE_DB_PASSWORD_TRACEE_BRIDGE: ${PG_TRACEE_BRIDGE_PASSWORD:?set PG_TRACEE_BRIDGE_PASSWORD in hub.env}
+      SERVICE_DB_PASSWORD_ANOMALY: ${PG_ANOMALY_PASSWORD:?set PG_ANOMALY_PASSWORD in hub.env}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+
+  kvisior:
+    image: localhost/wolfee-watcher/kvisior8:latest
+    restart: always
+    network_mode: host
+    environment:
+      KVISIOR_MODE: hub
+      KVISIOR_ADDR: 127.0.0.1:${HUB_HTTP_PORT:-8080}
+      KVISIOR_TLS_ADDR: :${HUB_HTTPS_PORT:-8443}
+      KVISIOR_TLS_CERT_FILE: /etc/wolfee/hub-tls/tls.crt
+      KVISIOR_TLS_KEY_FILE: /etc/wolfee/hub-tls/tls.key
+      KVISIOR_SECURE_COOKIE: "true"
+      KVISIOR_FEDERATION_TOKEN: ${FEDERATION_TOKEN:?set FEDERATION_TOKEN in hub.env}
+      KVISIOR_FEDERATION_CA_FILE: /etc/wolfee/ca.crt
+      POSTGRES_DSN: postgres://ww_ui:${PG_UI_PASSWORD}@127.0.0.1:5432/wolfee-watcher?sslmode=disable
+    volumes:
+      - ${WOLFEE_DATA:-/srv/wolfee}/pki/hub:/etc/wolfee/hub-tls:ro
+      - ${WOLFEE_DATA:-/srv/wolfee}/pki/ca.crt:/etc/wolfee/ca.crt:ro

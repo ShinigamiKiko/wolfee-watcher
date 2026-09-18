@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -42,12 +44,25 @@ type federation struct {
 }
 
 func newFederation(st *store.Store) *federation {
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if caFile := strings.TrimSpace(os.Getenv("KVISIOR_FEDERATION_CA_FILE")); caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			log.Fatalf("[federation] read KVISIOR_FEDERATION_CA_FILE: %v", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			log.Fatalf("[federation] no certificates in %s", caFile)
+		}
+		tlsCfg.RootCAs = pool
+	}
 	f := &federation{
 		st:        st,
 		token:     strings.TrimSpace(os.Getenv("KVISIOR_FEDERATION_TOKEN")),
 		advertise: strings.TrimRight(strings.TrimSpace(os.Getenv("KVISIOR_ADVERTISE_URL")), "/"),
 		transport: &http.Transport{
 			Proxy:               http.ProxyFromEnvironment,
+			TLSClientConfig:     tlsCfg,
 			MaxIdleConnsPerHost: 16,
 			IdleConnTimeout:     90 * time.Second,
 		},
@@ -124,7 +139,11 @@ func (f *federation) endpoint(ctx context.Context, cluster string) (cachedEndpoi
 func (f *federation) route(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cluster := clusterctx.ForRead(r)
-		if f == nil || f.st == nil || cluster == clusterctx.Local() || f.trusted(r) {
+		if clusterctx.Hub() && cluster == "" {
+			writeFederationError(w, http.StatusBadRequest, "select a cluster first", "")
+			return
+		}
+		if f == nil || f.st == nil || (!clusterctx.Hub() && cluster == clusterctx.Local()) || f.trusted(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

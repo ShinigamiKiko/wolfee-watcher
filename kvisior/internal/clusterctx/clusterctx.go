@@ -18,6 +18,7 @@ const (
 	Header      = "X-Cluster-ID"
 	QueryParam  = "cluster"
 	EnvLocal    = "KVISIOR_CLUSTER_ID"
+	EnvMode     = "KVISIOR_MODE"
 	EnvTrustHdr = "KVISIOR_TRUST_CLUSTER_HEADER"
 )
 
@@ -27,9 +28,16 @@ var (
 	local     = store.DefaultCluster
 	trustHdr  bool
 	certFirst = true
+	hub       bool
 )
 
 func Init() {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(EnvMode)), "hub") {
+		hub = true
+		local = ""
+		log.Printf("[clusterctx] hub mode: no local cluster, every cluster is served through its kvisior")
+		return
+	}
 	if v := strings.TrimSpace(os.Getenv(EnvLocal)); v != "" {
 		if !store.ValidClusterID(v) {
 			log.Fatalf("[clusterctx] %s=%q is not a valid cluster id "+
@@ -46,6 +54,8 @@ func Init() {
 }
 
 func Local() string { return local }
+
+func Hub() bool { return hub }
 
 func FromPeerCert(r *http.Request) (string, bool) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {

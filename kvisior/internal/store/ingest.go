@@ -100,9 +100,16 @@ func (c *Scoped) InsertAuditEvents(ctx context.Context, raws []json.RawMessage) 
 		if err != nil {
 			return err
 		}
+		ts, keep := partitionedTS(ts, AuditEventTTL)
+		if !keep {
+			continue
+		}
 		rows = append(rows, []interface{}{
 			c.id, ts, meta.User, meta.Kind, meta.Namespace, meta.Resource, raw,
 		})
+	}
+	if len(rows) == 0 {
+		return nil
 	}
 	_, err := c.s.pool.CopyFrom(ctx, pgx.Identifier{"audit_events"},
 		[]string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data"},
@@ -643,12 +650,16 @@ func (c *Scoped) InsertContainerLogEntries(ctx context.Context, node, ns, pod, c
 		if e.Log == "" {
 			continue
 		}
-		rows = append(rows, []interface{}{c.id, e.Ts, ns, pod, container, e.Log})
 		if e.Ts.After(maxTs) {
 			maxTs = e.Ts
 		}
+		ts, keep := partitionedTS(e.Ts, ContainerLogTTL)
+		if !keep {
+			continue
+		}
+		rows = append(rows, []interface{}{c.id, ts, ns, pod, container, e.Log})
 	}
-	if len(rows) == 0 {
+	if maxTs.IsZero() {
 		return nil
 	}
 	key := ns + "/" + pod + "/" + container
@@ -667,9 +678,11 @@ func (c *Scoped) InsertContainerLogEntries(ctx context.Context, node, ns, pod, c
 	if err == nil && !cur.Before(maxTs) {
 		return nil
 	}
-	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"container_logs"},
-		[]string{"cluster_id", "ts", "ns", "pod", "container", "log"}, pgx.CopyFromRows(rows)); err != nil {
-		return err
+	if len(rows) > 0 {
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"container_logs"},
+			[]string{"cluster_id", "ts", "ns", "pod", "container", "log"}, pgx.CopyFromRows(rows)); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO log_cursors (cluster_id, key, cursor_ts, node, updated_at)
@@ -806,4 +819,15 @@ func (s *Store) sweepUnpartitioned(ctx context.Context) {
 			log.Printf("[store] %s retention sweep: %d expired rows dropped", t.table, dropped)
 		}
 	}
+}
+
+func partitionedTS(ts time.Time, ttl time.Duration) (time.Time, bool) {
+	now := time.Now()
+	if ts.Before(now.Add(-ttl)) {
+		return ts, false
+	}
+	if ts.After(now.Add(time.Hour)) {
+		return now, true
+	}
+	return ts, true
 }

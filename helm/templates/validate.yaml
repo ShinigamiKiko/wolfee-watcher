@@ -14,3 +14,7 @@
 {{- if and .Values.postgres.external.enabled (eq (.Values.postgres.external.host | default "") "") -}}
 {{- fail "postgres.external.enabled=true requires postgres.external.host" -}}
 {{- end -}}
+
+{{- if and .Values.ui.federation.nodePort (not .Values.ui.federation.allowedSources) -}}
+{{- fail "ui.federation.nodePort is set but ui.federation.allowedSources is empty: list the hub's address so the network policy lets it in (and nobody else)" -}}
+{{- end -}}

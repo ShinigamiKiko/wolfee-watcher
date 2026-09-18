@@ -221,7 +221,7 @@ spec:
             - --output=webhook:http://tracee-bridge.{{ include "kvisior.namespace" . }}.svc.cluster.local:8080/tracee/event?node=$(NODE_NAME)
             - --perf-buffer-size={{ .Values.tracee.perfBufferSize }}
             - --containers=enrich=true
-            - --containers=sockets.containerd=/run/containerd/containerd.sock
+            - --containers=sockets.containerd={{ .Values.tracee.containerdSocketDir }}/containerd.sock
             - --containers=cgroupfs.path=/sys/fs/cgroup
             - --containers=cgroupfs.force=true
             - --server=http-address=:3366
@@ -260,7 +260,7 @@ spec:
               mountPath: /sys/kernel
               readOnly: true
             - name: containerd-run
-              mountPath: /run/containerd
+              mountPath: {{ .Values.tracee.containerdSocketDir }}
           resources:
             {{- toYaml .Values.tracee.resources | nindent 12 }}
       volumes:
@@ -287,6 +287,6 @@ spec:
             type: DirectoryOrCreate
         - name: containerd-run
           hostPath:
-            path: /run/containerd
+            path: {{ .Values.tracee.containerdSocketDir }}
             type: Directory
 {{- end }}
