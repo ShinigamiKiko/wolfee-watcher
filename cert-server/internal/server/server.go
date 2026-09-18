@@ -19,8 +19,6 @@ import (
 	"github.com/wolfee-watcher/pkg/mtls"
 )
 
-const allowedNamespace = "wolfee-watcher"
-
 const (
 	maxIssueBodyBytes = 8 << 10
 	readHeaderTimeout = 5 * time.Second
@@ -193,7 +191,7 @@ func (s *Server) validateToken(ctx context.Context, token string) (string, error
 	}
 
 	ns := review.Status.User.Extra["authentication.kubernetes.io/namespace"]
-	if len(ns) > 0 && ns[0] == allowedNamespace {
+	if len(ns) > 0 && ns[0] == mtls.Namespace() {
 		sa := review.Status.User.Extra["authentication.kubernetes.io/serviceaccount.name"]
 		if len(sa) > 0 && sa[0] != "" {
 			return sa[0], nil
@@ -201,7 +199,7 @@ func (s *Server) validateToken(ctx context.Context, token string) (string, error
 	}
 
 	username := review.Status.User.Username
-	prefix := "system:serviceaccount:" + allowedNamespace + ":"
+	prefix := "system:serviceaccount:" + mtls.Namespace() + ":"
 	if strings.HasPrefix(username, prefix) {
 		saName := strings.TrimPrefix(username, prefix)
 		if saName != "" {
@@ -209,7 +207,7 @@ func (s *Server) validateToken(ctx context.Context, token string) (string, error
 		}
 	}
 
-	return "", fmt.Errorf("SA not in namespace %q (got %q)", allowedNamespace, username)
+	return "", fmt.Errorf("SA not in namespace %q (got %q)", mtls.Namespace(), username)
 }
 
 func isServiceAllowedForSA(svc mtls.ServiceType, saName string) bool {

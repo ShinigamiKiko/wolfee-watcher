@@ -125,6 +125,7 @@ certServer:
     tag: latest
     pullPolicy: Never
   caSecretName: wolfee-watcher-ca
+  caBundle: ""
   resources:
     requests:
       cpu: 10m

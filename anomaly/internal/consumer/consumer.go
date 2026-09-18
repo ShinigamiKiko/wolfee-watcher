@@ -24,7 +24,7 @@ import (
 const filelessWindow = 30 * time.Second
 
 var ignoredNamespaces = map[string]bool{
-	"wolfee-watcher":  true,
+	mtls.Namespace():  true,
 	"kube-system":     true,
 	"kube-public":     true,
 	"kube-node-lease": true,

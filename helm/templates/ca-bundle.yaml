@@ -1,0 +1,23 @@
+{{- if .Values.certServer.enabled }}
+{{- $ns := include "kvisior.namespace" . -}}
+{{- $pem := .Values.certServer.caBundle -}}
+{{- if not $pem -}}
+{{- $secret := lookup "v1" "Secret" $ns .Values.certServer.caSecretName -}}
+{{- if and $secret $secret.data (index $secret.data "ca.crt") -}}
+{{- $pem = index $secret.data "ca.crt" | b64dec -}}
+{{- end -}}
+{{- end -}}
+{{- if not $pem -}}
+{{- fail (printf "cannot find the CA certificate: secret %s/%s has no ca.crt and certServer.caBundle is empty. Create the CA secret first (see DEPLOY.md), or pass the CA certificate PEM in certServer.caBundle." $ns .Values.certServer.caSecretName) -}}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kvisior.caBundleName" . }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+data:
+  ca.crt: |
+    {{- $pem | trim | nindent 4 }}
+{{- end }}

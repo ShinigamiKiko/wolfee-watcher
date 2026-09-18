@@ -259,6 +259,8 @@ spec:
             - name: sys-kernel
               mountPath: /sys/kernel
               readOnly: true
+            - name: containerd-run
+              mountPath: /run/containerd
           resources:
             {{- toYaml .Values.tracee.resources | nindent 12 }}
       volumes:

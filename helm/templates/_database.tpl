@@ -66,3 +66,7 @@ postgres://{{ .creds.user }}:{{ .creds.password }}@{{ include "kvisior.pgDirectH
 http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:{{ .Values.ui.servicePort }}
 {{- end -}}
 {{- end -}}
+
+{{- define "kvisior.caBundleName" -}}
+{{ .Values.certServer.caSecretName }}-bundle
+{{- end -}}

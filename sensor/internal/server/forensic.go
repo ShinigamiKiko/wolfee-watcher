@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"io"
 	"log"
 	"net/http"
@@ -191,7 +192,7 @@ func copyResponseHeaders(w http.ResponseWriter, resp *http.Response) {
 }
 
 func (s *Server) findForensicWatcherIP(ctx context.Context, nodeName string) (string, error) {
-	pods, err := s.client.CoreV1().Pods("wolfee-watcher").List(ctx, metav1.ListOptions{
+	pods, err := s.client.CoreV1().Pods(mtls.Namespace()).List(ctx, metav1.ListOptions{
 		LabelSelector: "app=forensic-watcher",
 		FieldSelector: "spec.nodeName=" + nodeName,
 	})

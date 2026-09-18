@@ -213,7 +213,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, name string) {
 	ns := r.URL.Query().Get("namespace")
 	if ns == "" {
-		ns = "wolfee-watcher"
+		ns = mtls.Namespace()
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
@@ -231,7 +231,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, name string) {
 	ns := r.URL.Query().Get("namespace")
 	if ns == "" {
-		ns = "wolfee-watcher"
+		ns = mtls.Namespace()
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -263,7 +263,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, name strin
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, name string) {
 	ns := r.URL.Query().Get("namespace")
 	if ns == "" {
-		ns = "wolfee-watcher"
+		ns = mtls.Namespace()
 	}
 
 	tail := int64(500)
