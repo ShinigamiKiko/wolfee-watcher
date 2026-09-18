@@ -5,6 +5,8 @@ global:
 
   trustClusterHeader: false
 
+  federationToken: ""
+
   certServerAddr: "https://cert-server.wolfee-watcher.svc.cluster.local:8090"
 
   postgresDSN: "postgres://wolfee-watcher:wolfee-watcher@postgres.wolfee-watcher.svc.cluster.local:5432/wolfee-watcher?sslmode=disable"
@@ -265,6 +267,7 @@ auditRunner:
       memory: 256Mi
 
 ui:
+  advertiseURL: ""
   controlPlaneDSN: ""
   enabled: true
   replicaCount: 1
@@ -347,6 +350,7 @@ tracee:
 
 networkPolicy:
   enabled: true
+  federationNamespaces: []
   ingressControllerNamespace: ingress-nginx
   # Node subnet CIDRs. Tracee runs hostNetwork and reaches tracee-bridge:8080
   # from node IPs, so these must be set when networkPolicy.enabled=true and

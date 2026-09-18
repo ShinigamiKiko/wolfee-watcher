@@ -15,9 +15,7 @@ var v0012DDL = []string{
 	created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	last_seen_at TIMESTAMPTZ
 )`,
-	`INSERT INTO clusters (id, name, description)
-	 VALUES ('default', 'default', 'Local cluster')
-	 ON CONFLICT (id) DO NOTHING`,
+	`ALTER TABLE clusters ADD COLUMN IF NOT EXISTS endpoint TEXT NOT NULL DEFAULT ''`,
 
 	`DO $$
 	DECLARE t TEXT;
@@ -111,6 +109,27 @@ var v0012DDL = []string{
 	`DROP INDEX IF EXISTS idx_forensic_events_dedup`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_forensic_events_dedup
 	 ON forensic_events(cluster_id, ns, pod, path, op, snapped_at)`,
+
+	`DO $$
+	DECLARE
+	  t TEXT;
+	  found BOOLEAN := FALSE;
+	BEGIN
+	  FOREACH t IN ARRAY ARRAY[
+	    'alerts','kvisior_violations','audit_events','binary_exec_events',
+	    'anomaly_events','image_scans','honeypot_events','forensic_events'
+	  ] LOOP
+	    IF to_regclass(t) IS NOT NULL THEN
+	      EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I WHERE cluster_id = ''default'')', t) INTO found;
+	      EXIT WHEN found;
+	    END IF;
+	  END LOOP;
+	  IF found THEN
+	    INSERT INTO clusters (id, name, description)
+	    VALUES ('default', 'default', 'Data recorded before clusters were introduced')
+	    ON CONFLICT (id) DO NOTHING;
+	  END IF;
+	END $$`,
 
 	`CREATE INDEX IF NOT EXISTS idx_alerts_cluster_ts        ON alerts(cluster_id, ts DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_kv_viol_cluster_ts       ON kvisior_violations(cluster_id, ts DESC)`,

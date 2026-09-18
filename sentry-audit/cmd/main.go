@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,12 +43,7 @@ func main() {
 	}
 	slog.Info("dependency_ready", "component", "sentry-audit/main", "dependency", "kubernetes")
 
-	dnsNames := []string{
-		"sentry-audit",
-		"sentry-audit.wolfee-watcher",
-		"sentry-audit.wolfee-watcher.svc",
-		"sentry-audit.wolfee-watcher.svc.cluster.local",
-	}
+	dnsNames := mtls.ServiceDNSNames("sentry-audit")
 	cert, err := selfregister.LoadOrCreateCert(ctx, client, dnsNames)
 	if err != nil {
 		slog.Error("tls_cert_setup_failed", "component", "sentry-audit/main", "error", err)

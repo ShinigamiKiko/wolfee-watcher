@@ -59,6 +59,10 @@ spec:
               value: /host-proc/1/mounts
             - name: CLUSTER_ID
               value: {{ .Values.global.clusterId | quote }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: LOG_EXCLUDE_NAMESPACES
               value: {{ .Values.forensicWatcher.logExcludeNamespaces | default "" | quote }}
           volumeMounts:

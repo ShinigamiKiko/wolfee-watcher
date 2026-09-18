@@ -31,6 +31,17 @@ spec:
           port: 8080
         - protocol: TCP
           port: 9091
+    {{- with .Values.networkPolicy.federationNamespaces }}
+    - from:
+        {{- range . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
     {{- with .Values.networkPolicy.nodeCIDRs }}
     - from:
         {{- range . }}

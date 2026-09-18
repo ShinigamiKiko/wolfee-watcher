@@ -53,4 +53,16 @@ postgres://{{ .creds.user }}:{{ .creds.password }}@{{ include "kvisior.pgDirectH
 {{- define "kvisior.clusterEnv" -}}
 - name: CLUSTER_ID
   value: {{ .Values.global.clusterId | quote }}
+- name: POD_NAMESPACE
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
+{{- end -}}
+
+{{- define "kvisior.advertiseURL" -}}
+{{- if .Values.ui.advertiseURL -}}
+{{ .Values.ui.advertiseURL }}
+{{- else -}}
+http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:{{ .Values.ui.servicePort }}
+{{- end -}}
 {{- end -}}

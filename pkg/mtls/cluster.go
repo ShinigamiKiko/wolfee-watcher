@@ -4,13 +4,16 @@ import (
 	"crypto/x509"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 const (
-	ClusterOUPrefix = "cluster:"
-	EnvClusterID    = "CLUSTER_ID"
-	DefaultCluster  = "default"
+	ClusterOUPrefix  = "cluster:"
+	EnvClusterID     = "CLUSTER_ID"
+	DefaultCluster   = "default"
+	EnvNamespace     = "POD_NAMESPACE"
+	DefaultNamespace = "wolfee-watcher"
 )
 
 var clusterIDRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -41,4 +44,25 @@ func ClusterFromCert(cert *x509.Certificate) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func Namespace() string {
+	if ns := strings.TrimSpace(os.Getenv(EnvNamespace)); ns != "" {
+		return ns
+	}
+	return DefaultNamespace
+}
+
+func ServiceDNSNames(svc string) []string {
+	ns := Namespace()
+	return []string{
+		svc,
+		svc + "." + ns,
+		svc + "." + ns + ".svc",
+		svc + "." + ns + ".svc.cluster.local",
+	}
+}
+
+func ServiceHost(svc string, port int) string {
+	return svc + "." + Namespace() + ".svc.cluster.local:" + strconv.Itoa(port)
 }

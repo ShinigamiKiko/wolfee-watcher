@@ -50,6 +50,12 @@ spec:
               value: {{ .Values.global.clusterId | quote }}
             - name: KVISIOR_TRUST_CLUSTER_HEADER
               value: {{ .Values.global.trustClusterHeader | quote }}
+            {{- if .Values.global.federationToken }}
+            - name: KVISIOR_FEDERATION_TOKEN
+              value: {{ .Values.global.federationToken | quote }}
+            - name: KVISIOR_ADVERTISE_URL
+              value: {{ include "kvisior.advertiseURL" . | quote }}
+            {{- end }}
             {{- include "kvisior.clusterEnv" . | nindent 12 }}
             - name: CERT_SERVER_ADDR
               value: {{ .Values.global.certServerAddr | quote }}

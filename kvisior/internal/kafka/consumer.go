@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/wolfee-watcher/kvisior/internal/binring"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/podwatch"
@@ -47,13 +46,13 @@ type Consumer struct {
 }
 
 func New(brokers []string, topic string, pub hub.Publisher, m *rules.Matcher, st *store.Store, watch *podwatch.Manager) (*Consumer, error) {
-	cl, err := kgo.NewClient(
+	cl, err := kgo.NewClient(append(FetchLimits(),
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.DisableAutoCommit(),
-	)
+	)...)
 	if err != nil {
 		return nil, fmt.Errorf("kafka consumer: %w", err)
 	}
@@ -155,12 +154,12 @@ func (c *Consumer) RulesStaleFor() time.Duration {
 	return time.Since(time.Unix(0, last))
 }
 
-func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ring *binring.Ring, pw *podwatch.Manager, m *rules.Matcher) {
-	cl, err := kgo.NewClient(
+func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, pw *podwatch.Manager, m *rules.Matcher) {
+	cl, err := kgo.NewClient(append(FetchLimits(),
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
-	)
+	)...)
 	if err != nil {
 		slog.Warn("live_consumer_init_failed",
 			"component", "kvisior/kafka-live",
@@ -198,10 +197,6 @@ func RunLive(ctx context.Context, brokers []string, topic string, h *hub.Hub, ri
 
 			binary := rules.IsBinaryExec(sc)
 			watched := pw != nil && sc != "" && pw.ShouldCapture(ns, pod, kind, sc)
-			if ring != nil && binary {
-				ring.Add(raw, eventTime(ev))
-			}
-
 			if pw != nil {
 				podUID, _ := ev["pod_uid"].(string)
 				if podUID == "" {

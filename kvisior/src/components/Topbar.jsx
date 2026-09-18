@@ -49,8 +49,8 @@ export function Topbar() {
         )}
       </div>
       <div className="topbar-divider" />
+      <ClusterPicker />
       <div className="topbar-right">
-        <ClusterPicker />
         <div className="dropdown-wrap" ref={ref}>
           <div className="user-btn" onClick={() => setMenuOpen(v => !v)}>
             <div className="user-avatar">{initials}</div>

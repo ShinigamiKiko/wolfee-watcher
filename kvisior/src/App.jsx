@@ -10,6 +10,7 @@ import { BridgeProvider } from './context/BridgeContext';
 import { ScannerProvider } from './context/ScannerContext';
 import { SensorProvider } from './context/SensorContext';
 import { ClusterProvider, useClusters } from './context/ClusterContext';
+import { ClusterBanner } from './components/ClusterPicker';
 
 import { Login }         from './pages/Login';
 import { Dashboard }     from './pages/Dashboard';
@@ -48,6 +49,7 @@ function ClusteredShell() {
       <ScannerProvider>
         <SensorProvider>
           <Topbar />
+          <ClusterBanner />
           <div className="layout">
             <Sidebar />
             <main className="main">

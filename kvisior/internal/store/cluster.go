@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+
+	"github.com/jackc/pgx/v5"
 	"regexp"
 	"sync"
 	"time"
@@ -67,6 +69,7 @@ type ClusterRow struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
+	Endpoint    string     `json:"endpoint"`
 	Enabled     bool       `json:"enabled"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	LastSeenAt  *time.Time `json:"lastSeenAt,omitempty"`
@@ -74,7 +77,7 @@ type ClusterRow struct {
 
 func (s *Store) ListClusters(ctx context.Context) ([]ClusterRow, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, description, enabled, created_at, last_seen_at
+		`SELECT id, name, description, endpoint, enabled, created_at, last_seen_at
 		   FROM clusters ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -83,7 +86,7 @@ func (s *Store) ListClusters(ctx context.Context) ([]ClusterRow, error) {
 	out := []ClusterRow{}
 	for rows.Next() {
 		var r ClusterRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Enabled, &r.CreatedAt, &r.LastSeenAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Endpoint, &r.Enabled, &r.CreatedAt, &r.LastSeenAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -146,4 +149,30 @@ func (s *Store) KnownClusters(ctx context.Context) (map[string]bool, error) {
 
 func (c *Scoped) Touch(ctx context.Context) {
 	_, _ = c.s.pool.Exec(ctx, `UPDATE clusters SET last_seen_at = NOW() WHERE id = $1`, c.id)
+}
+
+func (s *Store) SetClusterEndpoint(ctx context.Context, id, endpoint string) error {
+	if !ValidClusterID(id) {
+		return ErrUnknownCluster
+	}
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO clusters (id, name, description, endpoint, last_seen_at)
+		 VALUES ($1, $1, 'Registered by its kvisior', $2, NOW())
+		 ON CONFLICT (id) DO UPDATE SET endpoint = EXCLUDED.endpoint, last_seen_at = NOW()`,
+		id, endpoint)
+	return err
+}
+
+func (s *Store) ClusterEndpoint(ctx context.Context, id string) (string, bool, error) {
+	var ep string
+	var enabled bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT endpoint, enabled FROM clusters WHERE id = $1`, id).Scan(&ep, &enabled)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return ep, enabled, nil
 }

@@ -72,12 +72,7 @@ func (is *Issuer) Issue(svc mtls.ServiceType) (certPEM, keyPEM []byte, err error
 			CommonName:         string(svc),
 			OrganizationalUnit: []string{mtls.ClusterOU(mtls.ClusterID())},
 		},
-		DNSNames: []string{
-			string(svc),
-			string(svc) + ".wolfee-watcher",
-			string(svc) + ".wolfee-watcher.svc",
-			string(svc) + ".wolfee-watcher.svc.cluster.local",
-		},
+		DNSNames:  mtls.ServiceDNSNames(string(svc)),
 		NotBefore: now.Add(-BeforeGrace),
 		NotAfter:  now.Add(lifetime),
 		KeyUsage:  x509.KeyUsageDigitalSignature,

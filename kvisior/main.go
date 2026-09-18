@@ -21,7 +21,6 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/accounts"
 	"github.com/wolfee-watcher/kvisior/internal/apihandler"
 	"github.com/wolfee-watcher/kvisior/internal/auth"
-	"github.com/wolfee-watcher/kvisior/internal/binring"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/collector"
 	"github.com/wolfee-watcher/kvisior/internal/grpcserver"
@@ -107,14 +106,16 @@ func (c *forensicSummaryCache) get(ctx context.Context, sc *store.Scoped) ([]sto
 	return result.([]store.BinaryEventSummary), nil
 }
 
-var backends = []backend{
-	{"/api/", "tracee-bridge.wolfee-watcher.svc.cluster.local:8081", 0},
-	{"/scanner/", "scanner-agent.wolfee-watcher.svc.cluster.local:9090", 10 * time.Minute},
-	{"/sensor/", "sensor.wolfee-watcher.svc.cluster.local:8080", 5 * time.Minute},
-	{"/sentry/", "sentry-audit.wolfee-watcher.svc.cluster.local:8080", 30 * time.Second},
-	{"/anomaly/", "anomaly-detector.wolfee-watcher.svc.cluster.local:8080", 0},
-	{"/honey/", "honey-operator.wolfee-watcher.svc.cluster.local:9095", 0},
-	{"/audit/", "audit-runner.wolfee-watcher.svc.cluster.local:8080", 2 * time.Minute},
+func backends() []backend {
+	return []backend{
+		{"/api/", mtls.ServiceHost("tracee-bridge", 8081), 0},
+		{"/scanner/", mtls.ServiceHost("scanner-agent", 9090), 10 * time.Minute},
+		{"/sensor/", mtls.ServiceHost("sensor", 8080), 5 * time.Minute},
+		{"/sentry/", mtls.ServiceHost("sentry-audit", 8080), 30 * time.Second},
+		{"/anomaly/", mtls.ServiceHost("anomaly-detector", 8080), 0},
+		{"/honey/", mtls.ServiceHost("honey-operator", 9095), 0},
+		{"/audit/", mtls.ServiceHost("audit-runner", 8080), 2 * time.Minute},
+	}
 }
 
 func main() {
@@ -179,12 +180,12 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	anomalyBase := scheme + "://anomaly-detector.wolfee-watcher.svc.cluster.local:8080"
+	anomalyBase := scheme + "://" + mtls.ServiceHost("anomaly-detector", 8080)
 	if v := os.Getenv("KVISIOR_ANOMALY_BASE"); v != "" {
 		anomalyBase = v
 	}
 
-	sensorBase := scheme + "://sensor.wolfee-watcher.svc.cluster.local:8080"
+	sensorBase := scheme + "://" + mtls.ServiceHost("sensor", 8080)
 	if v := os.Getenv("KVISIOR_SENSOR_BASE"); v != "" {
 		sensorBase = v
 	}
@@ -271,6 +272,10 @@ func main() {
 	}
 	authMgr.StartSessionPurge(ctx)
 
+	fed := newFederation(st)
+	fed.register(ctx)
+	authed := fed.requireAuth(authMgr)
+
 	agg := collector.New(
 		evHub,
 		mkBkCl(), mkBkCl(),
@@ -279,7 +284,6 @@ func main() {
 	)
 	go agg.Run(ctx)
 
-	binRing := binring.New()
 	watchRing := watchring.New(ctx)
 	podWatchMgr := podwatch.New(st.Cluster(clusterctx.Local()), watchRing)
 	if st != nil {
@@ -297,8 +301,7 @@ func main() {
 			policyConsumer = kc
 			go kc.Run(ctx)
 
-			go kafkaconsumer.RunLive(ctx, brokers, kafkaTopic, evHub, binRing, podWatchMgr, matcher)
-			go kafkaconsumer.WarmRing(ctx, brokers, kafkaTopic, binRing)
+			go kafkaconsumer.RunLive(ctx, brokers, kafkaTopic, evHub, podWatchMgr, matcher)
 			go kafkaconsumer.WarmWatchRing(ctx, brokers, kafkaTopic, podWatchMgr)
 			log.Printf("[kvisior] kafka consumers started: brokers=%v topic=%s (processing group=kvisior-tracee + groupless live feed gated by active policies; binary-exec always streamed for Forensics)", brokers, kafkaTopic)
 		}
@@ -343,7 +346,7 @@ func main() {
 	if appVersion == "" {
 		appVersion = "dev"
 	}
-	mux.Handle("/v1/version", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/version", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -353,19 +356,12 @@ func main() {
 	})))
 	log.Printf("[kvisior] /v1/version → %s", appVersion)
 
-	mux.Handle("/v1/stream", authMgr.RequireAuth(evHub))
+	mux.Handle("/v1/stream", authed(fed.route(evHub)))
 	log.Printf("[kvisior] /v1/stream → SSE hub (buf=5000)")
-
-	if kafkaBrokers != "" {
-		mux.Handle("/v1/binary-backfill", authMgr.RequireAuth(
-			kafkaconsumer.BackfillHandler(binRing),
-		))
-		log.Printf("[kvisior] /v1/binary-backfill enabled (24h in-memory ring)")
-	}
 
 	if st != nil {
 		var summaryCache forensicSummaryCache
-		mux.Handle("/v1/binary-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/binary-events", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -389,7 +385,7 @@ func main() {
 		})))
 		log.Printf("[kvisior] /v1/binary-events enabled (24h PostgreSQL history)")
 
-		mux.Handle("/v1/forensic-summary", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-summary", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -403,7 +399,7 @@ func main() {
 			_ = json.NewEncoder(w).Encode(map[string]any{"events": summary})
 		})))
 
-		mux.Handle("/v1/forensic-events/clear", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-events/clear", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -426,7 +422,7 @@ func main() {
 			})
 		}))))
 
-		mux.Handle("/v1/forensic-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-events", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -458,7 +454,7 @@ func main() {
 			})
 		})))
 
-		mux.Handle("/v1/forensic-watches", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-watches", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -473,7 +469,7 @@ func main() {
 		})))
 	}
 
-	mux.Handle("/v1/pod-watch", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/pod-watch", authed(mutationsRequireAdmin(fed.routeFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
 		if ns == "" || pod == "" {
@@ -514,7 +510,7 @@ func main() {
 		}
 	}))))
 
-	mux.Handle("/v1/pod-syscall-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/pod-syscall-events", authed(fed.routeFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
 		podUID := r.URL.Query().Get("pod_uid")
@@ -531,7 +527,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"events": evts})
 	})))
 
-	mux.Handle("/v1/honeypot-hidden", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/honeypot-hidden", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -578,7 +574,7 @@ func main() {
 		}
 	}))))
 
-	mux.Handle("/v1/honeypot-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/honeypot-events", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -605,7 +601,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"events": events, "total": len(events)})
 	})))
 
-	mux.Handle("/v1/violations", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/violations", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -661,7 +657,7 @@ func main() {
 		}
 	}))))
 
-	mux.Handle("/v1/violations/record", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/violations/record", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -696,9 +692,9 @@ func main() {
 	mux.HandleFunc("/auth/me", authMgr.HandleMe)
 
 	adminMut := func(h http.HandlerFunc) http.Handler {
-		return authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(h)))
+		return authed(mutationsRequireAdmin(http.HandlerFunc(h)))
 	}
-	mux.Handle("/api/auth/change-password", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleChangePassword)))
+	mux.Handle("/api/auth/change-password", authed(http.HandlerFunc(authMgr.HandleChangePassword)))
 	mux.Handle("/api/users", adminMut(authMgr.HandleUsers))
 	mux.Handle("/api/users/", adminMut(authMgr.HandleUsersSub))
 	mux.Handle("/api/groups", adminMut(authMgr.HandleGroups))
@@ -721,23 +717,23 @@ func main() {
 
 	if st != nil {
 		apihandler.New(st).Register(mux, func(h http.Handler) http.Handler {
-			return authMgr.RequireAuth(mutationsRequireAdmin(h))
+			return authed(mutationsRequireAdmin(h))
 		})
 		log.Printf("[kvisior] /api/{policies,acks,alerts} → direct DB; /api/events proxied to tracee-bridge")
 	}
 
 	if st != nil {
-		mux.Handle("/scanner/results", authMgr.RequireAuth(imageScansHandler(st)))
-		mux.Handle("/scanner/workloads", authMgr.RequireAuth(imageScanWorkloadsHandler(st)))
-		mux.Handle("/scanner/histories", authMgr.RequireAuth(imageHistoriesHandler(st)))
-		mux.Handle("/audit/runs", authMgr.RequireAuth(auditRunsHandler(st)))
+		mux.Handle("/scanner/results", authed(imageScansHandler(st)))
+		mux.Handle("/scanner/workloads", authed(imageScanWorkloadsHandler(st)))
+		mux.Handle("/scanner/histories", authed(imageHistoriesHandler(st)))
+		mux.Handle("/audit/runs", authed(auditRunsHandler(st)))
 
-		mux.Handle("/sentry/api/events", authMgr.RequireAuth(auditEventsHandler(st)))
-		mux.Handle("/sensor/api/forensic/diff/", authMgr.RequireAuth(forensicDiffHandler(st)))
+		mux.Handle("/sentry/api/events", authed(auditEventsHandler(st)))
+		mux.Handle("/sensor/api/forensic/diff/", authed(forensicDiffHandler(st)))
 		log.Printf("[kvisior] /scanner/{results,histories}, /audit/runs, /sentry/api/events, /sensor/api/forensic/diff → direct DB; other /scanner/*, /audit/*, /sentry/*, /sensor/* proxied")
 	}
 
-	registerBackendProxies(mux, scheme, baseTransport, authMgr)
+	registerBackendProxies(mux, scheme, baseTransport, authed, fed)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

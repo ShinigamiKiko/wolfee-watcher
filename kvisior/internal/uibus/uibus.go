@@ -75,6 +75,9 @@ func (b *Bus) runConsumer(ctx context.Context) {
 		kgo.SeedBrokers(b.brokers...),
 		kgo.ConsumeTopics(Topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
+		kgo.FetchMaxBytes(8<<20),
+		kgo.FetchMaxPartitionBytes(1<<20),
+		kgo.BrokerMaxReadBytes(16<<20),
 	)
 	if err != nil {
 		log.Printf("[uibus] consumer init: %v — pushed events visible on receiving replica only", err)
