@@ -30,28 +30,59 @@ once every five minutes per cluster.
 Reads are scoped by the `X-Cluster-ID` header, which the UI sets from the
 switcher; the SSE stream at `/v1/stream?cluster=<id>` is filtered server-side.
 
-## Hub-and-spoke topology
+## Topology: one kvisior per cluster, one database
 
-The hub cluster runs kvisior, PostgreSQL, Kafka and central-migrate. Each spoke
-runs the agents plus its own cert-server, with `global.clusterId` set to that
-cluster's id and `KVISIOR_URL` pointing at the hub's ingress.
+Every cluster runs its own kvisior next to its agents. All of them write to the
+same PostgreSQL, each stamping its own `global.clusterId`. Any of them can serve
+the UI; the one users open is the hub.
 
-For a spoke's certificates to be accepted by the hub, its cert-server must chain
-to a CA the hub trusts — either share one CA across clusters, or issue each
-spoke an intermediate from a common root.
+Data that lives in the database — violations, alerts, audit events, forensic
+history, container logs, binary exec events, image scans and workloads,
+honeypot events, anomalies, scanner state — is read by the hub directly, scoped
+by the cluster selected in the UI.
 
-What is already multi-cluster: violations, alerts, audit events, forensic
-history, container logs, binary exec events, image scans and their workload
-mappings, honeypot events, anomaly events, scanner state, and every UI view
-built on them.
+Live views cannot come from the database: node and pod lists, forensic
+tarballs, the network graph, starting a scan or an audit run, honeypot
+management, pod syscall watches and the SSE event stream. For those the hub
+forwards the request to the selected cluster's kvisior:
 
-What is not yet: the live proxy paths. `/api/`, `/scanner/`, `/sensor/`,
-`/sentry/`, `/anomaly/`, `/honey/` and `/audit/` still resolve to in-cluster
-service DNS in `kvisior/main.go`, so interactive actions — starting a scan,
-listing nodes and pods, fetching a forensic tarball, the network graph,
-honeypot management, triggering an audit run — only work against the cluster
-kvisior runs in. Routing those per cluster needs an endpoint registry or a thin
-per-cluster edge, and is the remaining piece of the design.
+- on start, each kvisior writes its own address into `clusters.endpoint`
+  (`ui.advertiseURL`, defaulting to its in-cluster service URL);
+- when the UI selects a cluster other than the hub's own, the hub proxies the
+  live paths to that endpoint with `X-Federation-Token` and the acting user and
+  role, and drops the user's cookie;
+- the receiving kvisior accepts the request only with the same
+  `global.federationToken`, and applies the forwarded role to mutations as
+  usual;
+- a cluster without an endpoint answers 502 with the reason, and the UI shows a
+  banner that only stored history is available for it. It never shows the
+  hub's own live data under another cluster's name.
+
+For clusters in different networks, set `ui.advertiseURL` to an address the hub
+can reach (an ingress with TLS) and list the hub's namespace — or allow its
+source — in `networkPolicy.federationNamespaces` / `networkPolicy.extraIngress`.
+
+A second cluster needs:
+
+```yaml
+global:
+  namespace: <its namespace>
+  clusterId: <its id>
+  federationToken: <same as the hub>
+  certServerAddr: https://cert-server.<its namespace>.svc.cluster.local:8090
+postgres:
+  enabled: false
+  external: { enabled: true, host: <hub postgres>, port: 5432, sslMode: require }
+centralMigrate:
+  enabled: false
+kafka:
+  enabled: false
+  brokers: ''
+```
+
+plus whichever agents that cluster should run. Service names, certificate SANs
+and the default cert-server address follow `POD_NAMESPACE`, so the release can
+live in any namespace. Spokes can share the hub's CA or use an intermediate.
 
 ## Database
 
@@ -147,6 +178,11 @@ The conversion rewrites `container_logs` and `audit_events` into partitioned
 tables, copying rows into hourly partitions. Anything already past the 26-hour
 retention window is dropped during the conversion, which is within both tables'
 24-hour TTL.
+
+`central-migrate` is a plain Job named after the release revision, not a hook.
+It runs alongside the rollout while the services wait for the expected schema
+in an init container, so both `helm install --wait` and `helm upgrade --wait`
+complete. Finished Jobs are removed after a day.
 
 Two things to know when upgrading a release installed from an older chart:
 

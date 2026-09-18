@@ -2,17 +2,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: central-migrate
+  name: central-migrate-r{{ .Release.Revision }}
   namespace: {{ include "kvisior.namespace" . }}
   labels:
     {{- include "kvisior.labels" . | nindent 4 }}
     app.kubernetes.io/name: central-migrate
-  annotations:
-    helm.sh/hook: post-install,pre-upgrade
-    helm.sh/hook-weight: "0"
-    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
   template:
     metadata:
       labels:
