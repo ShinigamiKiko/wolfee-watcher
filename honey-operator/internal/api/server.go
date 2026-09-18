@@ -179,7 +179,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if spec.Namespace == "" {
-		spec.Namespace = "wolfee-watcher"
+		spec.Namespace = mtls.Namespace()
 	}
 	if len(spec.Services) == 0 {
 		writeErr(w, http.StatusBadRequest, "at least one service is required")
