@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/name: scanner-agent
 spec:
   replicas: {{ .Values.scannerAgent.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: scanner-agent
@@ -82,6 +84,10 @@ spec:
                   fieldPath: metadata.namespace
             - name: SCAN_WORKSPACE_DIR
               value: "/scan-workspace"
+            {{- with .Values.scannerAgent.goMemLimit }}
+            - name: GOMEMLIMIT
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.scannerAgent.bdu.enabled }}
             {{- if .Values.scannerAgent.bdu.archiveURL }}
             - name: BDU_ARCHIVE_URL

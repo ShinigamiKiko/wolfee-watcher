@@ -1,6 +1,10 @@
 package bdu
 
 import (
+	"archive/zip"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -35,7 +39,7 @@ const sampleXML = `<?xml version="1.0" encoding="UTF-8"?>
 </vulnerabilities>`
 
 func TestParseBDU(t *testing.T) {
-	m, _, err := parseBDU([]byte(sampleXML), false)
+	m, _, err := parseBDU(strings.NewReader(sampleXML), false)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -110,14 +114,91 @@ func TestNormalizeSeverity(t *testing.T) {
 	}
 }
 
-func TestUnwrapZipIfNeededPassthroughXML(t *testing.T) {
-	data := []byte(strings.TrimSpace(sampleXML))
-	out, err := unwrapZipIfNeeded(data)
+func TestXMLSourcePlainFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vulxml.xml")
+	if err := os.WriteFile(path, []byte(sampleXML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(out) != string(data) {
-		t.Error("non-zip XML should pass through unchanged")
+	src, err := xmlSource(f, path, nil)
+	if err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	defer src.close()
+	got, err := io.ReadAll(src.r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != sampleXML {
+		t.Error("non-zip XML should be read unchanged")
+	}
+}
+
+func TestXMLSourceZipFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vulxml.zip")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("vulxml.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(sampleXML)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	f, err = os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := xmlSource(f, path, nil)
+	if err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	defer src.close()
+	m, _, err := parseBDU(src.r, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["CVE-2024-1234"]; !ok {
+		t.Error("expected the zipped XML to be parsed")
+	}
+}
+
+func TestParseBDUStreamsAndInternsSoftware(t *testing.T) {
+	_, details, err := parseBDU(strings.NewReader(richXML), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := func(s *Software) string {
+		return s.Vendor + "|" + s.Name + "|" + s.Version + "|" + s.Platform + "|" + strings.Join(s.Types, ",")
+	}
+	seen := map[string]*Software{}
+	for _, d := range details {
+		for _, s := range d.Software {
+			k := key(s)
+			if got, ok := seen[k]; ok && got != s {
+				t.Error("identical software entries should be shared")
+			}
+			seen[k] = s
+		}
+	}
+}
+
+func TestParseBDUWithoutRoot(t *testing.T) {
+	if _, _, err := parseBDU(strings.NewReader(`<other><vul/></other>`), true); err == nil {
+		t.Error("expected an error without a <vulnerabilities> root")
 	}
 }
 
@@ -202,7 +283,7 @@ https://kernel.org/patch2</solution>
 </vulnerabilities>`
 
 func TestParseBDUDetail(t *testing.T) {
-	cveMap, details, err := parseBDU([]byte(richXML), false)
+	cveMap, details, err := parseBDU(strings.NewReader(richXML), false)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -291,7 +372,7 @@ func TestParseBDUDetail(t *testing.T) {
 }
 
 func TestParseBDUNoDetail(t *testing.T) {
-	cveMap, details, err := parseBDU([]byte(richXML), true)
+	cveMap, details, err := parseBDU(strings.NewReader(richXML), true)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -305,7 +386,7 @@ func TestParseBDUNoDetail(t *testing.T) {
 
 func TestLookupDetail(t *testing.T) {
 	e := New(Options{})
-	cveMap, details, err := parseBDU([]byte(richXML), false)
+	cveMap, details, err := parseBDU(strings.NewReader(richXML), false)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -346,7 +427,7 @@ const realSchemaXML = `<?xml version="1.0" encoding="UTF-8"?>
 </vulnerabilities>`
 
 func TestParseBDUCVSSAttributeSchema(t *testing.T) {
-	_, details, err := parseBDU([]byte(realSchemaXML), false)
+	_, details, err := parseBDU(strings.NewReader(realSchemaXML), false)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

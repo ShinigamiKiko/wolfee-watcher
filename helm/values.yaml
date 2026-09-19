@@ -208,6 +208,7 @@ scannerAgent:
     tag: latest
     pullPolicy: Never
   hostAliases: []
+  goMemLimit: "1200MiB"
   javaDB: false
   dbRefreshInterval: "24h"
   dbRepository: ""
@@ -218,7 +219,7 @@ scannerAgent:
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 1Gi
     limits:
       cpu: 1000m
       memory: 2Gi

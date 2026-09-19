@@ -70,7 +70,7 @@ type Detail struct {
 	VulStatus     string   `json:"vulStatus,omitempty"`
 	ExploitStatus string   `json:"exploitStatus,omitempty"`
 
-	Software     []Software    `json:"software,omitempty"`
+	Software     []*Software   `json:"software,omitempty"`
 	Environments []EnvPlatform `json:"environments,omitempty"`
 
 	CWEs            []CWE     `json:"cwes,omitempty"`

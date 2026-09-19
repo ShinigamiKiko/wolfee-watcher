@@ -2,7 +2,6 @@ package bdu
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,22 +14,45 @@ import (
 	"time"
 )
 
+const (
+	maxArchiveSize = 200 << 20
+	maxXMLSize     = 1 << 30
+)
+
 func logRefreshFailure(prefix string, err error) {
 	log.Printf("[bdu] %s: %v (keeping previous map)", prefix, err)
 }
 
+type source struct {
+	r     io.Reader
+	name  string
+	close func()
+}
+
+type cappedReader struct {
+	r    io.Reader
+	max  int64
+	read int64
+	what string
+}
+
+func (c *cappedReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.read += int64(n)
+	if c.read > c.max {
+		return n, fmt.Errorf("%s exceeds %d bytes", c.what, c.max)
+	}
+	return n, err
+}
+
 func (e *Enricher) refresh(ctx context.Context) error {
-	raw, source, err := e.fetchSource(ctx)
+	src, err := e.openSource(ctx)
 	if err != nil {
 		e.setLastErr(err)
 		return err
 	}
-	xmlBytes, err := unwrapZipIfNeeded(raw)
-	if err != nil {
-		e.setLastErr(err)
-		return fmt.Errorf("unzip: %w", err)
-	}
-	newMap, newDetails, err := parseBDU(xmlBytes, e.noDetail)
+	newMap, newDetails, err := parseBDU(src.r, e.noDetail)
+	src.close()
 	if err != nil {
 		e.setLastErr(err)
 		return fmt.Errorf("parse: %w", err)
@@ -47,46 +69,30 @@ func (e *Enricher) refresh(ctx context.Context) error {
 	debug.FreeOSMemory()
 
 	if e.noDetail {
-		log.Printf("[bdu] refreshed: %d CVE->BDU mappings loaded from %s (detail disabled)", len(newMap), source)
+		log.Printf("[bdu] refreshed: %d CVE->BDU mappings loaded from %s (detail disabled)", len(newMap), src.name)
 	} else {
-		log.Printf("[bdu] refreshed: %d CVE->BDU mappings, %d full details loaded from %s", len(newMap), len(newDetails), source)
+		log.Printf("[bdu] refreshed: %d CVE->BDU mappings, %d full details loaded from %s", len(newMap), len(newDetails), src.name)
 	}
 	return nil
 }
 
-func (e *Enricher) fetchSource(ctx context.Context) ([]byte, string, error) {
+func (e *Enricher) openSource(ctx context.Context) (*source, error) {
 	if e.localPath != "" {
-		raw, err := e.readLocal()
-		return raw, e.localPath, err
+		f, err := os.Open(e.localPath)
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", e.localPath, err)
+		}
+		src, err := xmlSource(f, e.localPath, nil)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		return src, nil
 	}
-	raw, err := e.download(ctx)
-	return raw, e.archiveURL, err
+	return e.download(ctx)
 }
 
-func (e *Enricher) setLastErr(err error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.lastErr = err
-}
-
-func (e *Enricher) readLocal() ([]byte, error) {
-	f, err := os.Open(e.localPath)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", e.localPath, err)
-	}
-	defer f.Close()
-	const maxSize = 1 << 30
-	data, err := io.ReadAll(io.LimitReader(f, maxSize+1))
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", e.localPath, err)
-	}
-	if len(data) > maxSize {
-		return nil, fmt.Errorf("local archive %s exceeds %d bytes", e.localPath, maxSize)
-	}
-	return data, nil
-}
-
-func (e *Enricher) download(ctx context.Context) ([]byte, error) {
+func (e *Enricher) download(ctx context.Context) (*source, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.archiveURL, nil)
 	if err != nil {
 		return nil, err
@@ -100,43 +106,84 @@ func (e *Enricher) download(ctx context.Context) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, e.archiveURL)
 	}
-	const maxSize = 200 << 20
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
+
+	tmp, err := os.CreateTemp("", "bdu-*.archive")
 	if err != nil {
 		return nil, err
 	}
-	if len(data) == maxSize {
-		return nil, fmt.Errorf("archive exceeds %d bytes, aborting", maxSize)
+	remove := func() {
+		tmp.Close()
+		os.Remove(tmp.Name())
 	}
-	return data, nil
+	if _, err := io.Copy(tmp, &cappedReader{r: resp.Body, max: maxArchiveSize, what: "archive"}); err != nil {
+		remove()
+		return nil, err
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		remove()
+		return nil, err
+	}
+	src, err := xmlSource(tmp, e.archiveURL, remove)
+	if err != nil {
+		remove()
+		return nil, err
+	}
+	return src, nil
 }
 
-func unwrapZipIfNeeded(data []byte) ([]byte, error) {
-	if len(data) >= 4 && data[0] == 'P' && data[1] == 'K' {
-		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+func xmlSource(f *os.File, name string, cleanup func()) (*source, error) {
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	closeAll := func() {
+		if cleanup != nil {
+			cleanup()
+			return
+		}
+		f.Close()
+	}
+
+	var magic [2]byte
+	if _, err := io.ReadFull(f, magic[:]); err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	if magic[0] != 'P' || magic[1] != 'K' {
+		if st.Size() > maxXMLSize {
+			return nil, fmt.Errorf("%s exceeds %d bytes", name, int64(maxXMLSize))
+		}
+		return &source{r: f, name: name, close: closeAll}, nil
+	}
+
+	zr, err := zip.NewReader(f, st.Size())
+	if err != nil {
+		return nil, err
+	}
+	for _, zf := range zr.File {
+		if !strings.HasSuffix(strings.ToLower(zf.Name), ".xml") {
+			continue
+		}
+		rc, err := zf.Open()
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range zr.File {
-			if strings.HasSuffix(strings.ToLower(f.Name), ".xml") {
-				rc, err := f.Open()
-				if err != nil {
-					return nil, err
-				}
-				defer rc.Close()
-
-				const maxXMLSize = 1 << 30
-				out, err := io.ReadAll(io.LimitReader(rc, maxXMLSize+1))
-				if err != nil {
-					return nil, err
-				}
-				if int64(len(out)) > maxXMLSize {
-					return nil, fmt.Errorf("decompressed xml exceeds %d bytes (possible zip bomb)", maxXMLSize)
-				}
-				return out, nil
-			}
-		}
-		return nil, fmt.Errorf("no .xml inside zip")
+		return &source{
+			r:    &cappedReader{r: rc, max: maxXMLSize, what: "decompressed xml"},
+			name: name,
+			close: func() {
+				rc.Close()
+				closeAll()
+			},
+		}, nil
 	}
-	return data, nil
+	return nil, fmt.Errorf("no .xml inside zip")
+}
+
+func (e *Enricher) setLastErr(err error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.lastErr = err
 }
