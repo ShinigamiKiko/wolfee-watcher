@@ -68,12 +68,11 @@ func NewFromPool(ctx context.Context, pool *pgxpool.Pool) (*Store, error) {
 
 func (s *Store) Close() { s.pool.Close() }
 
-func Fingerprint(cluster, ruleID, ns, pod string, ts time.Time) string {
+func Fingerprint(cluster, ruleID, ns, pod string) string {
 	if cluster == "" {
 		cluster = DefaultCluster
 	}
-	bucket := ts.Truncate(time.Hour).Unix()
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d", cluster, ruleID, ns, pod, bucket)))
+	h := sha256.Sum256([]byte(cluster + "\x00" + ruleID + "\x00" + ns + "\x00" + pod))
 	return fmt.Sprintf("%x", h[:12])
 }
 

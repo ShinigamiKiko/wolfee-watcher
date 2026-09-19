@@ -82,11 +82,11 @@ func (c *Client) ListImages(ctx context.Context) ([]internal.ClusterImage, error
 		ns, name, node := pod.Namespace, pod.Name, pod.Spec.NodeName
 		podUID, podIP := string(pod.UID), pod.Status.PodIP
 		for _, cs := range pod.Spec.InitContainers {
-			ref, digest := resolveImage(cs.Image, pod.Status.InitContainerStatuses)
+			ref, digest := resolveImage(cs.Name, cs.Image, pod.Status.InitContainerStatuses)
 			add(ref, digest, ns, name, podUID, podIP, node, string(cs.ImagePullPolicy))
 		}
 		for _, cs := range pod.Spec.Containers {
-			ref, digest := resolveImage(cs.Image, pod.Status.ContainerStatuses)
+			ref, digest := resolveImage(cs.Name, cs.Image, pod.Status.ContainerStatuses)
 			add(ref, digest, ns, name, podUID, podIP, node, string(cs.ImagePullPolicy))
 		}
 	}
@@ -145,22 +145,21 @@ func (c *Client) listPodsPaged(ctx context.Context, chunkSize int64) ([]corev1.P
 	}
 }
 
-func resolveImage(specImage string, statuses []corev1.ContainerStatus) (ref, digest string) {
+func resolveImage(name, specImage string, statuses []corev1.ContainerStatus) (ref, digest string) {
+	ref = specImage
 	for _, s := range statuses {
+		if s.Name != name {
+			continue
+		}
 		if s.Image != "" {
 			ref = s.Image
 		}
-
-		if s.ImageID != "" {
-			if idx := strings.Index(s.ImageID, "sha256:"); idx >= 0 {
-				digest = s.ImageID[idx:]
-			}
+		if idx := strings.Index(s.ImageID, "sha256:"); idx >= 0 {
+			digest = s.ImageID[idx:]
 		}
-		if ref != "" {
-			return
-		}
+		break
 	}
-	return specImage, digest
+	return ref, digest
 }
 
 func parseRef(ref string) (name, tag, digest string) {

@@ -37,6 +37,8 @@ const (
 	writeRequestTimout = 15 * time.Second
 )
 
+var pullableIntegrations = map[string]bool{"harbor": true}
+
 type Handler struct {
 	hub          hub.Publisher
 	localHub     hub.Publisher
@@ -126,7 +128,7 @@ func (h *Handler) HandleEvents(w http.ResponseWriter, r *http.Request) {
 			for _, v := range h.matcher.Match(ev) {
 				ns, _ := ev["namespace"].(string)
 				pod, _ := ev["pod"].(string)
-				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, ns, pod, time.Now())
+				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, ns, pod)
 				ruleID, ruleName, sev := v.RuleID, v.Rule, v.Sev
 				rawCopy := append(json.RawMessage(nil), raw...)
 				if !h.syncWrite(w, r, "syscall violation", func(ctx context.Context) error {
@@ -172,11 +174,7 @@ func (h *Handler) HandleAuditEvents(w http.ResponseWriter, r *http.Request) {
 		var ev map[string]interface{}
 		if json.Unmarshal(raw, &ev) == nil {
 			for _, v := range h.auditMatcher.Match(ev) {
-				evTs := time.Now()
-				if t, err := time.Parse(time.RFC3339, v.Timestamp); err == nil {
-					evTs = t
-				}
-				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, v.Namespace, v.Name, evTs)
+				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, v.Namespace, v.Name)
 				ruleID, policy, sev, ns, name := v.RuleID, v.Policy, v.Sev, v.Namespace, v.Name
 				rawCopy := append(json.RawMessage(nil), raw...)
 				if !h.syncWrite(w, r, "audit violation", func(ctx context.Context) error {
@@ -683,6 +681,10 @@ func (h *Handler) HandleIntegrationPull(w http.ResponseWriter, r *http.Request) 
 	kind := r.URL.Query().Get("kind")
 	if kind == "" {
 		http.Error(w, `{"error":"kind required"}`, http.StatusBadRequest)
+		return
+	}
+	if !pullableIntegrations[kind] {
+		http.Error(w, `{"error":"integration kind not available"}`, http.StatusForbidden)
 		return
 	}
 	if h.store == nil {

@@ -192,8 +192,7 @@
 - `persistentVolume.enabled` по умолчанию **true** (grype DB ~1 GB, при
   emptyDir каждый рестарт пода = повторная скачка).
 - CronJob разворачивается **только если PVC включён** — с emptyDir он
-  бессмысленен. При emptyDir scanner-agent сам обновляет БД при старте
-  (`GRYPE_SKIP_DB_UPDATE=false` выставляется автоматически).
+  бессмысленен. scanner-agent в любом случае обновляет БД при каждом старте.
 
 ### tracee-bridge: bounded queue pipeline вместо rate-limit
 
@@ -279,8 +278,8 @@ helm upgrade kvisior ./kvisior \
   --set scannerAgent.grypeCache.persistentVolume.enabled=false
 ```
 
-В этом случае CronJob не развернётся, а scanner-agent сам будет качать
-БД при старте (автоматически выставляется `GRYPE_SKIP_DB_UPDATE=false`).
+В этом случае CronJob не развернётся; scanner-agent и так качает БД при
+каждом старте.
 
 ### Шаг 4. Проверка
 

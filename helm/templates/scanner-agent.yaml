@@ -50,8 +50,6 @@ spec:
               value: "/trivy-cache"
             - name: HOME
               value: "/trivy-cache"
-            - name: SCANNER_SKIP_DB_WARMUP
-              value: "true"
             - name: TRIVY_SKIP_VERSION_CHECK
               value: "true"
             - name: SCANNER_DB_REFRESH_INTERVAL

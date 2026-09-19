@@ -257,27 +257,21 @@ func (c *Consumer) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			for _, e := range errs {
-				slog.Warn("kafka_poll_failed",
-					"component", "anomaly-detector/consumer",
-					"topic", e.Topic,
-					"partition", e.Partition,
-					"error", e.Err)
-			}
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(time.Second):
-			}
-			continue
+		errs := fetches.Errors()
+		for _, e := range errs {
+			slog.Warn("kafka_poll_failed",
+				"component", "anomaly-detector/consumer",
+				"topic", e.Topic,
+				"partition", e.Partition,
+				"error", e.Err)
 		}
+		records := 0
 		var processErr error
 		fetches.EachRecord(func(r *kgo.Record) {
 			if processErr != nil {
 				return
 			}
+			records++
 			c.processed.Add(1)
 			c.lastRecordAt.Store(time.Now().UnixNano())
 			extID := fmt.Sprintf("%d:%d", r.Partition, r.Offset)
@@ -304,6 +298,15 @@ func (c *Consumer) Run(ctx context.Context) error {
 				"action", "leave_offsets_uncommitted",
 				"emit_failures", c.emitFailures.Load(),
 				"error", processErr)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+			continue
+		}
+
+		if len(errs) > 0 && records == 0 {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()

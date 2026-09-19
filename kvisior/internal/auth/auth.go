@@ -70,6 +70,7 @@ type UserInfo struct {
 type Manager struct {
 	store        Store
 	secureCookie bool
+	deviceKey    []byte
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
@@ -109,6 +110,7 @@ func New(store Store, secureCookie bool) *Manager {
 	return &Manager{
 		store:        store,
 		secureCookie: secureCookie,
+		deviceKey:    loadDeviceKey(),
 		cache:        map[string]cacheEntry{},
 		rlEntries:    map[string]*rlEntry{},
 	}
@@ -138,7 +140,11 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rlKey := strings.ToLower(strings.TrimSpace(body.Username))
+	username := strings.ToLower(strings.TrimSpace(body.Username))
+	rlKey := "user:" + username
+	if device, ok := m.trustedDevice(r, username); ok {
+		rlKey = "device:" + device
+	}
 	if wait := m.rlCheck(rlKey); wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 		writeError(w, http.StatusTooManyRequests, "too many login attempts — try again later")
@@ -168,6 +174,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   m.secureCookie,
 		SameSite: http.SameSiteStrictMode,
 	})
+	m.setDeviceCookie(w, username)
 	json.NewEncoder(w).Encode(userInfo(u))
 }
 

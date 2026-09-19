@@ -56,7 +56,6 @@ type Server struct {
 	eventsRateLimited  atomic.Int64
 	eventsBusy         atomic.Int64
 	eventsDropped      atomic.Int64
-	eventsOverflow     atomic.Int64
 	enrichByPID        atomic.Int64
 	enrichMissing      atomic.Int64
 	queryTimeouts      atomic.Int64

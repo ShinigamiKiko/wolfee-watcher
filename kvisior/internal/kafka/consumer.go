@@ -23,6 +23,9 @@ const (
 	rulesRefreshEvery    = 30 * time.Second
 	rulesStaleWarnAfter  = 5 * time.Minute
 	liveMalformedLogName = "live_consumer"
+	writeTimeout         = 5 * time.Second
+	writeRetryMin        = time.Second
+	writeRetryMax        = 30 * time.Second
 )
 
 type Consumer struct {
@@ -254,16 +257,10 @@ func (c *Consumer) Run(ctx context.Context) {
 			if processErr != nil {
 				return
 			}
-			if err := c.processRecord(ctx, r.Value); err != nil {
-				processErr = err
-			}
+			processErr = c.processRecord(ctx, r.Value)
 		})
 		if processErr != nil {
-			slog.Error("record_processing_failed",
-				"component", "kvisior/kafka",
-				"action", "leave_offsets_uncommitted",
-				"error", processErr)
-			continue
+			return
 		}
 
 		if err := c.client.CommitUncommittedOffsets(ctx); err != nil && ctx.Err() == nil {
@@ -290,11 +287,10 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 	pod := stringField(ev, "pod")
 	watched := c.watch != nil && ns != "" && pod != "" && c.watch.ShouldCapture(ns, pod, eventKindFromMap(ev, sc), sc)
 	if shouldPersistRuntimeEvent(sc, watched) && c.store != nil {
-		wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := c.store.Cluster(clusterctx.Local()).InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
-		cancel()
-		if err != nil {
-			return fmt.Errorf("write binary event: %w", err)
+		if err := c.retryWrite(ctx, "binary_event_write_failed", []any{"namespace", ns, "pod", pod}, func(wCtx context.Context) error {
+			return c.store.Cluster(clusterctx.Local()).InsertBinaryExecEvent(wCtx, json.RawMessage(raw))
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -307,17 +303,13 @@ func (c *Consumer) processRecord(ctx context.Context, raw []byte) error {
 			"pod", ev["pod"])
 	}
 	for _, v := range matches {
-		evTs := eventTime(ev)
-		fp := store.Fingerprint(clusterctx.Local(), v.RuleID, ns, pod, evTs)
+		fp := store.Fingerprint(clusterctx.Local(), v.RuleID, ns, pod)
 
 		ruleID, ruleName, sev := v.RuleID, v.Rule, v.Sev
 		rawCopy := append(json.RawMessage(nil), raw...)
 		if c.store != nil {
-			wCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err := c.store.Cluster(clusterctx.Local()).WriteViolationChecked(wCtx, "syscall", ruleID, ruleName, sev, ns, pod, fp, rawCopy)
-			cancel()
-			if err != nil {
-				return fmt.Errorf("write violation rule=%s ns=%s pod=%s: %w", ruleID, ns, pod, err)
+			if err := c.writeViolation(ctx, ruleID, ruleName, sev, ns, pod, fp, rawCopy); err != nil {
+				return err
 			}
 		}
 
@@ -334,6 +326,38 @@ func shouldPersistRuntimeEvent(syscall string, watched bool) bool {
 func stringField(ev map[string]interface{}, key string) string {
 	value, _ := ev[key].(string)
 	return value
+}
+
+func (c *Consumer) writeViolation(ctx context.Context, ruleID, ruleName, sev, ns, pod, fp string, raw json.RawMessage) error {
+	return c.retryWrite(ctx, "violation_write_failed", []any{"rule", ruleID, "namespace", ns, "pod", pod}, func(wCtx context.Context) error {
+		return c.store.Cluster(clusterctx.Local()).WriteViolationChecked(wCtx, "syscall", ruleID, ruleName, sev, ns, pod, fp, raw)
+	})
+}
+
+func (c *Consumer) retryWrite(ctx context.Context, what string, attrs []any, write func(context.Context) error) error {
+	backoff := writeRetryMin
+	for attempt := 1; ; attempt++ {
+		wCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+		err := write(wCtx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		slog.Error(what, append([]any{
+			"component", "kvisior/kafka",
+			"attempt", attempt,
+			"retry_in", backoff.String(),
+			"error", err}, attrs...)...)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, writeRetryMax)
+	}
 }
 
 func (c *Consumer) refreshRules(ctx context.Context) {

@@ -80,23 +80,27 @@ func (s *Server) enqueueScan(refs []string) int {
 			"queue_depth", len(s.scanQueue))
 	}
 	if len(s.scanQueue) > 0 && !s.scanning {
-		n := scanWorkers()
-
-		poolCtx, cancel := context.WithCancel(context.Background())
-		s.scanCancel = cancel
-		s.scanning = true
-		s.scanActive = n
-		slog.Info("scan_worker_pool_started",
-			"component", "scanner-agent/scan",
-			"workers", n,
-			"queue_depth", len(s.scanQueue),
-			"queue_limit", limit,
-			"debug_logs", s.scanDebugLog)
-		for i := 0; i < n; i++ {
-			go s.runScanWorker(poolCtx, i)
-		}
+		s.startScanPoolLocked(limit)
 	}
 	return queued
+}
+
+func (s *Server) startScanPoolLocked(limit int) {
+	n := scanWorkers()
+
+	poolCtx, cancel := context.WithCancel(context.Background())
+	s.scanCancel = cancel
+	s.scanning = true
+	s.scanActive = n
+	slog.Info("scan_worker_pool_started",
+		"component", "scanner-agent/scan",
+		"workers", n,
+		"queue_depth", len(s.scanQueue),
+		"queue_limit", limit,
+		"debug_logs", s.scanDebugLog)
+	for i := 0; i < n; i++ {
+		go s.runScanWorker(poolCtx, i)
+	}
 }
 
 func (s *Server) stopScan() bool {
@@ -121,12 +125,18 @@ func (s *Server) runScanWorker(poolCtx context.Context, id int) {
 		s.scanActive--
 		last := s.scanActive == 0
 		cancelled := poolCtx.Err() != nil
+		restarted := false
 		if last {
-			s.scanning = false
-			s.scanCancel = nil
+			if len(s.scanQueue) > 0 {
+				s.startScanPoolLocked(scanQueueLimit())
+				restarted = true
+			} else {
+				s.scanning = false
+				s.scanCancel = nil
+			}
 		}
 		s.scanMu.Unlock()
-		if last {
+		if last && !restarted {
 			if cancelled {
 				s.broadcast(internal.ScanEvent{Type: "done", Message: "Scan stopped by user"})
 				slog.Warn("scan_worker_pool_drained",

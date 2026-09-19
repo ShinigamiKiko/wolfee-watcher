@@ -14,8 +14,12 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 type sysViolSSE struct {
@@ -106,7 +110,7 @@ func (s *PushServer) PushEvents(stream pb.PushService_PushEventsServer) error {
 					pod, _ := ev["pod"].(string)
 					cl := clusterctx.ForGRPC(stream.Context())
 					s.store.EnsureClusterCached(cl)
-					fp := store.Fingerprint(cl, v.RuleID, ns, pod, time.Now())
+					fp := store.Fingerprint(cl, v.RuleID, ns, pod)
 					ruleID, ruleName, sev := v.RuleID, v.Rule, v.Sev
 					rawCopy := append(json.RawMessage(nil), raw...)
 					if err := s.syncWrite(stream.Context(), "syscall violation", func(ctx context.Context) error {
@@ -141,13 +145,9 @@ func (s *PushServer) PushAuditEvents(stream pb.PushService_PushAuditEventsServer
 			var ev map[string]interface{}
 			if json.Unmarshal(raw, &ev) == nil {
 				for _, v := range s.auditMatcher.Match(ev) {
-					evTs := time.Now()
-					if t, err := time.Parse(time.RFC3339, v.Timestamp); err == nil {
-						evTs = t
-					}
 					cl := clusterctx.ForGRPC(stream.Context())
 					s.store.EnsureClusterCached(cl)
-					fp := store.Fingerprint(cl, v.RuleID, v.Namespace, v.Name, evTs)
+					fp := store.Fingerprint(cl, v.RuleID, v.Namespace, v.Name)
 					ruleID, policy, sev, ns, name := v.RuleID, v.Policy, v.Sev, v.Namespace, v.Name
 					rawCopy := append(json.RawMessage(nil), raw...)
 					if err := s.syncWrite(stream.Context(), "audit violation", func(ctx context.Context) error {
@@ -194,13 +194,60 @@ func (s *PushServer) PushAnomalyEvents(stream pb.PushService_PushAnomalyEventsSe
 	}
 }
 
+var allowedCallers = map[string]mtls.ServiceType{
+	pb.PushService_PushEvents_FullMethodName:         mtls.TraceeBridge,
+	pb.PushService_PushAuditEvents_FullMethodName:    mtls.SentryAudit,
+	pb.PushService_PushSensorSnapshot_FullMethodName: mtls.Sensor,
+	pb.PushService_PushAnomalyEvents_FullMethodName:  mtls.AnomalyDetector,
+}
+
+func authorize(ctx context.Context, method string) error {
+	want, ok := allowedCallers[method]
+	if !ok {
+		return status.Errorf(codes.PermissionDenied, "method %s is not allowed", method)
+	}
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "no peer information")
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		return status.Error(codes.Unauthenticated, "mTLS client certificate required")
+	}
+	if cn := tlsInfo.State.PeerCertificates[0].Subject.CommonName; mtls.ServiceType(cn) != want {
+		return status.Errorf(codes.PermissionDenied, "caller %q is not authorised for %s", cn, method)
+	}
+	return nil
+}
+
+func unaryAuth(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	if err := authorize(ctx, info.FullMethod); err != nil {
+		return nil, err
+	}
+	return handler(ctx, req)
+}
+
+func streamAuth(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	if err := authorize(ss.Context(), info.FullMethod); err != nil {
+		return err
+	}
+	return handler(srv, ss)
+}
+
 func Start(ctx context.Context, addr string, tc credentials.TransportCredentials, pub, local hub.Publisher, m *rules.Matcher, am *rules.AuditMatcher, st *store.Store) (*grpc.Server, error) {
-	var opts []grpc.ServerOption
-	if tc != nil {
-		opts = append(opts, grpc.Creds(tc))
+	if tc == nil {
+		slog.Warn("grpc_push_service_disabled",
+			"component", "kvisior/grpc-push",
+			"addr", addr,
+			"reason", "no mTLS credentials")
+		return nil, nil
 	}
 
-	srv := grpc.NewServer(opts...)
+	srv := grpc.NewServer(
+		grpc.Creds(tc),
+		grpc.UnaryInterceptor(unaryAuth),
+		grpc.StreamInterceptor(streamAuth),
+	)
 	pb.RegisterPushServiceServer(srv, newPushServer(pub, local, m, am, st))
 
 	ln, err := net.Listen("tcp", addr)
