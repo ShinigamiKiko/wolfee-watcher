@@ -38,7 +38,30 @@ docker compose --env-file hub.env up -d          # or podman-compose
 
 ## Each cluster (edge)
 
-Create two secrets in the release namespace first:
+The quick way is the interactive installer, run from any machine that has
+`kubectl`, `helm`, `openssl` and root SSH access to the hub:
+
+```bash
+deploy/edge/install.sh
+```
+
+It takes a kubeconfig and asks for the hub's kvisior IP, the database IP, the
+cluster name and the cluster's own IP. Over SSH it runs `add-edge.sh` on the hub,
+which allows the edge through the PostgreSQL firewall and `pg_hba` (reloaded,
+not restarted), issues the edge's federation certificate and returns the
+credentials. The installer then creates the namespace, the federation TLS and
+agents' CA secrets, and runs `helm upgrade --install --atomic`. When it
+finishes it asks for the next kubeconfig, so several clusters can be added in
+one go, now or at any later time, without touching the running ones.
+
+Rerunning it for the same kubeconfig is safe: the answers are remembered in the
+`wolfee-edge-install` ConfigMap, the push secret, agents' CA and hub certificate
+are reused, and a different cluster name for an installed cluster is refused.
+Environment overrides: `HUB_SSH_USER`, `HUB_DIR`, `CHART`, `RELEASE`,
+`HELM_TIMEOUT`, and `EXTRA_VALUES` for a values file with image registries or
+other site settings.
+
+The manual way — create two secrets in the release namespace first:
 
 ```bash
 kubectl create secret generic wolfee-watcher-ca --from-file=ca.crt --from-file=ca.key   # agents' CA, EC P-256
