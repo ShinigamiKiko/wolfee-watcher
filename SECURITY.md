@@ -6,8 +6,6 @@ Please report security issues privately — **do not open a public issue or PR.*
 
 - Preferred: open a [private security advisory](../../security/advisories/new)
   on this repository.
-- Or email: `<security contact email>`.
-
 Include the affected component, a description, and reproduction steps or a PoC
 if you have one. We aim to acknowledge within a few working days.
 
