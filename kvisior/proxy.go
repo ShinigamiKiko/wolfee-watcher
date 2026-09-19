@@ -7,12 +7,10 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/wolfee-watcher/kvisior/internal/auth"
 )
 
-func registerBackendProxies(mux *http.ServeMux, scheme string, baseTransport http.RoundTripper, authMgr *auth.Manager) {
-	for _, b := range backends {
+func registerBackendProxies(mux *http.ServeMux, scheme string, baseTransport http.RoundTripper, authed func(http.Handler) http.Handler, fed *federation) {
+	for _, b := range backends() {
 		target, err := url.Parse(scheme + "://" + b.host)
 		if err != nil {
 			log.Fatalf("[kvisior] invalid backend %q: %v", b.host, err)
@@ -71,7 +69,7 @@ func registerBackendProxies(mux *http.ServeMux, scheme string, baseTransport htt
 			},
 		}
 
-		mux.Handle(prefix, authMgr.RequireAuth(mutationsRequireAdmin(proxy)))
+		mux.Handle(prefix, authed(mutationsRequireAdmin(fed.route(proxy))))
 		log.Printf("[kvisior] proxy %s → %s://%s (timeout=%v)", prefix, scheme, b.host, b.timeout)
 	}
 }

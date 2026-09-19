@@ -49,24 +49,10 @@ func main() {
 
 	scanner.SweepWorkspace()
 
-	if env.Str("SCANNER_SKIP_DB_WARMUP", "false") != "true" {
-		slog.Info("trivy_db_update_started", "component", "scanner-agent/main")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		if err := scanner.EnsureDB(ctx); err != nil {
-			slog.Warn("trivy_db_warmup_failed",
-				"component", "scanner-agent/main",
-				"error", err,
-				"action", "retry_on_first_scan")
-		} else {
-			slog.Info("dependency_ready", "component", "scanner-agent/main", "dependency", "trivy_db")
-		}
-		cancel()
-	} else {
-		slog.Info("trivy_db_warmup_skipped", "component", "scanner-agent/main")
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	go warmTrivyDB(ctx, scanner)
 
 	refreshEvery, err := time.ParseDuration(env.Str("SCANNER_DB_REFRESH_INTERVAL", "24h"))
 	if err != nil {
@@ -124,4 +110,18 @@ func main() {
 
 	al.Close()
 	slog.Info("service_stopped", "component", "scanner-agent/main")
+}
+
+func warmTrivyDB(ctx context.Context, scanner *trivy.Scanner) {
+	slog.Info("trivy_db_update_started", "component", "scanner-agent/main")
+	dbCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	if err := scanner.EnsureDB(dbCtx); err != nil {
+		slog.Warn("trivy_db_warmup_failed",
+			"component", "scanner-agent/main",
+			"error", err,
+			"action", "retry_on_first_scan")
+		return
+	}
+	slog.Info("dependency_ready", "component", "scanner-agent/main", "dependency", "trivy_db")
 }

@@ -54,6 +54,7 @@ func (c *CentralClient) do(ctx context.Context, method, path string, body interf
 	req.Header.Set("Content-Type", "application/json")
 	if c.secret != "" {
 		req.Header.Set("X-Internal-Push-Secret", c.secret)
+		req.Header.Set("X-Cluster-ID", clusterID())
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -131,4 +132,12 @@ func (c *CentralClient) PullLogCursors(ctx context.Context, node string) (map[st
 		return nil, err
 	}
 	return out.Cursors, nil
+}
+
+func clusterID() string {
+	id := strings.TrimSpace(os.Getenv("CLUSTER_ID"))
+	if id == "" {
+		return "default"
+	}
+	return id
 }

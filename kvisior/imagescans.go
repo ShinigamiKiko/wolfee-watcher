@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
 
@@ -26,7 +27,7 @@ func imageScansHandler(st *store.Store) http.HandlerFunc {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
-		rows, err := st.ListImageScans(r.Context())
+		rows, err := st.Cluster(clusterctx.ForRead(r)).ListImageScans(r.Context())
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return
@@ -63,7 +64,7 @@ func imageScanWorkloadsHandler(st *store.Store) http.HandlerFunc {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
-		rows, err := st.ListImageScanWorkloads(r.Context(), r.URL.Query().Get("image"))
+		rows, err := st.Cluster(clusterctx.ForRead(r)).ListImageScanWorkloads(r.Context(), r.URL.Query().Get("image"))
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return
@@ -90,7 +91,7 @@ func auditRunsHandler(st *store.Store) http.HandlerFunc {
 				limit = n
 			}
 		}
-		rows, err := st.ListAuditRuns(r.Context(), tool, limit)
+		rows, err := st.Cluster(clusterctx.ForRead(r)).ListAuditRuns(r.Context(), tool, limit)
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return
@@ -109,7 +110,7 @@ func imageHistoriesHandler(st *store.Store) http.HandlerFunc {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
-		rows, err := st.ListImageHistories(r.Context())
+		rows, err := st.Cluster(clusterctx.ForRead(r)).ListImageHistories(r.Context())
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return

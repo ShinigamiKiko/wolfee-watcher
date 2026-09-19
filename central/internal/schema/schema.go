@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0011-image-scan-workloads"
+const Version = "0012-multicluster"
 
 var DDL = []string{
 

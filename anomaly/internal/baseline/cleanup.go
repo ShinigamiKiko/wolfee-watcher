@@ -3,6 +3,7 @@ package baseline
 import (
 	"context"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"time"
 
@@ -39,7 +40,9 @@ func RunAnomalyCleanup(ctx context.Context, pool *pgxpool.Pool) {
 
 func sweepAnomalyEvents(ctx context.Context, pool *pgxpool.Pool) {
 	active, err := pool.Exec(ctx,
-		`DELETE FROM anomaly_events WHERE silenced_at IS NULL AND ts < NOW() - $1::interval`,
+		`DELETE FROM anomaly_events
+		 WHERE cluster_id = $1 AND silenced_at IS NULL AND ts < NOW() - $2::interval`,
+		mtls.ClusterID(),
 		fmt.Sprintf("%d milliseconds", AnomalyEventTTL.Milliseconds()),
 	)
 	if err != nil {
@@ -49,7 +52,9 @@ func sweepAnomalyEvents(ctx context.Context, pool *pgxpool.Pool) {
 	}
 
 	silent, err := pool.Exec(ctx,
-		`DELETE FROM anomaly_events WHERE silenced_at IS NOT NULL AND silenced_at < NOW() - $1::interval`,
+		`DELETE FROM anomaly_events
+		 WHERE cluster_id = $1 AND silenced_at IS NOT NULL AND silenced_at < NOW() - $2::interval`,
+		mtls.ClusterID(),
 		fmt.Sprintf("%d milliseconds", AnomalySilentTTL.Milliseconds()),
 	)
 	if err != nil {

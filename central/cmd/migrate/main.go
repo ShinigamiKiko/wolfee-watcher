@@ -206,7 +206,14 @@ func applyGrants(ctx context.Context, pool *pgxpool.Pool) error {
 				}
 			}
 		}
-		log.Printf("grants: %s — %d table(s)", role, len(grants))
+		for _, fn := range schema.FunctionGrants[role] {
+			if _, err := pool.Exec(ctx,
+				fmt.Sprintf(`GRANT EXECUTE ON FUNCTION %s TO %s`, fn, role)); err != nil {
+				return fmt.Errorf("grant execute on %s to %s: %w", fn, role, err)
+			}
+		}
+		log.Printf("grants: %s — %d table(s), %d function(s)",
+			role, len(grants), len(schema.FunctionGrants[role]))
 	}
 	return nil
 }

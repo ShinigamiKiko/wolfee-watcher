@@ -36,6 +36,12 @@ spec:
               value: /etc/wolfee-watcher/ca/ca.crt
             - name: CA_KEY_FILE
               value: /etc/wolfee-watcher/ca/ca.key
+            - name: CLUSTER_ID
+              value: {{ .Values.global.clusterId | quote }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           volumeMounts:
             - name: ca-secret
               mountPath: /etc/wolfee-watcher/ca
@@ -44,7 +50,7 @@ spec:
             httpGet:
               path: /health
               port: 8090
-              scheme: HTTP
+              scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 20
             failureThreshold: 3
@@ -52,7 +58,7 @@ spec:
             httpGet:
               path: /health
               port: 8090
-              scheme: HTTP
+              scheme: HTTPS
             initialDelaySeconds: 3
             periodSeconds: 10
             failureThreshold: 3

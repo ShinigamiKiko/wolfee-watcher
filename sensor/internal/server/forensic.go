@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"io"
 	"log"
 	"net/http"
@@ -77,15 +78,20 @@ func (s *Server) handleForensicWatch(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"error": "use /api/forensic/watch/{ns}/{pod}"})
 		return
 	}
-	if r.Method == http.MethodDelete {
+	switch r.Method {
+	case http.MethodPost:
+		path := "watch/" + ns + "/" + pod
+		if source := r.URL.Query().Get("source"); source != "" {
+			path += "?source=" + url.QueryEscape(source)
+		}
+		s.proxyToForensicWatcher(w, r, ns, pod, path, http.MethodPost)
+	case http.MethodDelete:
 		s.proxyToForensicWatcher(w, r, ns, pod, "unwatch/"+ns+"/"+pod, http.MethodDelete)
-		return
+	default:
+		w.Header().Set("Allow", "POST, DELETE")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]any{"error": "use POST to start or DELETE to stop a watch"})
 	}
-	path := "watch/" + ns + "/" + pod
-	if source := r.URL.Query().Get("source"); source != "" {
-		path += "?source=" + url.QueryEscape(source)
-	}
-	s.proxyToForensicWatcher(w, r, ns, pod, path, http.MethodPost)
 }
 
 func (s *Server) handleForensicDiff(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +197,7 @@ func copyResponseHeaders(w http.ResponseWriter, resp *http.Response) {
 }
 
 func (s *Server) findForensicWatcherIP(ctx context.Context, nodeName string) (string, error) {
-	pods, err := s.client.CoreV1().Pods("wolfee-watcher").List(ctx, metav1.ListOptions{
+	pods, err := s.client.CoreV1().Pods(mtls.Namespace()).List(ctx, metav1.ListOptions{
 		LabelSelector: "app=forensic-watcher",
 		FieldSelector: "spec.nodeName=" + nodeName,
 	})

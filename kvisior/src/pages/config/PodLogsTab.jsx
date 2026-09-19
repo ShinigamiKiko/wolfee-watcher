@@ -1,9 +1,10 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useRef, useEffect } from 'react';
 import { getContainers, colorizeLog, ST } from './yamlPanelHelpers';
 import { DateRangePicker, applyToFilter } from './DateRangePicker';
 
 async function safeFetch(url) {
-  const res = await fetch(url, { credentials: 'same-origin' });
+  const res = await apiFetch(url, { credentials: 'same-origin' });
   const text = await res.text();
   try {
     return JSON.parse(text);

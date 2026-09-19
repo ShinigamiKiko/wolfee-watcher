@@ -1,5 +1,6 @@
+import { apiFetch } from '../../data/cluster';
 async function safeFetch(url) {
-  const res = await fetch(url, { credentials: 'same-origin' });
+  const res = await apiFetch(url, { credentials: 'same-origin' });
   const text = await res.text();
   try {
     return JSON.parse(text);

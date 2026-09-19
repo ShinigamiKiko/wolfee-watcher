@@ -11,9 +11,9 @@ import (
 
 	"github.com/wolfee-watcher/anomaly-detector/internal/baseline"
 	"github.com/wolfee-watcher/anomaly-detector/internal/broadcast"
-	"github.com/wolfee-watcher/pkg/httputil"
 	"github.com/wolfee-watcher/anomaly-detector/internal/integrations"
 	"github.com/wolfee-watcher/anomaly-detector/internal/recon"
+	"github.com/wolfee-watcher/pkg/httputil"
 	"github.com/wolfee-watcher/pkg/mtls"
 )
 

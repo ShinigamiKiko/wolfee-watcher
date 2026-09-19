@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,7 @@ func (c *Client) PushAuditRun(run AuditRun) {
 		req.Header.Set("Content-Type", "application/json")
 		if c.secret != "" {
 			req.Header.Set("X-Internal-Push-Secret", c.secret)
+			req.Header.Set("X-Cluster-ID", clusterID())
 		}
 		resp, err := c.hc.Do(req)
 		if err != nil {
@@ -94,4 +96,12 @@ func (c *Client) logErrOnce(format string, args ...interface{}) {
 	}
 	c.lastEr = time.Now()
 	log.Printf("[kv-sync] "+format, args...)
+}
+
+func clusterID() string {
+	id := strings.TrimSpace(os.Getenv("CLUSTER_ID"))
+	if id == "" {
+		return "default"
+	}
+	return id
 }

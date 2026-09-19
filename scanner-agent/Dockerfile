@@ -22,7 +22,6 @@ RUN mkdir -p /trivy-cache /scan-workspace && chmod 0777 /trivy-cache /scan-works
 ENV TRIVY_CACHE_DIR=/trivy-cache \
     TRIVY_PATH=/usr/local/bin/trivy \
     TRIVY_SKIP_VERSION_CHECK=true \
-    SCANNER_SKIP_DB_WARMUP=true \
     SCANNER_ADDR=:9090 \
     SCAN_WORKSPACE_DIR=/scan-workspace \
     BDU_LOCAL_PATH=/opt/bdu/vulxml.xml

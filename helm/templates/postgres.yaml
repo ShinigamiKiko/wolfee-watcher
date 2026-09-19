@@ -52,6 +52,31 @@ spec:
         - name: postgres
           image: "{{ include "kvisior.image" .Values.postgres.image }}"
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          args:
+            - -c
+            - max_connections={{ .Values.postgres.tuning.maxConnections }}
+            - -c
+            - shared_buffers={{ .Values.postgres.tuning.sharedBuffers }}
+            - -c
+            - effective_cache_size={{ .Values.postgres.tuning.effectiveCacheSize }}
+            - -c
+            - work_mem={{ .Values.postgres.tuning.workMem }}
+            - -c
+            - maintenance_work_mem={{ .Values.postgres.tuning.maintenanceWorkMem }}
+            - -c
+            - wal_compression={{ .Values.postgres.tuning.walCompression }}
+            - -c
+            - checkpoint_timeout={{ .Values.postgres.tuning.checkpointTimeout }}
+            - -c
+            - max_wal_size={{ .Values.postgres.tuning.maxWalSize }}
+            - -c
+            - autovacuum_max_workers={{ .Values.postgres.tuning.autovacuumMaxWorkers }}
+            - -c
+            - autovacuum_naptime={{ .Values.postgres.tuning.autovacuumNaptime }}
+            - -c
+            - random_page_cost={{ .Values.postgres.tuning.randomPageCost }}
+            - -c
+            - log_min_duration_statement={{ .Values.postgres.tuning.logMinDurationStatement }}
           lifecycle:
             preStop:
               exec:
@@ -102,7 +127,6 @@ spec:
     - metadata:
         name: data
         labels:
-          {{- include "kvisior.labels" . | nindent 10 }}
           app.kubernetes.io/name: postgres
       spec:
         accessModes:

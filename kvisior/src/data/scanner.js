@@ -1,39 +1,40 @@
+import { apiFetch, sseUrl } from '../data/cluster';
 
 const BASE = '/scanner';
 
 export async function listImages() {
-  const r = await fetch(`${BASE}/images`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/images`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`images: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function getResults() {
-  const r = await fetch(`${BASE}/results`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/results`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`results: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function getHistories() {
-  const r = await fetch(`${BASE}/histories`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/histories`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`histories: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function getImageResult(ref) {
-  const r = await fetch(`${BASE}/results?image=${encodeURIComponent(ref)}`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/results?image=${encodeURIComponent(ref)}`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`result: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function getImageWorkloads(ref) {
   const query = ref ? `?image=${encodeURIComponent(ref)}` : '';
-  const r = await fetch(`${BASE}/workloads${query}`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/workloads${query}`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`workloads: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function triggerScan(images = []) {
-  const r = await fetch(`${BASE}/scan`, {
+  const r = await apiFetch(`${BASE}/scan`, {
     method:      'POST',
     credentials: 'same-origin',
     headers:     { 'Content-Type': 'application/json' },
@@ -45,19 +46,19 @@ export async function triggerScan(images = []) {
 }
 
 export async function stopScan() {
-  const r = await fetch(`${BASE}/scan/stop`, { method: 'POST', credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/scan/stop`, { method: 'POST', credentials: 'same-origin' });
   if (!r.ok) throw new Error(`stop: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function scannerHealth() {
-  const r = await fetch(`${BASE}/health`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/health`, { credentials: 'same-origin' });
   if (!r.ok) return null;
   return r.json();
 }
 
 export function subscribeScanStream(onEvent, onError) {
-  const es = new EventSource(`${BASE}/stream`);
+  const es = new EventSource(sseUrl(`${BASE}/stream`));
   es.onmessage = (e) => {
     try { onEvent(JSON.parse(e.data)); }
     catch {}
@@ -100,13 +101,13 @@ export function fmtDuration(ms) {
 }
 
 export async function getSchedule() {
-  const r = await fetch(`${BASE}/schedule`, { credentials: 'same-origin' });
+  const r = await apiFetch(`${BASE}/schedule`, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`schedule: HTTP ${r.status}`);
   return r.json();
 }
 
 export async function saveSchedule(schedule) {
-  const r = await fetch(`${BASE}/schedule`, {
+  const r = await apiFetch(`${BASE}/schedule`, {
     method:      'PUT',
     credentials: 'same-origin',
     headers:     { 'Content-Type': 'application/json' },

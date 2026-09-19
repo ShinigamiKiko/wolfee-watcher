@@ -80,14 +80,9 @@ func IssueServiceCert(caCertPEM, caKeyPEM []byte, svc ServiceType) (certPEM, key
 
 			CommonName:         string(svc),
 			Organization:       []string{caOrg},
-			OrganizationalUnit: []string{string(svc)},
+			OrganizationalUnit: []string{string(svc), ClusterOU(ClusterID())},
 		},
-		DNSNames: []string{
-			string(svc),
-			string(svc) + ".wolfee-watcher",
-			string(svc) + ".wolfee-watcher.svc",
-			string(svc) + ".wolfee-watcher.svc.cluster.local",
-		},
+		DNSNames:  ServiceDNSNames(string(svc)),
 		NotBefore: time.Now().Add(-time.Minute),
 		NotAfter:  time.Now().Add(certExpiry),
 		KeyUsage:  x509.KeyUsageDigitalSignature,

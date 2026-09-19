@@ -1,3 +1,4 @@
+import { apiFetch } from '../data/cluster';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSensor } from '../context/SensorContext';
 import { normalizePolicies, buildGraph } from './network/networkPolicyUtils';
@@ -217,7 +218,7 @@ export function NetworkRuntime() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch('/anomaly/api/anomalies?limit=200', { credentials: 'same-origin' }).catch(() => null);
+      const res = await apiFetch('/anomaly/api/anomalies?limit=200', { credentials: 'same-origin' }).catch(() => null);
       const anom = res?.ok ? await res.json() : { events: [] };
       setAnomalies(anom.events || []);
     } catch(e) { setError(e.message); }

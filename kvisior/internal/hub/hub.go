@@ -14,8 +14,9 @@ import (
 )
 
 type Event struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
+	Type    string          `json:"type"`
+	Cluster string          `json:"cluster,omitempty"`
+	Data    json.RawMessage `json:"data"`
 }
 
 type Publisher interface {
@@ -23,28 +24,45 @@ type Publisher interface {
 }
 
 type Hub struct {
-	mu      sync.Mutex
-	clients map[chan<- Event]struct{}
-	buf     []Event
-	bufMax  int
+	mu       sync.Mutex
+	clients  map[chan<- Event]struct{}
+	buf      []Event
+	bufBytes int
+	bufMax   int
+	latest   map[string]Event
 }
 
-const maxClients = 512
+const (
+	maxClients  = 512
+	maxBufBytes = 32 << 20
+)
+
+var latestOnly = map[string]bool{
+	"sensor_snapshot": true,
+}
 
 func New(bufMax int) *Hub {
 	return &Hub{
 		clients: make(map[chan<- Event]struct{}),
 		bufMax:  bufMax,
+		latest:  make(map[string]Event),
 	}
 }
 
 func (h *Hub) Publish(e Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.buf) >= h.bufMax {
-		h.buf = h.buf[1:]
+	if latestOnly[e.Type] {
+		h.latest[e.Type+"/"+e.Cluster] = e
+	} else {
+		h.buf = append(h.buf, e)
+		h.bufBytes += len(e.Data)
+		for len(h.buf) > 0 && (len(h.buf) > h.bufMax || h.bufBytes > maxBufBytes) {
+			h.bufBytes -= len(h.buf[0].Data)
+			h.buf[0] = Event{}
+			h.buf = h.buf[1:]
+		}
 	}
-	h.buf = append(h.buf, e)
 	for ch := range h.clients {
 		select {
 		case ch <- e:
@@ -63,8 +81,11 @@ func (h *Hub) Subscribe(ctx context.Context) <-chan Event {
 		close(closed)
 		return closed
 	}
-	snap := make([]Event, len(h.buf))
-	copy(snap, h.buf)
+	snap := make([]Event, 0, len(h.latest)+len(h.buf))
+	for _, e := range h.latest {
+		snap = append(snap, e)
+	}
+	snap = append(snap, h.buf...)
 	h.clients[live] = struct{}{}
 	nClients := len(h.clients)
 	h.mu.Unlock()
@@ -130,6 +151,8 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	want := strings.TrimSpace(r.URL.Query().Get("cluster"))
+
 	ch := h.Subscribe(r.Context())
 	ping := time.NewTicker(25 * time.Second)
 	defer ping.Stop()
@@ -139,6 +162,9 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case e, ok := <-ch:
 			if !ok {
 				return
+			}
+			if want != "" && want != "*" && e.Cluster != "" && e.Cluster != want {
+				continue
 			}
 			b, _ := json.Marshal(e)
 			if _, err := io.WriteString(w, "data: "+string(b)+"\n\n"); err != nil {

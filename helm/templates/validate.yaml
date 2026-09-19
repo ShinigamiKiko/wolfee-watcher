@@ -1,0 +1,20 @@
+{{- if and (eq (.Values.global.internalPushSecret | default "") "") (not .Values.global.internalPushSecretSkipValidation) -}}
+{{- fail "global.internalPushSecret is required: an empty value disables authentication on /internal/push/* endpoints. Set it via --set global.internalPushSecret=<random> or a secrets manager. For development only: --set global.internalPushSecretSkipValidation=true" -}}
+{{- end -}}
+
+{{- $cid := .Values.global.clusterId | default "" -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" $cid) -}}
+{{- fail (printf "global.clusterId=%q is invalid: use lowercase alphanumerics and dashes, 1-63 chars. This id is stamped into every row and into the mTLS client certificates, so it must be stable and unique per cluster." $cid) -}}
+{{- end -}}
+
+{{- if and (not .Values.postgres.enabled) (not .Values.postgres.external.enabled) -}}
+{{- fail "postgres.enabled=false requires postgres.external.enabled=true with postgres.external.host set — the services have no database to talk to otherwise" -}}
+{{- end -}}
+
+{{- if and .Values.postgres.external.enabled (eq (.Values.postgres.external.host | default "") "") -}}
+{{- fail "postgres.external.enabled=true requires postgres.external.host" -}}
+{{- end -}}
+
+{{- if and .Values.ui.federation.nodePort (not .Values.ui.federation.allowedSources) -}}
+{{- fail "ui.federation.nodePort is set but ui.federation.allowedSources is empty: list the hub's address so the network policy lets it in (and nobody else)" -}}
+{{- end -}}

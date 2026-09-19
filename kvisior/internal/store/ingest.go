@@ -20,6 +20,9 @@ const (
 	ForensicEventTTL = 24 * time.Hour
 	BinaryEventTTL   = 24 * time.Hour
 	ContainerLogTTL  = 24 * time.Hour
+
+	partitionsAheadHours    = 48
+	schemaPartitionedTables = "container_logs, audit_events"
 )
 
 type IncomingAlert struct {
@@ -37,12 +40,11 @@ type IncomingAlert struct {
 	Data        json.RawMessage
 }
 
-func (s *Store) InsertAlerts(ctx context.Context, alerts []IncomingAlert) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
+func (c *Scoped) InsertAlerts(ctx context.Context, alerts []IncomingAlert) error {
+	if len(alerts) == 0 {
+		return nil
 	}
-	defer tx.Rollback(ctx)
+	rows := make([][]interface{}, 0, len(alerts))
 	for _, a := range alerts {
 		data := a.Data
 		if len(data) == 0 {
@@ -52,16 +54,16 @@ func (s *Store) InsertAlerts(ctx context.Context, alerts []IncomingAlert) error 
 		if ts.IsZero() {
 			ts = time.Now()
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO alerts
-			  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-			ts, a.Source, a.DetType, a.RuleID, a.RuleName, a.Severity,
-			a.Namespace, a.Target, a.Syscall, a.Detail, a.Fingerprint, data); err != nil {
-			return err
-		}
+		rows = append(rows, []interface{}{
+			c.id, ts, a.Source, a.DetType, a.RuleID, a.RuleName, a.Severity,
+			a.Namespace, a.Target, a.Syscall, a.Detail, a.Fingerprint, data,
+		})
 	}
-	return tx.Commit(ctx)
+	_, err := c.s.pool.CopyFrom(ctx, pgx.Identifier{"alerts"},
+		[]string{"cluster_id", "ts", "source", "det_type", "rule_id", "rule_name", "severity",
+			"namespace", "target", "syscall", "detail", "fingerprint", "data"},
+		pgx.CopyFromRows(rows))
+	return err
 }
 
 func (s *Store) LoadAlertRules(ctx context.Context, detType string) ([]json.RawMessage, error) {
@@ -88,36 +90,61 @@ func (s *Store) GetEnabledIntegration(ctx context.Context, kind string) (json.Ra
 	return cfg, true, nil
 }
 
-func (s *Store) InsertAuditEvent(ctx context.Context, raw json.RawMessage) error {
-	var meta struct {
-		Timestamp time.Time `json:"timestamp"`
-		User      string    `json:"user"`
-		Kind      string    `json:"kind"`
-		Namespace string    `json:"namespace"`
-		Resource  string    `json:"resource"`
+func (c *Scoped) InsertAuditEvents(ctx context.Context, raws []json.RawMessage) error {
+	if len(raws) == 0 {
+		return nil
 	}
+	rows := make([][]interface{}, 0, len(raws))
+	for _, raw := range raws {
+		ts, meta, err := auditMeta(raw)
+		if err != nil {
+			return err
+		}
+		ts, keep := partitionedTS(ts, AuditEventTTL)
+		if !keep {
+			continue
+		}
+		rows = append(rows, []interface{}{
+			c.id, ts, meta.User, meta.Kind, meta.Namespace, meta.Resource, raw,
+		})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err := c.s.pool.CopyFrom(ctx, pgx.Identifier{"audit_events"},
+		[]string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data"},
+		pgx.CopyFromRows(rows))
+	return err
+}
+
+type auditEventMeta struct {
+	Timestamp time.Time `json:"timestamp"`
+	User      string    `json:"user"`
+	Kind      string    `json:"kind"`
+	Namespace string    `json:"namespace"`
+	Resource  string    `json:"resource"`
+}
+
+func auditMeta(raw json.RawMessage) (time.Time, auditEventMeta, error) {
+	var meta auditEventMeta
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return fmt.Errorf("audit event meta: %w", err)
+		return time.Time{}, meta, fmt.Errorf("audit event meta: %w", err)
 	}
 	ts := meta.Timestamp
 	if ts.IsZero() {
 		ts = time.Now()
 	}
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO audit_events (ts, "user", kind, ns, resource, data)
-		 VALUES ($1,$2,$3,$4,$5,$6)`,
-		ts, meta.User, meta.Kind, meta.Namespace, meta.Resource, raw)
-	return err
+	return ts, meta, nil
 }
 
-func (s *Store) QueryAuditEventsSince(ctx context.Context, since string, limit int) ([]json.RawMessage, string, error) {
+func (c *Scoped) QueryAuditEventsSince(ctx context.Context, since string, limit int) ([]json.RawMessage, string, error) {
 	sinceID, _ := strconv.ParseInt(since, 10, 64)
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, data FROM audit_events WHERE id > $1 ORDER BY id LIMIT $2`,
-		sinceID, limit)
+	rows, err := c.s.pool.Query(ctx,
+		`SELECT id, data FROM audit_events WHERE cluster_id = $1 AND id > $2 ORDER BY id LIMIT $3`,
+		c.id, sinceID, limit)
 	if err != nil {
 		return nil, since, err
 	}
@@ -155,7 +182,7 @@ type BinaryExecQuery struct {
 	Limit     int
 }
 
-func (s *Store) InsertBinaryExecEvent(ctx context.Context, raw json.RawMessage) error {
+func (c *Scoped) InsertBinaryExecEvent(ctx context.Context, raw json.RawMessage) error {
 	var ev map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &ev); err != nil {
 		return fmt.Errorf("binary event JSON: %w", err)
@@ -199,24 +226,25 @@ func (s *Store) InsertBinaryExecEvent(ctx context.Context, raw json.RawMessage) 
 	}
 	hash := sha256.Sum256(raw)
 	eventID := get("id", "event_id", "eventId")
-	_, err := s.pool.Exec(ctx, `
+	_, err := c.s.pool.Exec(ctx, `
 		INSERT INTO binary_exec_events
-		  (event_id, event_hash, ts, ns, pod, pod_uid, pod_ip, container, node, "binary", process, cmdline, data)
-		VALUES (NULLIF($1, ''),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-		ON CONFLICT (event_hash) DO NOTHING`,
-		eventID, hex.EncodeToString(hash[:]), ts, ns, pod,
+		  (cluster_id, event_id, event_hash, ts, ns, pod, pod_uid, pod_ip, container, node, "binary", process, cmdline, data)
+		VALUES ($1,NULLIF($2, ''),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		ON CONFLICT (cluster_id, event_hash) DO NOTHING`,
+		c.id, eventID, hex.EncodeToString(hash[:]), ts, ns, pod,
 		get("pod_uid", "podUID", "uid"), get("pod_ip", "podIP"),
 		get("container", "containerId"), get("node"), get("execpath", "binary"),
 		get("process"), get("cmdline"), raw)
 	return err
 }
 
-func (s *Store) QueryBinaryExecEvents(ctx context.Context, q BinaryExecQuery) ([]json.RawMessage, error) {
+func (c *Scoped) QueryBinaryExecEvents(ctx context.Context, q BinaryExecQuery) ([]json.RawMessage, error) {
 	if q.Limit <= 0 || q.Limit > 10000 {
 		q.Limit = 10000
 	}
-	query := `SELECT data FROM binary_exec_events WHERE ts > NOW() - INTERVAL '24 hours'`
-	args := make([]interface{}, 0, 4)
+	query := `SELECT data FROM binary_exec_events WHERE cluster_id = $1 AND ts > NOW() - INTERVAL '24 hours'`
+	args := make([]interface{}, 0, 5)
+	args = append(args, c.id)
 	if q.Namespace != "" {
 		args = append(args, q.Namespace)
 		query += fmt.Sprintf(" AND ns = $%d", len(args))
@@ -231,7 +259,7 @@ func (s *Store) QueryBinaryExecEvents(ctx context.Context, q BinaryExecQuery) ([
 	}
 	args = append(args, q.Limit)
 	query += fmt.Sprintf(" ORDER BY ts DESC, id DESC LIMIT $%d", len(args))
-	return s.listJSONBlobs(ctx, query, args...)
+	return c.listJSONBlobs(ctx, query, args...)
 }
 
 type BinaryEventSummary struct {
@@ -284,7 +312,7 @@ const (
 	maxPageLimit        = 5000
 )
 
-func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
+func (c *Scoped) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
 	initial := q.SinceID == 0
 	if q.Limit <= 0 {
 		if initial {
@@ -301,8 +329,8 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 	}
 	watermark := q.SinceID
 	if initial {
-		watermarkQuery := `SELECT COALESCE(MAX(id), 0) FROM binary_exec_events WHERE ns=$1 AND pod=$2`
-		watermarkArgs := []interface{}{q.Namespace, q.Pod}
+		watermarkQuery := `SELECT COALESCE(MAX(id), 0) FROM binary_exec_events WHERE cluster_id=$1 AND ns=$2 AND pod=$3`
+		watermarkArgs := []interface{}{c.id, q.Namespace, q.Pod}
 		if q.PodUID != "" {
 			watermarkArgs = append(watermarkArgs, q.PodUID)
 			watermarkQuery += fmt.Sprintf(" AND (pod_uid=$%d", len(watermarkArgs))
@@ -315,7 +343,7 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 			watermarkArgs = append(watermarkArgs, q.ContainerID)
 			watermarkQuery += fmt.Sprintf(" AND COALESCE(NULLIF(container,''), data->>'containerId')=$%d", len(watermarkArgs))
 		}
-		if err := s.pool.QueryRow(ctx, watermarkQuery, watermarkArgs...).Scan(&watermark); err != nil {
+		if err := c.s.pool.QueryRow(ctx, watermarkQuery, watermarkArgs...).Scan(&watermark); err != nil {
 			return ForensicEventPage{}, err
 		}
 		if watermark == 0 {
@@ -326,9 +354,10 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 	query := `
 		SELECT id, data
 		FROM binary_exec_events
-		WHERE ns = $1
-		  AND pod = $2`
-	args := []interface{}{q.Namespace, q.Pod}
+		WHERE cluster_id = $1
+		  AND ns = $2
+		  AND pod = $3`
+	args := []interface{}{c.id, q.Namespace, q.Pod}
 	if len(q.Syscalls) > 0 {
 		args = append(args, q.Syscalls)
 		query += fmt.Sprintf(" AND syscall = ANY($%d::text[])", len(args))
@@ -357,7 +386,7 @@ func (s *Store) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQu
 	}
 	args = append(args, bound, q.Limit+1)
 	query += fmt.Sprintf(" AND id %s $%d ORDER BY id %s LIMIT $%d", comparison, len(args)-1, order, len(args))
-	rows, err := s.pool.Query(ctx, query, args...)
+	rows, err := c.s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return ForensicEventPage{}, err
 	}
@@ -418,15 +447,16 @@ type PodEventDeleteResult struct {
 	Anomaly int64
 }
 
-func (s *Store) DeletePodEvents(ctx context.Context, ns, pod string) (PodEventDeleteResult, error) {
-	tx, err := s.pool.Begin(ctx)
+func (c *Scoped) DeletePodEvents(ctx context.Context, ns, pod string) (PodEventDeleteResult, error) {
+	tx, err := c.s.pool.Begin(ctx)
 	if err != nil {
 		return PodEventDeleteResult{}, err
 	}
 	defer tx.Rollback(ctx)
 
 	result := PodEventDeleteResult{}
-	tag, err := tx.Exec(ctx, `DELETE FROM binary_exec_events WHERE ns = $1 AND pod = $2`, ns, pod)
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM binary_exec_events WHERE cluster_id = $1 AND ns = $2 AND pod = $3`, c.id, ns, pod)
 	if err != nil {
 		return PodEventDeleteResult{}, err
 	}
@@ -434,7 +464,8 @@ func (s *Store) DeletePodEvents(ctx context.Context, ns, pod string) (PodEventDe
 
 	tag, err = tx.Exec(ctx, `
 		DELETE FROM anomaly_events
-		WHERE data->>'src_namespace' = $1 AND data->>'src_pod' = $2`, ns, pod)
+		WHERE cluster_id = $1
+		  AND data->>'src_namespace' = $2 AND data->>'src_pod' = $3`, c.id, ns, pod)
 	if err != nil {
 		return PodEventDeleteResult{}, err
 	}
@@ -446,8 +477,8 @@ func (s *Store) DeletePodEvents(ctx context.Context, ns, pod string) (PodEventDe
 	return result, nil
 }
 
-func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSummary, error) {
-	rows, err := s.pool.Query(ctx, `
+func (c *Scoped) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSummary, error) {
+	rows, err := c.s.pool.Query(ctx, `
 		SELECT
 			ns,
 			pod,
@@ -479,7 +510,7 @@ func (s *Store) QueryBinaryEventSummary(ctx context.Context) ([]BinaryEventSumma
 	return out, rows.Err()
 }
 
-func (s *Store) InsertForensicEvents(ctx context.Context, ns, pod string, entries []ForensicEntry) error {
+func (c *Scoped) InsertForensicEvents(ctx context.Context, ns, pod string, entries []ForensicEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -493,27 +524,27 @@ func (s *Store) InsertForensicEvents(ctx context.Context, ns, pod string, entrie
 		paths[i], ops[i], sizes[i] = e.Path, e.Op, e.Size
 		mtimes[i], shas[i], snaps[i] = e.Mtime, e.SHA256, e.SnappedAt
 	}
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO forensic_events (ns, pod, path, op, size, mtime, sha256, snapped_at)
-		 SELECT $1, $2, * FROM unnest($3::text[], $4::text[], $5::bigint[], $6::text[], $7::text[], $8::text[])
-		 ON CONFLICT (ns, pod, path, op, snapped_at) DO NOTHING`,
-		ns, pod, paths, ops, sizes, mtimes, shas, snaps)
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO forensic_events (cluster_id, ns, pod, path, op, size, mtime, sha256, snapped_at)
+		 SELECT $1, $2, $3, * FROM unnest($4::text[], $5::text[], $6::bigint[], $7::text[], $8::text[], $9::text[])
+		 ON CONFLICT (cluster_id, ns, pod, path, op, snapped_at) DO NOTHING`,
+		c.id, ns, pod, paths, ops, sizes, mtimes, shas, snaps)
 	return err
 }
 
 const maxForensicEntries = 5000
 
-func (s *Store) QueryForensicEvents(ctx context.Context, ns, pod string) ([]ForensicEntry, error) {
-	rows, err := s.pool.Query(ctx,
+func (c *Scoped) QueryForensicEvents(ctx context.Context, ns, pod string) ([]ForensicEntry, error) {
+	rows, err := c.s.pool.Query(ctx,
 		`SELECT path, op, size, mtime, sha256, snapped_at FROM (
 			SELECT path, op, size, mtime, sha256, snapped_at, ts
 			FROM forensic_events
-			WHERE ns=$1 AND pod=$2 AND ts > NOW() - INTERVAL '24 hours'
+			WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND ts > NOW() - INTERVAL '24 hours'
 			ORDER BY ts DESC
-			LIMIT $3
+			LIMIT $4
 		 ) recent
 		 ORDER BY ts`,
-		ns, pod, maxForensicEntries)
+		c.id, ns, pod, maxForensicEntries)
 	if err != nil {
 		return nil, err
 	}
@@ -533,20 +564,21 @@ func (s *Store) QueryForensicEvents(ctx context.Context, ns, pod string) ([]Fore
 	return entries, rows.Err()
 }
 
-func (s *Store) UpsertForensicWatch(ctx context.Context, ns, pod, source string) error {
+func (c *Scoped) UpsertForensicWatch(ctx context.Context, ns, pod, source string) error {
 	if source != "anomaly" {
 		source = "manual"
 	}
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO forensic_watches (key, ns, pod, started_at, active, source)
-		VALUES ($1,$2,$3,NOW(),TRUE,$4)
-		ON CONFLICT (key) DO UPDATE SET active=TRUE, started_at=NOW(), source=$4`,
-		ns+"/"+pod, ns, pod, source)
+	_, err := c.s.pool.Exec(ctx, `
+		INSERT INTO forensic_watches (cluster_id, key, ns, pod, started_at, active, source)
+		VALUES ($1,$2,$3,$4,NOW(),TRUE,$5)
+		ON CONFLICT (cluster_id, key) DO UPDATE SET active=TRUE, started_at=NOW(), source=$5`,
+		c.id, ns+"/"+pod, ns, pod, source)
 	return err
 }
 
-func (s *Store) DeleteForensicWatch(ctx context.Context, ns, pod string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM forensic_watches WHERE key=$1`, ns+"/"+pod)
+func (c *Scoped) DeleteForensicWatch(ctx context.Context, ns, pod string) error {
+	_, err := c.s.pool.Exec(ctx,
+		`DELETE FROM forensic_watches WHERE cluster_id=$1 AND key=$2`, c.id, ns+"/"+pod)
 	return err
 }
 
@@ -556,12 +588,12 @@ type ForensicWatch struct {
 	Source    string `json:"source"`
 }
 
-func (s *Store) ListActiveForensicWatches(ctx context.Context) ([]ForensicWatch, error) {
-	rows, err := s.pool.Query(ctx, `
+func (c *Scoped) ListActiveForensicWatches(ctx context.Context) ([]ForensicWatch, error) {
+	rows, err := c.s.pool.Query(ctx, `
 		SELECT ns, pod, source
 		FROM forensic_watches
-		WHERE active = TRUE
-		ORDER BY ns, pod`)
+		WHERE cluster_id = $1 AND active = TRUE
+		ORDER BY ns, pod`, c.id)
 	if err != nil {
 		return nil, err
 	}
@@ -583,13 +615,13 @@ type ContainerLogLine struct {
 	Log       string `json:"log"`
 }
 
-func (s *Store) QueryContainerLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) ([]ContainerLogLine, error) {
+func (c *Scoped) QueryContainerLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) ([]ContainerLogLine, error) {
 	fromTS := time.Now().Add(-time.Duration(sinceSeconds) * time.Second)
-	rows, err := s.pool.Query(ctx,
+	rows, err := c.s.pool.Query(ctx,
 		`SELECT ts, log FROM container_logs
-		 WHERE ns=$1 AND pod=$2 AND container=$3 AND ts > $4
+		 WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND container=$4 AND ts > $5
 		 ORDER BY ts LIMIT 10000`,
-		ns, pod, container, fromTS)
+		c.id, ns, pod, container, fromTS)
 	if err != nil {
 		return nil, err
 	}
@@ -611,56 +643,65 @@ type ContainerLogEntry struct {
 	Log string    `json:"log"`
 }
 
-func (s *Store) InsertContainerLogEntries(ctx context.Context, node, ns, pod, container string, entries []ContainerLogEntry) error {
+func (c *Scoped) InsertContainerLogEntries(ctx context.Context, node, ns, pod, container string, entries []ContainerLogEntry) error {
 	var maxTs time.Time
 	rows := make([][]interface{}, 0, len(entries))
 	for _, e := range entries {
 		if e.Log == "" {
 			continue
 		}
-		rows = append(rows, []interface{}{e.Ts, ns, pod, container, e.Log})
 		if e.Ts.After(maxTs) {
 			maxTs = e.Ts
 		}
+		ts, keep := partitionedTS(e.Ts, ContainerLogTTL)
+		if !keep {
+			continue
+		}
+		rows = append(rows, []interface{}{c.id, ts, ns, pod, container, e.Log})
 	}
-	if len(rows) == 0 {
+	if maxTs.IsZero() {
 		return nil
 	}
 	key := ns + "/" + pod + "/" + container
-	tx, err := s.pool.Begin(ctx)
+	tx, err := c.s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 	var cur time.Time
 	err = tx.QueryRow(ctx,
-		`SELECT cursor_ts FROM log_cursors WHERE key = $1 FOR UPDATE`, key).Scan(&cur)
+		`SELECT cursor_ts FROM log_cursors WHERE cluster_id = $1 AND key = $2 FOR UPDATE`,
+		c.id, key).Scan(&cur)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
 	if err == nil && !cur.Before(maxTs) {
 		return nil
 	}
-	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"container_logs"},
-		[]string{"ts", "ns", "pod", "container", "log"}, pgx.CopyFromRows(rows)); err != nil {
-		return err
+	if len(rows) > 0 {
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"container_logs"},
+			[]string{"cluster_id", "ts", "ns", "pod", "container", "log"}, pgx.CopyFromRows(rows)); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO log_cursors (key, cursor_ts, node, updated_at) VALUES ($1,$2,NULLIF($3,''),NOW())
-		 ON CONFLICT (key) DO UPDATE SET cursor_ts=$2, node=NULLIF($3,''), updated_at=NOW()`,
-		key, maxTs, node); err != nil {
+		`INSERT INTO log_cursors (cluster_id, key, cursor_ts, node, updated_at)
+		 VALUES ($1,$2,$3,NULLIF($4,''),NOW())
+		 ON CONFLICT (cluster_id, key) DO UPDATE SET cursor_ts=$3, node=NULLIF($4,''), updated_at=NOW()`,
+		c.id, key, maxTs, node); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func (s *Store) LoadLogCursors(ctx context.Context, node string) (map[string]time.Time, error) {
-	q, args := `SELECT key, cursor_ts FROM log_cursors`, []interface{}{}
+func (c *Scoped) LoadLogCursors(ctx context.Context, node string) (map[string]time.Time, error) {
+	q := `SELECT key, cursor_ts FROM log_cursors WHERE cluster_id = $1`
+	args := []interface{}{c.id}
 	if node != "" {
-		q += ` WHERE node = $1 OR node IS NULL`
 		args = append(args, node)
+		q += fmt.Sprintf(` AND (node = $%d OR node IS NULL)`, len(args))
 	}
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := c.s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -676,19 +717,20 @@ func (s *Store) LoadLogCursors(ctx context.Context, node string) (map[string]tim
 	return out, rows.Err()
 }
 
-func (s *Store) PutSnapshotCache(ctx context.Context, key string, data []byte, etag string) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO snapshot_cache (key, data, etag, updated_at) VALUES ($1,$2,$3,NOW())
-		 ON CONFLICT (key) DO UPDATE SET data=$2, etag=$3, updated_at=NOW()`,
-		key, data, etag)
+func (c *Scoped) PutSnapshotCache(ctx context.Context, key string, data []byte, etag string) error {
+	_, err := c.s.pool.Exec(ctx,
+		`INSERT INTO snapshot_cache (cluster_id, key, data, etag, updated_at) VALUES ($1,$2,$3,$4,NOW())
+		 ON CONFLICT (cluster_id, key) DO UPDATE SET data=$3, etag=$4, updated_at=NOW()`,
+		c.id, key, data, etag)
 	return err
 }
 
-func (s *Store) GetSnapshotCache(ctx context.Context, key string) ([]byte, string, error) {
+func (c *Scoped) GetSnapshotCache(ctx context.Context, key string) ([]byte, string, error) {
 	var data []byte
 	var etag string
-	err := s.pool.QueryRow(ctx,
-		`SELECT data, etag FROM snapshot_cache WHERE key=$1`, key).Scan(&data, &etag)
+	err := c.s.pool.QueryRow(ctx,
+		`SELECT data, etag FROM snapshot_cache WHERE cluster_id=$1 AND key=$2`,
+		c.id, key).Scan(&data, &etag)
 	if err != nil {
 		return nil, "", err
 	}
@@ -726,15 +768,47 @@ func (s *Store) sweepExpiredRows(ctx context.Context, table string, ttl time.Dur
 	return total, nil
 }
 
-func (s *Store) sweepIngested(ctx context.Context) {
+func (s *Store) MaintainPartitions(ctx context.Context) error {
+	return maintainPartitions(ctx, s.pool)
+}
+
+func maintainPartitions(ctx context.Context, db execer) error {
+	retentionHours := int(ContainerLogTTL.Hours()) + 2
+	var created, dropped int
+	if err := db.QueryRow(ctx,
+		`SELECT created, dropped FROM ww_maintain_partitions($1, $2)`,
+		retentionHours, partitionsAheadHours).Scan(&created, &dropped); err != nil {
+		return err
+	}
+	if created > 0 || dropped > 0 {
+		log.Printf("[store] partition maintenance: %d created, %d dropped (retention=%dh)",
+			created, dropped, retentionHours)
+	}
+	return nil
+}
+
+func sweepIngested(ctx context.Context, db execer) error {
+	if err := maintainPartitions(ctx, db); err != nil {
+		return fmt.Errorf("partition maintenance (%s ingestion stalls once pre-created "+
+			"partitions run out): %w", schemaPartitionedTables, err)
+	}
+
+	if tag, err := db.Exec(ctx,
+		`DELETE FROM log_cursors WHERE updated_at < NOW() - INTERVAL '48 hours'`); err != nil {
+		return fmt.Errorf("log_cursors: %w", err)
+	} else if n := tag.RowsAffected(); n > 0 {
+		log.Printf("[store] log_cursors retention sweep: %d stale cursor(s) dropped", n)
+	}
+	return nil
+}
+
+func (s *Store) sweepUnpartitioned(ctx context.Context) {
 	for _, t := range []struct {
 		table string
 		ttl   time.Duration
 	}{
-		{"audit_events", AuditEventTTL},
 		{"forensic_events", ForensicEventTTL},
 		{"binary_exec_events", BinaryEventTTL},
-		{"container_logs", ContainerLogTTL},
 	} {
 		dropped, err := s.sweepExpiredRows(ctx, t.table, t.ttl)
 		if err != nil {
@@ -745,11 +819,15 @@ func (s *Store) sweepIngested(ctx context.Context) {
 			log.Printf("[store] %s retention sweep: %d expired rows dropped", t.table, dropped)
 		}
 	}
+}
 
-	if tag, err := s.pool.Exec(ctx,
-		`DELETE FROM log_cursors WHERE updated_at < NOW() - INTERVAL '48 hours'`); err != nil {
-		log.Printf("[store] log_cursors retention sweep: %v", err)
-	} else if n := tag.RowsAffected(); n > 0 {
-		log.Printf("[store] log_cursors retention sweep: %d stale cursor(s) dropped", n)
+func partitionedTS(ts time.Time, ttl time.Duration) (time.Time, bool) {
+	now := time.Now()
+	if ts.Before(now.Add(-ttl)) {
+		return ts, false
 	}
+	if ts.After(now.Add(time.Hour)) {
+		return now, true
+	}
+	return ts, true
 }

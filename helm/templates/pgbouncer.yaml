@@ -1,0 +1,110 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pgbouncer-config
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: pgbouncer
+type: Opaque
+stringData:
+  pgbouncer.ini: |
+    [databases]
+    {{ .Values.postgres.database }} = host={{ include "kvisior.pgDirectHost" . }} port={{ include "kvisior.pgDirectPort" . }} dbname={{ .Values.postgres.database }}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = {{ .Values.pgbouncer.port }}
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = {{ .Values.pgbouncer.poolMode }}
+    max_client_conn = {{ .Values.pgbouncer.maxClientConn }}
+    default_pool_size = {{ .Values.pgbouncer.defaultPoolSize }}
+    min_pool_size = {{ .Values.pgbouncer.minPoolSize }}
+    reserve_pool_size = {{ .Values.pgbouncer.reservePoolSize }}
+    max_prepared_statements = {{ .Values.pgbouncer.maxPreparedStatements }}
+    server_reset_query = DISCARD ALL
+    ignore_startup_parameters = extra_float_digits,options
+    log_connections = 0
+    log_disconnections = 0
+  userlist.txt: |
+    "{{ .Values.postgres.user }}" "{{ .Values.postgres.password }}"
+    "{{ .Values.postgres.serviceCredentials.ui.user }}" "{{ .Values.postgres.serviceCredentials.ui.password }}"
+    "{{ .Values.postgres.serviceCredentials.traceeBridge.user }}" "{{ .Values.postgres.serviceCredentials.traceeBridge.password }}"
+    "{{ .Values.postgres.serviceCredentials.anomaly.user }}" "{{ .Values.postgres.serviceCredentials.anomaly.password }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: pgbouncer
+spec:
+  selector:
+    app.kubernetes.io/name: pgbouncer
+  ports:
+    - name: pgbouncer
+      port: {{ .Values.pgbouncer.port }}
+      targetPort: {{ .Values.pgbouncer.port }}
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: pgbouncer
+spec:
+  replicas: {{ .Values.pgbouncer.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgbouncer
+      annotations:
+        checksum/config: {{ printf "%s-%s-%s" .Values.postgres.database .Values.pgbouncer.poolMode (include "kvisior.pgDirectHost" .) | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: pgbouncer
+          image: "{{ include "kvisior.image" .Values.pgbouncer.image }}"
+          imagePullPolicy: {{ .Values.pgbouncer.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.pgbouncer.port }}
+              name: pgbouncer
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer
+              readOnly: true
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.pgbouncer.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.pgbouncer.port }}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.pgbouncer.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          secret:
+            secretName: pgbouncer-config
+{{- end }}

@@ -9,13 +9,9 @@
 
 
 {{- /*
-  Kafka KRaft cluster ID. Previously a pre-upgrade hook Job shelled out to a
-  kubectl image to create this Secret — but Bitnami pulled its public images
-  (bitnami/kubectl, then bitnamilegacy/kubectl:latest both 404), so the hook
-  hit ImagePullBackOff and the upgrade failed with DeadlineExceeded. No image
-  needed: reuse the existing cluster ID via lookup, or mint one on first
-  install. resource-policy:keep preserves it across uninstall so reinstalls
-  over existing Kafka data keep the same ID.
+  Kafka KRaft cluster ID: reused from the existing Secret via lookup, or
+  generated on first install. resource-policy:keep preserves it across
+  uninstall so reinstalls over existing Kafka data keep the same ID.
 */}}
 {{- $clusterId := randAlphaNum 22 }}
 {{- $existing := (lookup "v1" "Secret" $ns "kafka-cluster-id") }}

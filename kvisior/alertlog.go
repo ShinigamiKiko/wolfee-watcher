@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
 
@@ -81,7 +82,9 @@ func handleAlertLog(st *store.Store, w http.ResponseWriter, r *http.Request) {
 		} else {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-			if err := st.InsertAlerts(ctx, persist); err != nil {
+			cl := clusterctx.ForPush(r)
+			st.EnsureClusterCached(cl)
+			if err := st.Cluster(cl).InsertAlerts(ctx, persist); err != nil {
 				log.Printf("[alert-log] persist %d alert(s): %v", len(persist), err)
 				http.Error(w, `{"error":"persist failed"}`, http.StatusInternalServerError)
 				return

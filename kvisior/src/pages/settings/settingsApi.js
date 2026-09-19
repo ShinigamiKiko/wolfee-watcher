@@ -1,7 +1,8 @@
+import { apiFetch } from '../../data/cluster';
 import { actingHeaders } from '../../context/PermissionsContext';
 
 export async function apiJSON(path, opts = {}) {
-  const res = await fetch(path, {
+  const res = await apiFetch(path, {
     ...opts,
     credentials: 'same-origin',
     headers: actingHeaders({

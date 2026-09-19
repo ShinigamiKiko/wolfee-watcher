@@ -207,9 +207,8 @@ func (s *Server) handleBaselineStatus(w http.ResponseWriter, r *http.Request) {
 
 	baseline, exists := s.baselines.Get(name, tag)
 	if !exists {
-		b := s.baselines.Set(name, tag, current)
-		baseline = &b
-		log.Printf("[baselines] auto-baseline %s:%s → %s…", name, tag, current[:16])
+		http.Error(w, `{"error":"no baseline recorded for this image"}`, http.StatusNotFound)
+		return
 	}
 
 	status := DigestStatus{

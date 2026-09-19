@@ -20,10 +20,10 @@ type Manager struct {
 	mu      sync.RWMutex
 	watches map[string]watchEntry
 	ring    *watchring.Ring
-	store   *store.Store
+	store   *store.Scoped
 }
 
-func New(st *store.Store, ring *watchring.Ring) *Manager {
+func New(st *store.Scoped, ring *watchring.Ring) *Manager {
 	return &Manager{
 		watches: make(map[string]watchEntry),
 		ring:    ring,

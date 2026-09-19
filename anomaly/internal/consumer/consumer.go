@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"log/slog"
 	"sync"
@@ -23,7 +24,7 @@ import (
 const filelessWindow = 30 * time.Second
 
 var ignoredNamespaces = map[string]bool{
-	"wolfee-watcher":  true,
+	mtls.Namespace():  true,
 	"kube-system":     true,
 	"kube-public":     true,
 	"kube-node-lease": true,
@@ -185,9 +186,9 @@ func (c *Consumer) persistAlertBatch(batch []alertspkg.AlertLog) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		_, err := c.pool.Exec(ctx, `
 			INSERT INTO alerts
-			  (ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-			ts, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
+			  (cluster_id, ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			mtls.ClusterID(), ts, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
 			al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data)
 		cancel()
 		if err != nil {
@@ -256,27 +257,21 @@ func (c *Consumer) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			for _, e := range errs {
-				slog.Warn("kafka_poll_failed",
-					"component", "anomaly-detector/consumer",
-					"topic", e.Topic,
-					"partition", e.Partition,
-					"error", e.Err)
-			}
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(time.Second):
-			}
-			continue
+		errs := fetches.Errors()
+		for _, e := range errs {
+			slog.Warn("kafka_poll_failed",
+				"component", "anomaly-detector/consumer",
+				"topic", e.Topic,
+				"partition", e.Partition,
+				"error", e.Err)
 		}
+		records := 0
 		var processErr error
 		fetches.EachRecord(func(r *kgo.Record) {
 			if processErr != nil {
 				return
 			}
+			records++
 			c.processed.Add(1)
 			c.lastRecordAt.Store(time.Now().UnixNano())
 			extID := fmt.Sprintf("%d:%d", r.Partition, r.Offset)
@@ -303,6 +298,15 @@ func (c *Consumer) Run(ctx context.Context) error {
 				"action", "leave_offsets_uncommitted",
 				"emit_failures", c.emitFailures.Load(),
 				"error", processErr)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+			continue
+		}
+
+		if len(errs) > 0 && records == 0 {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()

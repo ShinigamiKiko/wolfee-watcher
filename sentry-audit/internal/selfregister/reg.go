@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"log"
 	"math/big"
 	"time"
@@ -21,11 +22,21 @@ import (
 )
 
 const (
-	webhookConfigName = "wolfee-watcher-sentry-audit"
-	namespace         = "wolfee-watcher"
-	serviceName       = "sentry-audit"
-	secretName        = "sentry-audit-tls"
+	serviceName = "sentry-audit"
+	secretName  = "sentry-audit-tls"
 )
+
+var (
+	namespace         = mtls.Namespace()
+	webhookConfigName = webhookName(namespace)
+)
+
+func webhookName(ns string) string {
+	if ns == mtls.DefaultNamespace {
+		return "wolfee-watcher-sentry-audit"
+	}
+	return ns + "-sentry-audit"
+}
 
 type CertBundle struct {
 	TLSConfig *tls.Config

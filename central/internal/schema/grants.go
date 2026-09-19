@@ -24,11 +24,16 @@ type TableGrant struct {
 	Privs string
 }
 
+var FunctionGrants = map[string][]string{
+	RoleUI: {"ww_maintain_partitions(INT, INT)"},
+}
+
 var Grants = map[string][]TableGrant{
 
 	RoleUI: {
 		{"alerts", "SELECT, INSERT, DELETE"},
 		{"alert_deliveries", "SELECT, INSERT, UPDATE, DELETE"},
+		{"clusters", "SELECT, INSERT, UPDATE, DELETE"},
 		{"integrations", "SELECT"},
 		{"admin_groups", "SELECT, INSERT, UPDATE, DELETE"},
 		{"admin_users", "SELECT, INSERT, UPDATE, DELETE"},
@@ -56,11 +61,13 @@ var Grants = map[string][]TableGrant{
 	},
 
 	RoleTraceeBridge: {
+		{"clusters", "SELECT"},
 		{"alerts", "SELECT, INSERT"},
 		{"runtime_policies", "SELECT"},
 	},
 
 	RoleAnomaly: {
+		{"clusters", "SELECT"},
 		{"integrations", "SELECT, INSERT, UPDATE, DELETE"},
 		{"network_baselines", "SELECT, INSERT, UPDATE"},
 		{"anomaly_events", "SELECT, INSERT, UPDATE, DELETE"},

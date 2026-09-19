@@ -5,101 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/wolfee-watcher/kvisior/internal/binring"
 	"github.com/wolfee-watcher/kvisior/internal/events"
 	"github.com/wolfee-watcher/kvisior/internal/podwatch"
-	"github.com/wolfee-watcher/kvisior/internal/rules"
 )
-
-func BackfillHandler(ring *binring.Ring) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		events := ring.Snapshot()
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"events": events}); err != nil {
-			log.Printf("[backfill] encode error: %v", err)
-			return
-		}
-		log.Printf("[backfill] served %d binary events from ring", len(events))
-	}
-}
-
-func WarmRing(ctx context.Context, brokers []string, topic string, ring *binring.Ring) {
-	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		kgo.ConsumeTopics(topic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(
-			time.Now().Add(-24*time.Hour).UnixMilli(),
-		)),
-		kgo.FetchMaxWait(time.Second),
-	)
-	if err != nil {
-		log.Printf("[backfill] warm ring: client init: %v", err)
-		return
-	}
-	defer cl.Close()
-
-	wctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	start := time.Now()
-	added := 0
-	caughtUpAfter := time.Now().Add(-2 * time.Second)
-
-	for {
-		if wctx.Err() != nil {
-			break
-		}
-		fetches := cl.PollFetches(wctx)
-		if fetches.IsClientClosed() {
-			break
-		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			for _, fe := range errs {
-				if !errors.Is(fe.Err, context.Canceled) && !errors.Is(fe.Err, context.DeadlineExceeded) {
-					log.Printf("[backfill] warm ring: kafka error: %v", fe.Err)
-				}
-			}
-			break
-		}
-
-		empty := true
-		done := false
-		fetches.EachRecord(func(rec *kgo.Record) {
-			empty = false
-			var ev map[string]json.RawMessage
-			if json.Unmarshal(rec.Value, &ev) != nil {
-				return
-			}
-			var sc string
-			if raw, ok := ev["syscall"]; ok {
-				json.Unmarshal(raw, &sc)
-			}
-			if !rules.IsBinaryExec(sc) {
-				return
-			}
-			ring.Add(rec.Value, rec.Timestamp)
-			added++
-			if rec.Timestamp.After(caughtUpAfter) {
-				done = true
-			}
-		})
-
-		if empty || done {
-			break
-		}
-	}
-
-	log.Printf("[backfill] warm ring complete: +%d binary events in %s (ring=%d)",
-		added, time.Since(start).Round(time.Second), ring.Len())
-}
 
 func eventKindFromMap(ev map[string]interface{}, sc string) events.Kind {
 	if raw, ok := ev["event_kind"].(string); ok && raw != "" {

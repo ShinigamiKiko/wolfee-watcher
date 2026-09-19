@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useEffect, useState } from 'react';
 import { usePerms, actingHeaders } from '../../context/PermissionsContext';
 import { INTEGRATION_DEFS } from './settingsConstants';
@@ -66,7 +67,7 @@ function IntegrationCard({ def, record, onSaved, toast }) {
     setBusy('save');
     try {
       const cfg = mergeWithStored(def, values, record);
-      const res = await fetch(`/anomaly/api/integrations/${def.kind}`, {
+      const res = await apiFetch(`/anomaly/api/integrations/${def.kind}`, {
         method: 'PUT',
         headers: actingHeaders({ 'Content-Type': 'application/json' }),
         credentials: 'same-origin',
@@ -87,7 +88,7 @@ function IntegrationCard({ def, record, onSaved, toast }) {
     setBusy('test');
     try {
       const cfg = mergeWithStored(def, values, record);
-      const res = await fetch(`/anomaly/api/integrations/${def.kind}/test`, {
+      const res = await apiFetch(`/anomaly/api/integrations/${def.kind}/test`, {
         method: 'POST',
         headers: actingHeaders({ 'Content-Type': 'application/json' }),
         credentials: 'same-origin',
@@ -106,7 +107,7 @@ function IntegrationCard({ def, record, onSaved, toast }) {
   const remove = async () => {
     setBusy('del');
     try {
-      const res = await fetch(`/anomaly/api/integrations/${def.kind}`, {
+      const res = await apiFetch(`/anomaly/api/integrations/${def.kind}`, {
         method: 'DELETE',
         headers: actingHeaders(),
         credentials: 'same-origin',
@@ -190,7 +191,7 @@ export function IntegrationsSection({ toast }) {
 
   const reload = async () => {
     try {
-      const res = await fetch('/anomaly/api/integrations', { headers: actingHeaders(), credentials: 'same-origin' });
+      const res = await apiFetch('/anomaly/api/integrations', { headers: actingHeaders(), credentials: 'same-origin' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       const map = {};

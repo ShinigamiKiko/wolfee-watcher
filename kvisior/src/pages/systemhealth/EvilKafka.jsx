@@ -127,7 +127,7 @@ export function EvilKafka() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
             <StatCell label="Dedup Skipped"   value={(stats.dedup_skipped    || 0).toLocaleString()} />
-            <StatCell label="Overflow Bypass" value={(stats.events_overflow  || 0).toLocaleString()} color={(stats.events_overflow || 0) > 0 ? ORANGE : undefined} />
+            <StatCell label="Queue Dropped"   value={(stats.events_dropped   || 0).toLocaleString()} color={(stats.events_dropped || 0) > 0 ? RED : undefined} />
             <StatCell label="SSE Clients"     value={stats.clients || 0} />
             <StatCell label="SSE Drops"       value={stats.sse_drops || 0} color={(stats.sse_drops || 0) > 0 ? RED : undefined} />
           </div>

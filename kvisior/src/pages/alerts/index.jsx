@@ -1,3 +1,4 @@
+import { apiFetch } from '../../data/cluster';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useScanner } from '../../context/ScannerContext';
 import { useBridge }  from '../../context/BridgeContext';
@@ -234,7 +235,7 @@ export function Alerts() {
 
   const poll = useCallback(async () => {
     try {
-      const res = await fetch(`/anomaly/api/anomalies?since=${lastIDRef.current}&limit=${FETCH_LIMIT}`, {
+      const res = await apiFetch(`/anomaly/api/anomalies?since=${lastIDRef.current}&limit=${FETCH_LIMIT}`, {
         credentials: 'same-origin',
       });
       if (!res.ok) throw new Error(res.status);
@@ -248,7 +249,7 @@ export function Alerts() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch('/anomaly/api/stats', { credentials: 'same-origin' });
+      const res = await apiFetch('/anomaly/api/stats', { credentials: 'same-origin' });
       if (!res.ok) return;
       const data = await res.json();
       setStats(data);

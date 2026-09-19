@@ -68,13 +68,11 @@ func (is *Issuer) Issue(svc mtls.ServiceType) (certPEM, keyPEM []byte, err error
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: string(svc)},
-		DNSNames: []string{
-			string(svc),
-			string(svc) + ".wolfee-watcher",
-			string(svc) + ".wolfee-watcher.svc",
-			string(svc) + ".wolfee-watcher.svc.cluster.local",
+		Subject: pkix.Name{
+			CommonName:         string(svc),
+			OrganizationalUnit: []string{mtls.ClusterOU(mtls.ClusterID())},
 		},
+		DNSNames:  mtls.ServiceDNSNames(string(svc)),
 		NotBefore: now.Add(-BeforeGrace),
 		NotAfter:  now.Add(lifetime),
 		KeyUsage:  x509.KeyUsageDigitalSignature,

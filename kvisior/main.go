@@ -21,7 +21,7 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/accounts"
 	"github.com/wolfee-watcher/kvisior/internal/apihandler"
 	"github.com/wolfee-watcher/kvisior/internal/auth"
-	"github.com/wolfee-watcher/kvisior/internal/binring"
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/collector"
 	"github.com/wolfee-watcher/kvisior/internal/grpcserver"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
@@ -48,38 +48,55 @@ type backend struct {
 	timeout time.Duration
 }
 
-type forensicSummaryCache struct {
-	mu      sync.RWMutex
+type forensicSummaryEntry struct {
 	events  []store.BinaryEventSummary
 	expires time.Time
+}
+
+type forensicSummaryCache struct {
+	mu      sync.RWMutex
+	entries map[string]forensicSummaryEntry
 	sf      singleflight.Group
 }
 
-func (c *forensicSummaryCache) get(ctx context.Context, st *store.Store) ([]store.BinaryEventSummary, error) {
+func (c *forensicSummaryCache) lookup(cluster string) ([]store.BinaryEventSummary, bool) {
 	c.mu.RLock()
-	if time.Now().Before(c.expires) {
-		events := c.events
-		c.mu.RUnlock()
+	defer c.mu.RUnlock()
+	e, ok := c.entries[cluster]
+	if !ok || !time.Now().Before(e.expires) {
+		return nil, false
+	}
+	return e.events, true
+}
+
+func (c *forensicSummaryCache) invalidate(cluster string) {
+	c.mu.Lock()
+	delete(c.entries, cluster)
+	c.mu.Unlock()
+}
+
+func (c *forensicSummaryCache) get(ctx context.Context, sc *store.Scoped) ([]store.BinaryEventSummary, error) {
+	if events, ok := c.lookup(sc.ID()); ok {
 		return events, nil
 	}
-	c.mu.RUnlock()
-	result, err, _ := c.sf.Do("forensic-summary", func() (interface{}, error) {
-		c.mu.RLock()
-		if time.Now().Before(c.expires) {
-			events := c.events
-			c.mu.RUnlock()
+	result, err, _ := c.sf.Do("forensic-summary/"+sc.ID(), func() (interface{}, error) {
+		if events, ok := c.lookup(sc.ID()); ok {
 			return events, nil
 		}
-		c.mu.RUnlock()
 		qctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
-		events, err := st.QueryBinaryEventSummary(qctx)
+		events, err := sc.QueryBinaryEventSummary(qctx)
 		if err != nil {
 			return nil, err
 		}
 		c.mu.Lock()
-		c.events = events
-		c.expires = time.Now().Add(30 * time.Second)
+		if c.entries == nil {
+			c.entries = make(map[string]forensicSummaryEntry)
+		}
+		c.entries[sc.ID()] = forensicSummaryEntry{
+			events:  events,
+			expires: time.Now().Add(30 * time.Second),
+		}
 		c.mu.Unlock()
 		return events, nil
 	})
@@ -89,18 +106,21 @@ func (c *forensicSummaryCache) get(ctx context.Context, st *store.Store) ([]stor
 	return result.([]store.BinaryEventSummary), nil
 }
 
-var backends = []backend{
-	{"/api/", "tracee-bridge.wolfee-watcher.svc.cluster.local:8081", 0},
-	{"/scanner/", "scanner-agent.wolfee-watcher.svc.cluster.local:9090", 10 * time.Minute},
-	{"/sensor/", "sensor.wolfee-watcher.svc.cluster.local:8080", 5 * time.Minute},
-	{"/sentry/", "sentry-audit.wolfee-watcher.svc.cluster.local:8080", 30 * time.Second},
-	{"/anomaly/", "anomaly-detector.wolfee-watcher.svc.cluster.local:8080", 0},
-	{"/honey/", "honey-operator.wolfee-watcher.svc.cluster.local:9095", 0},
-	{"/audit/", "audit-runner.wolfee-watcher.svc.cluster.local:8080", 2 * time.Minute},
+func backends() []backend {
+	return []backend{
+		{"/api/", mtls.ServiceHost("tracee-bridge", 8081), 0},
+		{"/scanner/", mtls.ServiceHost("scanner-agent", 9090), 10 * time.Minute},
+		{"/sensor/", mtls.ServiceHost("sensor", 8080), 5 * time.Minute},
+		{"/sentry/", mtls.ServiceHost("sentry-audit", 8080), 30 * time.Second},
+		{"/anomaly/", mtls.ServiceHost("anomaly-detector", 8080), 0},
+		{"/honey/", mtls.ServiceHost("honey-operator", 9095), 0},
+		{"/audit/", mtls.ServiceHost("audit-runner", 8080), 2 * time.Minute},
+	}
 }
 
 func main() {
 	logging.Setup("kvisior")
+	clusterctx.Init()
 	addr := os.Getenv("KVISIOR_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -160,12 +180,12 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	anomalyBase := scheme + "://anomaly-detector.wolfee-watcher.svc.cluster.local:8080"
+	anomalyBase := scheme + "://" + mtls.ServiceHost("anomaly-detector", 8080)
 	if v := os.Getenv("KVISIOR_ANOMALY_BASE"); v != "" {
 		anomalyBase = v
 	}
 
-	sensorBase := scheme + "://sensor.wolfee-watcher.svc.cluster.local:8080"
+	sensorBase := scheme + "://" + mtls.ServiceHost("sensor", 8080)
 	if v := os.Getenv("KVISIOR_SENSOR_BASE"); v != "" {
 		sensorBase = v
 	}
@@ -207,6 +227,13 @@ func main() {
 			} else {
 				defer pgPool.Close()
 				log.Printf("[kvisior] PostgreSQL connected — serving /api/* directly from DB")
+				regCtx, cancelReg := context.WithTimeout(ctx, 5*time.Second)
+				if clusterctx.Hub() {
+					log.Printf("[kvisior] hub mode: not registering a local cluster")
+				} else if err := st.EnsureCluster(regCtx, clusterctx.Local()); err != nil {
+					log.Printf("[kvisior] register local cluster %q: %v", clusterctx.Local(), err)
+				}
+				cancelReg()
 				go st.RunRetention(ctx)
 
 				go alertspkg.RunCleanup(ctx, pgPool)
@@ -217,15 +244,43 @@ func main() {
 		log.Printf("[kvisior] POSTGRES_DSN not set — /api/* proxied to tracee-bridge")
 	}
 
+	if clusterctx.Hub() && st == nil {
+		log.Fatalf("[kvisior] hub mode needs the database: set POSTGRES_DSN and run central-migrate first")
+	}
+
+	ctrlPool := pgPool
+	if ctrlDSN := os.Getenv("POSTGRES_CONTROL_DSN"); ctrlDSN != "" {
+		p, err := pgxpool.New(ctx, ctrlDSN)
+		if err != nil {
+			log.Printf("[kvisior] control-plane postgres pool: %v — falling back to the data pool", err)
+		} else {
+			pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err = p.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				log.Printf("[kvisior] control-plane postgres ping: %v — falling back to the data pool", err)
+				p.Close()
+			} else {
+				defer p.Close()
+				ctrlPool = p
+				log.Printf("[kvisior] control-plane (accounts, sessions, tokens) on a separate pool")
+			}
+		}
+	}
+
 	secureCookie := os.Getenv("KVISIOR_SECURE_COOKIE") == "true"
 	var authMgr *auth.Manager
-	if pgPool != nil {
-		authMgr = auth.New(accounts.NewStore(pgPool), secureCookie)
+	if ctrlPool != nil {
+		authMgr = auth.New(accounts.NewStore(ctrlPool), secureCookie)
 	} else {
 
 		authMgr = auth.New(nil, secureCookie)
 	}
 	authMgr.StartSessionPurge(ctx)
+
+	fed := newFederation(st)
+	fed.register(ctx)
+	authed := fed.requireAuth(authMgr)
 
 	agg := collector.New(
 		evHub,
@@ -233,12 +288,13 @@ func main() {
 		anomalyBase, sensorBase,
 		auditMatcher, st,
 	)
-	go agg.Run(ctx)
+	if !clusterctx.Hub() {
+		go agg.Run(ctx)
+	}
 
-	binRing := binring.New()
 	watchRing := watchring.New(ctx)
-	podWatchMgr := podwatch.New(st, watchRing)
-	if st != nil {
+	podWatchMgr := podwatch.New(st.Cluster(clusterctx.Local()), watchRing)
+	if st != nil && !clusterctx.Hub() {
 		if err := podWatchMgr.Load(ctx); err != nil {
 			log.Printf("[kvisior] podwatch load: %v", err)
 		}
@@ -253,8 +309,7 @@ func main() {
 			policyConsumer = kc
 			go kc.Run(ctx)
 
-			go kafkaconsumer.RunLive(ctx, brokers, kafkaTopic, evHub, binRing, podWatchMgr, matcher)
-			go kafkaconsumer.WarmRing(ctx, brokers, kafkaTopic, binRing)
+			go kafkaconsumer.RunLive(ctx, brokers, kafkaTopic, evHub, podWatchMgr, matcher)
 			go kafkaconsumer.WarmWatchRing(ctx, brokers, kafkaTopic, podWatchMgr)
 			log.Printf("[kvisior] kafka consumers started: brokers=%v topic=%s (processing group=kvisior-tracee + groupless live feed gated by active policies; binary-exec always streamed for Forensics)", brokers, kafkaTopic)
 		}
@@ -266,7 +321,9 @@ func main() {
 	if grpcAddr == "" {
 		grpcAddr = ":9091"
 	}
-	if _, err := grpcserver.Start(ctx, grpcAddr, grpcCreds, uiBus, evHub, matcher, auditMatcher, st); err != nil {
+	if clusterctx.Hub() {
+		log.Printf("[kvisior] hub mode: gRPC push listener disabled")
+	} else if _, err := grpcserver.Start(ctx, grpcAddr, grpcCreds, uiBus, evHub, matcher, auditMatcher, st); err != nil {
 		log.Fatalf("[kvisior] grpc: %v", err)
 	}
 
@@ -299,7 +356,7 @@ func main() {
 	if appVersion == "" {
 		appVersion = "dev"
 	}
-	mux.Handle("/v1/version", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/version", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -309,25 +366,18 @@ func main() {
 	})))
 	log.Printf("[kvisior] /v1/version → %s", appVersion)
 
-	mux.Handle("/v1/stream", authMgr.RequireAuth(evHub))
+	mux.Handle("/v1/stream", authed(fed.route(evHub)))
 	log.Printf("[kvisior] /v1/stream → SSE hub (buf=5000)")
-
-	if kafkaBrokers != "" {
-		mux.Handle("/v1/binary-backfill", authMgr.RequireAuth(
-			kafkaconsumer.BackfillHandler(binRing),
-		))
-		log.Printf("[kvisior] /v1/binary-backfill enabled (24h in-memory ring)")
-	}
 
 	if st != nil {
 		var summaryCache forensicSummaryCache
-		mux.Handle("/v1/binary-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/binary-events", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-			events, err := st.QueryBinaryExecEvents(r.Context(), store.BinaryExecQuery{
+			events, err := st.Cluster(clusterctx.ForRead(r)).QueryBinaryExecEvents(r.Context(), store.BinaryExecQuery{
 				Namespace: r.URL.Query().Get("namespace"),
 				Pod:       r.URL.Query().Get("pod"),
 				PodUID:    r.URL.Query().Get("pod_uid"),
@@ -345,12 +395,12 @@ func main() {
 		})))
 		log.Printf("[kvisior] /v1/binary-events enabled (24h PostgreSQL history)")
 
-		mux.Handle("/v1/forensic-summary", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-summary", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			summary, err := summaryCache.get(r.Context(), st)
+			summary, err := summaryCache.get(r.Context(), st.Cluster(clusterctx.ForRead(r)))
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
@@ -359,7 +409,7 @@ func main() {
 			_ = json.NewEncoder(w).Encode(map[string]any{"events": summary})
 		})))
 
-		mux.Handle("/v1/forensic-events/clear", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-events/clear", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -369,15 +419,12 @@ func main() {
 				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 				return
 			}
-			deleted, err := st.DeletePodEvents(r.Context(), ns, pod)
+			deleted, err := st.Cluster(clusterctx.ForRead(r)).DeletePodEvents(r.Context(), ns, pod)
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
 			}
-			summaryCache.mu.Lock()
-			summaryCache.events = nil
-			summaryCache.expires = time.Time{}
-			summaryCache.mu.Unlock()
+			summaryCache.invalidate(clusterctx.ForRead(r))
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"runtime_deleted": deleted.Runtime,
@@ -385,7 +432,7 @@ func main() {
 			})
 		}))))
 
-		mux.Handle("/v1/forensic-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-events", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -403,7 +450,7 @@ func main() {
 				return
 			}
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
-			page, err := st.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
+			page, err := st.Cluster(clusterctx.ForRead(r)).QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
 				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID,
 				Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
 			})
@@ -417,12 +464,12 @@ func main() {
 			})
 		})))
 
-		mux.Handle("/v1/forensic-watches", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/v1/forensic-watches", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			watches, err := st.ListActiveForensicWatches(r.Context())
+			watches, err := st.Cluster(clusterctx.ForRead(r)).ListActiveForensicWatches(r.Context())
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
@@ -432,7 +479,7 @@ func main() {
 		})))
 	}
 
-	mux.Handle("/v1/pod-watch", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/pod-watch", authed(mutationsRequireAdmin(fed.routeFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
 		if ns == "" || pod == "" {
@@ -473,7 +520,7 @@ func main() {
 		}
 	}))))
 
-	mux.Handle("/v1/pod-syscall-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/pod-syscall-events", authed(fed.routeFunc(func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("ns")
 		pod := r.URL.Query().Get("pod")
 		podUID := r.URL.Query().Get("pod_uid")
@@ -490,7 +537,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"events": evts})
 	})))
 
-	mux.Handle("/v1/honeypot-hidden", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/honeypot-hidden", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -504,7 +551,7 @@ func main() {
 				http.Error(w, `{"error":"ns and name required"}`, http.StatusBadRequest)
 				return
 			}
-			ids, err := st.HiddenHoneypotEvents(r.Context(), ns, name)
+			ids, err := st.Cluster(clusterctx.ForRead(r)).HiddenHoneypotEvents(r.Context(), ns, name)
 			if err != nil {
 				http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 				return
@@ -527,7 +574,7 @@ func main() {
 				http.Error(w, `{"error":"ns, name and id required"}`, http.StatusBadRequest)
 				return
 			}
-			if err := st.HideHoneypotEvent(r.Context(), body.NS, body.Name, body.ID); err != nil {
+			if err := st.Cluster(clusterctx.ForRead(r)).HideHoneypotEvent(r.Context(), body.NS, body.Name, body.ID); err != nil {
 				http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 				return
 			}
@@ -537,7 +584,7 @@ func main() {
 		}
 	}))))
 
-	mux.Handle("/v1/honeypot-events", authMgr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/honeypot-events", authed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -552,7 +599,7 @@ func main() {
 			http.Error(w, `{"error":"ns and name required"}`, http.StatusBadRequest)
 			return
 		}
-		events, err := st.ListHoneypotEvents(r.Context(), ns, name)
+		events, err := st.Cluster(clusterctx.ForRead(r)).ListHoneypotEvents(r.Context(), ns, name)
 		if err != nil {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 			return
@@ -564,7 +611,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"events": events, "total": len(events)})
 	})))
 
-	mux.Handle("/v1/violations", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/violations", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -577,7 +624,7 @@ func main() {
 				return
 			}
 
-			if err := st.SetViolationState(r.Context(), fp, store.StateDismissed, store.StateDismissedDuration); err != nil {
+			if err := st.Cluster(clusterctx.ForRead(r)).SetViolationState(r.Context(), fp, store.StateDismissed, store.StateDismissedDuration); err != nil {
 				http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
 				return
 			}
@@ -597,7 +644,7 @@ func main() {
 			case store.StateACK:
 				ttl = store.StateACKDuration
 			}
-			if err := st.SetViolationState(r.Context(), fp, state, ttl); err != nil {
+			if err := st.Cluster(clusterctx.ForRead(r)).SetViolationState(r.Context(), fp, state, ttl); err != nil {
 				http.Error(w, `{"error":"state update failed"}`, http.StatusInternalServerError)
 				return
 			}
@@ -608,7 +655,7 @@ func main() {
 			stateFilter := r.URL.Query().Get("state")
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-			rows, err := st.QueryViolations(r.Context(), vtype, stateFilter, sinceID, limit)
+			rows, err := st.Cluster(clusterctx.ForRead(r)).QueryViolations(r.Context(), vtype, stateFilter, sinceID, limit)
 			if err != nil {
 				http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 				return
@@ -620,7 +667,7 @@ func main() {
 		}
 	}))))
 
-	mux.Handle("/v1/violations/record", authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/violations/record", authed(mutationsRequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
 			http.Error(w, `{"error":"postgresql not configured"}`, http.StatusServiceUnavailable)
 			return
@@ -647,7 +694,7 @@ func main() {
 		if len(body.Data) == 0 {
 			body.Data = json.RawMessage(`{}`)
 		}
-		st.WriteViolation(r.Context(), body.VType, body.RuleID, body.RuleName, body.Sev, body.NS, body.Pod, body.Fingerprint, body.Data)
+		st.Cluster(clusterctx.ForRead(r)).WriteViolation(r.Context(), body.VType, body.RuleID, body.RuleName, body.Sev, body.NS, body.Pod, body.Fingerprint, body.Data)
 		w.WriteHeader(http.StatusNoContent)
 	}))))
 	mux.HandleFunc("/auth/login", authMgr.HandleLogin)
@@ -655,13 +702,17 @@ func main() {
 	mux.HandleFunc("/auth/me", authMgr.HandleMe)
 
 	adminMut := func(h http.HandlerFunc) http.Handler {
-		return authMgr.RequireAuth(mutationsRequireAdmin(http.HandlerFunc(h)))
+		return authed(mutationsRequireAdmin(http.HandlerFunc(h)))
 	}
-	mux.Handle("/api/auth/change-password", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleChangePassword)))
+	mux.Handle("/api/auth/change-password", authed(http.HandlerFunc(authMgr.HandleChangePassword)))
 	mux.Handle("/api/users", adminMut(authMgr.HandleUsers))
 	mux.Handle("/api/users/", adminMut(authMgr.HandleUsersSub))
 	mux.Handle("/api/groups", adminMut(authMgr.HandleGroups))
 	mux.Handle("/api/groups/", adminMut(authMgr.HandleGroupItem))
+	if st != nil {
+		mux.Handle("/api/clusters", adminMut(clustersHandler(st)))
+		mux.Handle("/api/clusters/", adminMut(clusterItemHandler(st)))
+	}
 	mux.Handle("/api/tokens", adminMut(authMgr.HandleTokens))
 	mux.Handle("/api/tokens/", adminMut(authMgr.HandleTokenItem))
 
@@ -676,23 +727,23 @@ func main() {
 
 	if st != nil {
 		apihandler.New(st).Register(mux, func(h http.Handler) http.Handler {
-			return authMgr.RequireAuth(mutationsRequireAdmin(h))
+			return authed(mutationsRequireAdmin(h))
 		})
 		log.Printf("[kvisior] /api/{policies,acks,alerts} → direct DB; /api/events proxied to tracee-bridge")
 	}
 
 	if st != nil {
-		mux.Handle("/scanner/results", authMgr.RequireAuth(imageScansHandler(st)))
-		mux.Handle("/scanner/workloads", authMgr.RequireAuth(imageScanWorkloadsHandler(st)))
-		mux.Handle("/scanner/histories", authMgr.RequireAuth(imageHistoriesHandler(st)))
-		mux.Handle("/audit/runs", authMgr.RequireAuth(auditRunsHandler(st)))
+		mux.Handle("/scanner/results", authed(imageScansHandler(st)))
+		mux.Handle("/scanner/workloads", authed(imageScanWorkloadsHandler(st)))
+		mux.Handle("/scanner/histories", authed(imageHistoriesHandler(st)))
+		mux.Handle("/audit/runs", authed(auditRunsHandler(st)))
 
-		mux.Handle("/sentry/api/events", authMgr.RequireAuth(auditEventsHandler(st)))
-		mux.Handle("/sensor/api/forensic/diff/", authMgr.RequireAuth(forensicDiffHandler(st)))
+		mux.Handle("/sentry/api/events", authed(auditEventsHandler(st)))
+		mux.Handle("/sensor/api/forensic/diff/", authed(forensicDiffHandler(st)))
 		log.Printf("[kvisior] /scanner/{results,histories}, /audit/runs, /sentry/api/events, /sensor/api/forensic/diff → direct DB; other /scanner/*, /audit/*, /sentry/*, /sensor/* proxied")
 	}
 
-	registerBackendProxies(mux, scheme, baseTransport, authMgr)
+	registerBackendProxies(mux, scheme, baseTransport, authed, fed)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -743,6 +794,26 @@ func main() {
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
+	}
+	if tlsAddr := os.Getenv("KVISIOR_TLS_ADDR"); tlsAddr != "" {
+		certFile, keyFile := os.Getenv("KVISIOR_TLS_CERT_FILE"), os.Getenv("KVISIOR_TLS_KEY_FILE")
+		if certFile == "" || keyFile == "" {
+			log.Fatalf("[kvisior] KVISIOR_TLS_ADDR=%s needs KVISIOR_TLS_CERT_FILE and KVISIOR_TLS_KEY_FILE", tlsAddr)
+		}
+		tlsSrv := &http.Server{
+			Addr:              tlsAddr,
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    1 << 20,
+			TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+		}
+		go func() {
+			log.Printf("[kvisior] TLS listener on %s", tlsAddr)
+			if err := tlsSrv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("[kvisior] TLS listener: %v", err)
+			}
+		}()
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("[kvisior] %v", err)

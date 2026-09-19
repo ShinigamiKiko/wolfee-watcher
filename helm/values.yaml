@@ -1,6 +1,12 @@
 global:
   namespace: wolfee-watcher
 
+  clusterId: default
+
+  trustClusterHeader: false
+
+  federationToken: ""
+
   certServerAddr: "https://cert-server.wolfee-watcher.svc.cluster.local:8090"
 
   postgresDSN: "postgres://wolfee-watcher:wolfee-watcher@postgres.wolfee-watcher.svc.cluster.local:5432/wolfee-watcher?sslmode=disable"
@@ -21,7 +27,16 @@ namespace:
   create: true
 
 postgres:
+
   enabled: true
+
+  external:
+    enabled: false
+    host: ""
+    port: 5432
+    sslMode: require
+    caBundle: ""
+
   image:
     repository: postgres
     tag: "16-alpine"
@@ -29,6 +44,20 @@ postgres:
   database: wolfee-watcher
   user: wolfee-watcher
   password: wolfee-watcher
+
+  tuning:
+    maxConnections: 300
+    sharedBuffers: 512MB
+    effectiveCacheSize: 1536MB
+    workMem: 16MB
+    maintenanceWorkMem: 256MB
+    walCompression: "on"
+    checkpointTimeout: 15min
+    maxWalSize: 4GB
+    autovacuumMaxWorkers: 6
+    autovacuumNaptime: 15s
+    randomPageCost: 1.1
+    logMinDurationStatement: 1000
 
   serviceCredentials:
     ui:
@@ -41,15 +70,37 @@ postgres:
       user: ww_anomaly
       password: ww_anomaly
   storage:
-    size: "20Gi"
+    size: "100Gi"
     storageClass: ""
   resources:
     requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+
+pgbouncer:
+  enabled: false
+  replicaCount: 2
+  port: 6432
+  image:
+    repository: edoburu/pgbouncer
+    tag: "1.23.1-p2"
+    pullPolicy: IfNotPresent
+  poolMode: transaction
+  maxClientConn: 1000
+  defaultPoolSize: 40
+  minPoolSize: 5
+  reservePoolSize: 10
+  maxPreparedStatements: 200
+  resources:
+    requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 64Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 256Mi
 
 centralMigrate:
   enabled: true
@@ -57,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0011-image-scan-workloads"
+  schemaVersion: "0012-multicluster"
   adminBootstrapPassword: ""
   resources:
     requests:
@@ -75,6 +126,7 @@ certServer:
     tag: latest
     pullPolicy: Never
   caSecretName: wolfee-watcher-ca
+  caBundle: ""
   resources:
     requests:
       cpu: 10m
@@ -217,6 +269,12 @@ auditRunner:
       memory: 256Mi
 
 ui:
+  federation:
+    nodePort: 0
+    tlsSecret: kvisior-federation-tls
+    allowedSources: []
+  advertiseURL: ""
+  controlPlaneDSN: ""
   enabled: true
   replicaCount: 1
   appVersion: ""
@@ -282,6 +340,7 @@ caBootstrap:
 
 tracee:
   enabled: true
+  containerdSocketDir: /run/containerd
   image:
     repository: aquasec/tracee
     tag: "0.24.1"
@@ -298,6 +357,7 @@ tracee:
 
 networkPolicy:
   enabled: true
+  federationNamespaces: []
   ingressControllerNamespace: ingress-nginx
   # Node subnet CIDRs. Tracee runs hostNetwork and reaches tracee-bridge:8080
   # from node IPs, so these must be set when networkPolicy.enabled=true and

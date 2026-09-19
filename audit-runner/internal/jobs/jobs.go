@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"github.com/wolfee-watcher/pkg/mtls"
 	"io"
 	"log"
 	"strings"
@@ -15,8 +16,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+var Namespace = mtls.Namespace()
+
 const (
-	Namespace  = "wolfee-watcher"
 	JobTimeout = 5 * time.Minute
 	PollTick   = 3 * time.Second
 	ttl        = int32(600)

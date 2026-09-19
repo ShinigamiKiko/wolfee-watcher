@@ -1,0 +1,12 @@
+{{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-ca
+  namespace: {{ include "kvisior.namespace" . }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+data:
+  ca.crt: |
+    {{- .Values.postgres.external.caBundle | trim | nindent 4 }}
+{{- end }}

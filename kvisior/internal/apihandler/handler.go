@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
 
@@ -69,7 +70,7 @@ func (h *Handler) handleAcks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
 	case http.MethodGet:
-		items, err := h.st.ListAcks(r.Context())
+		items, err := h.st.Cluster(clusterctx.ForRead(r)).ListAcks(r.Context())
 		if err != nil {
 			jsonErr(w, err, http.StatusInternalServerError)
 			return
@@ -96,7 +97,7 @@ func (h *Handler) handleAcks(w http.ResponseWriter, r *http.Request) {
 			t := time.Unix(ms/1000, (ms%1000)*int64(time.Millisecond))
 			exp = &t
 		}
-		if err := h.st.UpsertAck(r.Context(), body.Key, body.Type, exp); err != nil {
+		if err := h.st.Cluster(clusterctx.ForRead(r)).UpsertAck(r.Context(), body.Key, body.Type, exp); err != nil {
 			jsonErr(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -109,7 +110,7 @@ func (h *Handler) handleAcks(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]any{"error": "key required"})
 			return
 		}
-		if err := h.st.DeleteAck(r.Context(), key); err != nil {
+		if err := h.st.Cluster(clusterctx.ForRead(r)).DeleteAck(r.Context(), key); err != nil {
 			jsonErr(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -128,7 +129,7 @@ func (h *Handler) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	out, lastID, err := h.st.QueryAlerts(r.Context(), since, limit)
+	out, lastID, err := h.st.Cluster(clusterctx.ForRead(r)).QueryAlerts(r.Context(), since, limit)
 	if err != nil {
 		jsonErr(w, err, http.StatusInternalServerError)
 		return

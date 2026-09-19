@@ -24,7 +24,7 @@ func certServerAddr() string {
 	if v := os.Getenv("CERT_SERVER_ADDR"); v != "" {
 		return v
 	}
-	return "https://cert-server.wolfee-watcher.svc.cluster.local:8090"
+	return "https://" + ServiceHost("cert-server", 8090)
 }
 
 func saToken() (string, error) {
