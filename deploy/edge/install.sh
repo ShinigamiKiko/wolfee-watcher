@@ -109,6 +109,41 @@ ensure_cluster_ca() {
   say "cluster CA: created secret wolfee-watcher-ca"
 }
 
+report_existing() {
+  local rel ns ui
+  rel=$(h list -A --all --filter "^${RELEASE}\$" -o json 2>/dev/null | tr -d '[]' || true)
+  ui=$(k get deploy -A -l app.kubernetes.io/name=kvisior-ui \
+    -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' 2>/dev/null | head -1 || true)
+  [ -n "$rel" ] || [ -n "$ui" ] || return 1
+
+  jget() { printf '%s' "$rel" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+  ns=$(jget namespace); ns="${ns:-$ui}"
+  NS="$ns"
+
+  local cid adv env
+  env='{.spec.template.spec.containers[0].env[?(@.name=="%s")].value}'
+  cid=$(k -n "$ns" get deploy kvisior-ui -o "jsonpath=$(printf "$env" CLUSTER_ID)" 2>/dev/null || true)
+  adv=$(k -n "$ns" get deploy kvisior-ui -o "jsonpath=$(printf "$env" KVISIOR_ADVERTISE_URL)" 2>/dev/null || true)
+
+  echo
+  echo "  already installed, nothing changed"
+  echo "  cluster     ${cid:-$(state_get clusterId)}"
+  echo "  namespace   $ns"
+  if [ -n "$rel" ]; then
+    echo "  release     $RELEASE, revision $(jget revision), $(jget status), chart $(jget chart)"
+    echo "  updated     $(jget updated)"
+  else
+    echo "  release     kvisior-ui found, but no helm release named $RELEASE"
+  fi
+  [ -n "$adv" ] && echo "  federation  $adv"
+  local kv db
+  kv=$(state_get kvisiorIP); db=$(state_get dbIP)
+  [ -n "$kv" ] && echo "  kvisior     $kv"
+  [ -n "$db" ] && echo "  database    $db:5432"
+  echo "  pods        $(k -n "$ns" get pods --no-headers 2>/dev/null | awk '{split($2,a,"/"); if ($3=="Running" && a[1]==a[2]) ok++; else if ($3!="Completed") bad++} END {printf "%d ready, %d not ready", ok, bad}')"
+  return 0
+}
+
 install_one() {
   local ctx server
   ctx=$(k config current-context 2>/dev/null) || die "cannot read kubeconfig $KCFG"
@@ -116,22 +151,13 @@ install_one() {
   say "kubeconfig $KCFG, context '$ctx', server $server"
   k get nodes >/dev/null || die "cannot reach the cluster with $KCFG"
 
+  report_existing && return
+
   NS=$(ask_id "Namespace" "${NS:-wolfee-watcher}")
-
-  local saved_cid saved_kv saved_db saved_edge
-  saved_cid=$(state_get clusterId)
-  saved_kv=$(state_get kvisiorIP)
-  saved_db=$(state_get dbIP)
-  saved_edge=$(state_get edgeIP)
-  [ -n "$saved_cid" ] && say "found a previous install of cluster '$saved_cid' in $NS"
-
-  KV_IP=$(ask_ip "kvisior (hub) IP" "${saved_kv:-${KV_IP:-}}")
-  DB_IP=$(ask_ip "Database IP" "${saved_db:-${DB_IP:-$KV_IP}}")
-  CID=$(ask_id "Cluster name" "${saved_cid:-$(sanitize_id "$ctx")}")
-  if [ -n "$saved_cid" ] && [ "$CID" != "$saved_cid" ]; then
-    die "this cluster is already installed as '$saved_cid'; the id is stamped into every row, uninstall first to rename it"
-  fi
-  EDGE_IP=$(ask_ip "This cluster's IP, reachable from the hub" "${saved_edge:-$(detect_edge_ip)}")
+  KV_IP=$(ask_ip "kvisior (hub) IP" "${KV_IP:-}")
+  DB_IP=$(ask_ip "Database IP" "${DB_IP:-$KV_IP}")
+  CID=$(ask_id "Cluster name" "$(sanitize_id "$ctx")")
+  EDGE_IP=$(ask_ip "This cluster's IP, reachable from the hub" "$(detect_edge_ip)")
 
   echo
   echo "  cluster     $CID"
@@ -166,17 +192,10 @@ install_one() {
     --dry-run=client -o yaml | k apply -f - >/dev/null
   ensure_cluster_ca
 
-  local push nodes brokers sock i
-  push=$(k -n "$NS" get deploy kvisior-ui \
-    -o 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="INTERNAL_PUSH_SECRET")].value}' 2>/dev/null || true)
-  [ -n "$push" ] || push=$(openssl rand -hex 32)
-
-  local kafka_n
-  kafka_n=$(state_get kafkaReplicas)
-  if [ -z "$kafka_n" ]; then
-    nodes=$(k get nodes --no-headers | wc -l | tr -d ' ')
-    kafka_n=$(( nodes >= 2 ? 2 : 1 ))
-  fi
+  local push nodes brokers sock i kafka_n
+  push=$(openssl rand -hex 32)
+  nodes=$(k get nodes --no-headers | wc -l | tr -d ' ')
+  kafka_n=$(( nodes >= 2 ? 2 : 1 ))
   brokers=""
   for ((i = 0; i < kafka_n; i++)); do
     brokers+="${brokers:+,}kafka-$i.kafka-headless.$NS.svc.cluster.local:9092"
@@ -239,15 +258,14 @@ EOF
   local extra=()
   [ -n "${EXTRA_VALUES:-}" ] && extra=(-f "$EXTRA_VALUES")
 
-  say "helm upgrade --install $RELEASE (atomic, timeout $HELM_TIMEOUT)"
-  h upgrade --install "$RELEASE" "$CHART" -n "$NS" \
+  say "helm install $RELEASE (atomic, timeout $HELM_TIMEOUT)"
+  h install "$RELEASE" "$CHART" -n "$NS" \
     -f "$tmp/values.yaml" "${extra[@]}" \
     --atomic --wait --timeout "$HELM_TIMEOUT"
 
   k -n "$NS" create configmap "$STATE_CM" \
     --from-literal=clusterId="$CID" --from-literal=kvisiorIP="$KV_IP" \
     --from-literal=dbIP="$DB_IP" --from-literal=edgeIP="$EDGE_IP" \
-    --from-literal=kafkaReplicas="$kafka_n" \
     --dry-run=client -o yaml | k apply -f - >/dev/null
 
   say "cluster '$CID' is installed; it shows up in the hub's cluster switcher within a minute"
