@@ -39,6 +39,7 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 	s.eventsTotal.Add(int64(len(events)))
 
 	enqueued := 0
+	dropped := 0
 	for _, te := range events {
 		ui := mapper.Map(te)
 		if ui == nil {
@@ -55,10 +56,22 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 		select {
 		case s.eventQueue <- item:
 			enqueued++
-		case <-r.Context().Done():
-			s.eventsBusy.Add(1)
-			http.Error(w, "ingest busy; retry", http.StatusServiceUnavailable)
-			return
+		default:
+			dropped++
+		}
+	}
+
+	if dropped > 0 {
+		total := s.eventsDropped.Add(int64(dropped))
+		if total < 10 || (total-int64(dropped))/1000 != total/1000 {
+			slog.Warn("ingest_queue_full",
+				"component", "tracee-bridge/ingest",
+				"node", nodeName,
+				"dropped", dropped,
+				"dropped_total", total,
+				"queue_depth", len(s.eventQueue),
+				"queue_capacity", cap(s.eventQueue),
+				"action", "dropped")
 		}
 	}
 
@@ -68,6 +81,7 @@ func (s *Server) handleTracee(w http.ResponseWriter, r *http.Request) {
 			"node", nodeName,
 			"events", len(events),
 			"enqueued", enqueued,
+			"dropped", dropped,
 			"queue_depth", len(s.eventQueue))
 	}
 	w.WriteHeader(http.StatusOK)

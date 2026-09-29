@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -151,6 +152,13 @@ func seedAccounts(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func syncRoles(ctx context.Context, pool *pgxpool.Pool) error {
+	// EscapeString validates session settings, so execute on the same connection.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection for roles: %w", err)
+	}
+	defer conn.Release()
+
 	for role, envName := range schema.PasswordEnv {
 		pw := os.Getenv(envName)
 		if pw == "" {
@@ -158,7 +166,7 @@ func syncRoles(ctx context.Context, pool *pgxpool.Pool) error {
 			continue
 		}
 		var exists bool
-		if err := pool.QueryRow(ctx,
+		if err := conn.QueryRow(ctx,
 			`SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)`, role).Scan(&exists); err != nil {
 			return err
 		}
@@ -167,9 +175,13 @@ func syncRoles(ctx context.Context, pool *pgxpool.Pool) error {
 			verb = "CREATE"
 		}
 
+		escapedPassword, err := conn.Conn().PgConn().EscapeString(pw)
+		if err != nil {
+			return fmt.Errorf("escape password for role %s: %w", role, err)
+		}
 		stmt := fmt.Sprintf(`%s ROLE %s LOGIN PASSWORD '%s'`,
-			verb, role, strings.ReplaceAll(pw, "'", "''"))
-		if _, err := pool.Exec(ctx, stmt); err != nil {
+			verb, pgx.Identifier{role}.Sanitize(), escapedPassword)
+		if _, err := conn.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("%s role %s: %w", strings.ToLower(verb), role, err)
 		}
 		log.Printf("roles: %s %sd", role, strings.ToLower(verb))
