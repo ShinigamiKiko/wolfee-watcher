@@ -116,14 +116,18 @@ func (c *Scoped) SetViolationState(ctx context.Context, fingerprint, state strin
 		t := time.Now().Add(ttl)
 		expires = &t
 	}
-	_, err := c.s.pool.Exec(ctx,
-		`UPDATE kvisior_violations
-		    SET state            = $3,
-		        state_expires_at = $4,
-		        state_changed_at = NOW()
-		  WHERE cluster_id = $1 AND fingerprint = $2`,
-		c.id, fingerprint, state, expires)
-	return err
+	for _, table := range violationTables {
+		if _, err := c.s.pool.Exec(ctx,
+			`UPDATE `+table+`
+			    SET state            = $3,
+			        state_expires_at = $4,
+			        state_changed_at = NOW()
+			  WHERE cluster_id = $1 AND fingerprint = $2`,
+			c.id, fingerprint, state, expires); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type ViolationRow struct {
@@ -138,32 +142,43 @@ type ViolationRow struct {
 	Fingerprint    string          `json:"fingerprint"`
 	State          string          `json:"state"`
 	StateExpiresAt *time.Time      `json:"stateExpiresAt,omitempty"`
+	Hits           int64           `json:"hits,omitempty"`
+	LastSeen       *time.Time      `json:"lastSeen,omitempty"`
 	Data           json.RawMessage `json:"data"`
 }
 
-func (c *Scoped) QueryViolations(ctx context.Context, vtype, stateFilter string, sinceID int64, limit int) ([]ViolationRow, error) {
-	if limit <= 0 || limit > 1000 {
-		limit = 200
-	}
-	var stateClause string
+const (
+	violationTypeAudit   = "audit"
+	tableViolations      = "kvisior_violations"
+	tableAuditViolations = "audit_violations"
+)
+
+var violationTables = []string{tableViolations, tableAuditViolations}
+
+func violationStateClause(stateFilter string) string {
 	switch stateFilter {
 	case "suppressed":
-		stateClause = ` AND state IN ('FP','ACK','DISMISSED')
-		                AND state_expires_at IS NOT NULL
-		                AND state_expires_at > NOW()`
+		return ` AND state IN ('FP','ACK','DISMISSED')
+		         AND state_expires_at IS NOT NULL
+		         AND state_expires_at > NOW()`
 	case "all":
-		stateClause = ""
+		return ""
 	default:
-		stateClause = ` AND (state = 'ACTIVE'
-		                    OR (state IN ('FP','ACK','DISMISSED')
-		                        AND state_expires_at IS NOT NULL
-		                        AND state_expires_at < NOW()))`
+		return ` AND (state = 'ACTIVE'
+		              OR (state IN ('FP','ACK','DISMISSED')
+		                  AND state_expires_at IS NOT NULL
+		                  AND state_expires_at < NOW()))`
 	}
-	q := `SELECT id, ts, vtype, rule_id, rule_name, sev, namespace, pod, fingerprint, state, state_expires_at, data
-	      FROM kvisior_violations
-	      WHERE cluster_id = $1 AND id > $2` + stateClause
+}
+
+func (c *Scoped) queryViolationTable(ctx context.Context, table, vtype, stateFilter string, sinceID int64, limit int) ([]ViolationRow, error) {
+	cols := `id, ts, vtype, rule_id, rule_name, sev, namespace, pod, fingerprint, state, state_expires_at, 0::bigint, NULL::timestamptz, data`
+	if table == tableAuditViolations {
+		cols = `id, ts, 'audit', rule_id, rule_name, sev, namespace, name, fingerprint, state, state_expires_at, hits, last_seen, data`
+	}
+	q := `SELECT ` + cols + ` FROM ` + table + ` WHERE cluster_id = $1 AND id > $2` + violationStateClause(stateFilter)
 	args := []interface{}{c.id, sinceID}
-	if vtype != "" {
+	if vtype != "" && table == tableViolations {
 		args = append(args, vtype)
 		q += fmt.Sprintf(" AND vtype=$%d", len(args))
 	}
@@ -179,7 +194,8 @@ func (c *Scoped) QueryViolations(ctx context.Context, vtype, stateFilter string,
 	var out []ViolationRow
 	for rows.Next() {
 		var r ViolationRow
-		if err := rows.Scan(&r.ID, &r.Ts, &r.VType, &r.RuleID, &r.RuleName, &r.Sev, &r.NS, &r.Pod, &r.Fingerprint, &r.State, &r.StateExpiresAt, &r.Data); err != nil {
+		if err := rows.Scan(&r.ID, &r.Ts, &r.VType, &r.RuleID, &r.RuleName, &r.Sev, &r.NS, &r.Pod, &r.Fingerprint,
+			&r.State, &r.StateExpiresAt, &r.Hits, &r.LastSeen, &r.Data); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -187,13 +203,35 @@ func (c *Scoped) QueryViolations(ctx context.Context, vtype, stateFilter string,
 	return out, rows.Err()
 }
 
+func (c *Scoped) QueryViolations(ctx context.Context, vtype, stateFilter string, sinceID int64, limit int) ([]ViolationRow, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	if vtype == violationTypeAudit {
+		return c.queryViolationTable(ctx, tableAuditViolations, vtype, stateFilter, sinceID, limit)
+	}
+	out, err := c.queryViolationTable(ctx, tableViolations, vtype, stateFilter, sinceID, limit)
+	if err != nil || vtype != "" {
+		return out, err
+	}
+	audit, err := c.queryViolationTable(ctx, tableAuditViolations, vtype, stateFilter, 0, limit)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, audit...), nil
+}
+
 func (c *Scoped) DeleteViolation(ctx context.Context, fingerprint string) error {
 	if fingerprint == "" {
 		return nil
 	}
-	_, err := c.s.pool.Exec(ctx,
-		`DELETE FROM kvisior_violations WHERE cluster_id = $1 AND fingerprint = $2`, c.id, fingerprint)
-	return err
+	for _, table := range violationTables {
+		if _, err := c.s.pool.Exec(ctx,
+			`DELETE FROM `+table+` WHERE cluster_id = $1 AND fingerprint = $2`, c.id, fingerprint); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) SweepExpiredStates(ctx context.Context) (int64, error) {
@@ -201,18 +239,22 @@ func (s *Store) SweepExpiredStates(ctx context.Context) (int64, error) {
 }
 
 func sweepExpiredStates(ctx context.Context, db execer) (int64, error) {
-	tag, err := db.Exec(ctx,
-		`DELETE FROM kvisior_violations
-		  WHERE (state IN ('FP','ACK','DISMISSED')
-		         AND state_expires_at IS NOT NULL
-		         AND state_expires_at < NOW())
-		     OR (state = 'ACTIVE'
-		         AND last_seen < NOW() - $1::interval)`,
-		fmt.Sprintf("%d seconds", int64(ActiveTTL.Seconds())))
-	if err != nil {
-		return 0, err
+	var total int64
+	for _, table := range violationTables {
+		tag, err := db.Exec(ctx,
+			`DELETE FROM `+table+`
+			  WHERE (state IN ('FP','ACK','DISMISSED')
+			         AND state_expires_at IS NOT NULL
+			         AND state_expires_at < NOW())
+			     OR (state = 'ACTIVE'
+			         AND last_seen < NOW() - $1::interval)`,
+			fmt.Sprintf("%d seconds", int64(ActiveTTL.Seconds())))
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
 	}
-	return tag.RowsAffected(), nil
+	return total, nil
 }
 
 func (s *Store) RunRetention(ctx context.Context) {

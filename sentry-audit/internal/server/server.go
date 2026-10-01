@@ -15,23 +15,27 @@ func Run(ctx context.Context, tlsCfg *tls.Config, webhookMux, apiMux http.Handle
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	listeners := 1
 	errCh := make(chan error, 2)
 
-	srv := &http.Server{
-		Addr:      ":8443",
-		Handler:   webhookMux,
-		TLSConfig: tlsCfg,
-		ErrorLog:  newFilteredLogger("[sentry-audit/webhook]"),
-	}
-
-	go func() {
-		log.Printf("[sentry-audit] webhook TLS listener on :8443")
-		err := srv.ListenAndServeTLS("", "")
-		if err == http.ErrServerClosed {
-			err = nil
+	var srv *http.Server
+	if webhookMux != nil {
+		listeners++
+		srv = &http.Server{
+			Addr:      ":8443",
+			Handler:   webhookMux,
+			TLSConfig: tlsCfg,
+			ErrorLog:  newFilteredLogger("[sentry-audit/webhook]"),
 		}
-		errCh <- err
-	}()
+		go func() {
+			log.Printf("[sentry-audit] webhook TLS listener on :8443")
+			err := srv.ListenAndServeTLS("", "")
+			if err == http.ErrServerClosed {
+				err = nil
+			}
+			errCh <- err
+		}()
+	}
 
 	go func() {
 		log.Printf("[sentry-audit] API mTLS listener on :8080")
@@ -40,12 +44,17 @@ func Run(ctx context.Context, tlsCfg *tls.Config, webhookMux, apiMux http.Handle
 
 	first := <-errCh
 	if first != nil {
-		log.Printf("[sentry-audit] listener exited with error: %v — shutting down peer listener", first)
+		log.Printf("[sentry-audit] listener exited with error: %v — shutting down", first)
 	}
 	cancel()
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	_ = srv.Shutdown(shutdownCtx)
+	if srv != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}
+	if listeners == 1 {
+		return first
+	}
 
 	second := <-errCh
 	if first == nil {
@@ -62,6 +71,9 @@ func logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, status: 200}
 		next.ServeHTTP(rw, r)
+		if r.URL.Path == "/health" {
+			return
+		}
 		log.Printf("[sentry-audit] %s %s → %d (%s) from %s",
 			r.Method, r.URL.Path, rw.status,
 			time.Since(start).Round(time.Millisecond),

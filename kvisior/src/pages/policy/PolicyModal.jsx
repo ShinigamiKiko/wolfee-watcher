@@ -90,7 +90,7 @@ export function PolicyModal({ initial, onSave, onClose }) {
       <div className="cpol-modal">
         <div className="cpol-hdr">
           <div className="cpol-tabs">
-            {['Runtime', 'Build', 'Deploy', 'Audit', 'LSM', 'Tracepoint'].map(t => (
+            {['Runtime', 'Build', 'Deploy', 'LSM', 'Tracepoint'].map(t => (
               <div key={t} className={`cpol-tab${outerTab === t ? ' active' : ''}`}
                 onClick={() => setOuterTab(t)}>{t}</div>
             ))}

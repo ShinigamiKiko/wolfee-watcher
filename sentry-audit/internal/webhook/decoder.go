@@ -17,7 +17,11 @@ const (
 	EventKindExec        EventKind = "exec"
 	EventKindAttach      EventKind = "attach"
 	EventKindPortForward EventKind = "portforward"
+	EventKindGet         EventKind = "get"
+	EventKindList        EventKind = "list"
 	EventKindUnknown     EventKind = "unknown"
+
+	EventIDAnnotation = "event-id"
 )
 
 type AuditEvent struct {
@@ -28,6 +32,7 @@ type AuditEvent struct {
 	ServiceAccount string   `json:"serviceAccount,omitempty"`
 	Groups         []string `json:"groups"`
 	SourceIPs      []string `json:"sourceIPs,omitempty"`
+	UserAgent      string   `json:"userAgent,omitempty"`
 
 	Kind            EventKind `json:"kind"`
 	Resource        string    `json:"resource"`
@@ -42,8 +47,9 @@ type AuditEvent struct {
 	Commands  []string `json:"commands,omitempty"`
 	Ports     []int32  `json:"ports,omitempty"`
 
-	Allowed    bool  `json:"allowed"`
-	StatusCode int32 `json:"statusCode,omitempty"`
+	Allowed    bool   `json:"allowed"`
+	StatusCode int32  `json:"statusCode,omitempty"`
+	AuditID    string `json:"auditID,omitempty"`
 }
 
 func decodeKind(op admissionv1.Operation, resourceKind, subResource string) EventKind {

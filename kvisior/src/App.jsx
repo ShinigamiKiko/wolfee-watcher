@@ -24,6 +24,8 @@ import { SystemHealth }  from './pages/SystemHealth';
 import { NetworkRuntime } from './pages/network/NetworkPolicy';
 import { MyProfile }     from './pages/MyProfile';
 import { Audit }          from './pages/audit';
+import { AuditLogs }     from './pages/auditlogs';
+import { AlertLog }      from './pages/alertlog';
 import { Alerts }        from './pages/alerts';
 import { Honeypot }      from './pages/honeypot';
 import { SBOM }          from './pages/sbom';
@@ -65,6 +67,8 @@ function ClusteredShell() {
                 <Route path="/net-runtime" element={<NetworkRuntime />} />
                 <Route path="/alerts"      element={<Alerts />} />
                 <Route path="/audit"       element={<Audit />} />
+                <Route path="/auditlogs"   element={<AuditLogs />} />
+                <Route path="/alertlog"    element={<AlertLog />} />
                 <Route path="/honeypot"    element={<Honeypot />} />
                 <Route path="/forensics"   element={<Forensics />} />
                 <Route path="/syscalls"    element={<Syscalls />} />

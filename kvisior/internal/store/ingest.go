@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	AuditEventTTL    = 24 * time.Hour
 	ForensicEventTTL = 24 * time.Hour
 	BinaryEventTTL   = 24 * time.Hour
 	ContainerLogTTL  = 24 * time.Hour
@@ -88,53 +87,6 @@ func (s *Store) GetEnabledIntegration(ctx context.Context, kind string) (json.Ra
 		return nil, false, err
 	}
 	return cfg, true, nil
-}
-
-func (c *Scoped) InsertAuditEvents(ctx context.Context, raws []json.RawMessage) error {
-	if len(raws) == 0 {
-		return nil
-	}
-	rows := make([][]interface{}, 0, len(raws))
-	for _, raw := range raws {
-		ts, meta, err := auditMeta(raw)
-		if err != nil {
-			return err
-		}
-		ts, keep := partitionedTS(ts, AuditEventTTL)
-		if !keep {
-			continue
-		}
-		rows = append(rows, []interface{}{
-			c.id, ts, meta.User, meta.Kind, meta.Namespace, meta.Resource, raw,
-		})
-	}
-	if len(rows) == 0 {
-		return nil
-	}
-	_, err := c.s.pool.CopyFrom(ctx, pgx.Identifier{"audit_events"},
-		[]string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data"},
-		pgx.CopyFromRows(rows))
-	return err
-}
-
-type auditEventMeta struct {
-	Timestamp time.Time `json:"timestamp"`
-	User      string    `json:"user"`
-	Kind      string    `json:"kind"`
-	Namespace string    `json:"namespace"`
-	Resource  string    `json:"resource"`
-}
-
-func auditMeta(raw json.RawMessage) (time.Time, auditEventMeta, error) {
-	var meta auditEventMeta
-	if err := json.Unmarshal(raw, &meta); err != nil {
-		return time.Time{}, meta, fmt.Errorf("audit event meta: %w", err)
-	}
-	ts := meta.Timestamp
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	return ts, meta, nil
 }
 
 func (c *Scoped) QueryAuditEventsSince(ctx context.Context, since string, limit int) ([]json.RawMessage, string, error) {
@@ -774,15 +726,16 @@ func (s *Store) MaintainPartitions(ctx context.Context) error {
 
 func maintainPartitions(ctx context.Context, db execer) error {
 	retentionHours := int(ContainerLogTTL.Hours()) + 2
+	auditHours := int(AuditRetention.Hours()) + 2
 	var created, dropped int
 	if err := db.QueryRow(ctx,
-		`SELECT created, dropped FROM ww_maintain_partitions($1, $2)`,
-		retentionHours, partitionsAheadHours).Scan(&created, &dropped); err != nil {
+		`SELECT created, dropped FROM ww_maintain_partitions($1, $2, $3)`,
+		retentionHours, partitionsAheadHours, auditHours).Scan(&created, &dropped); err != nil {
 		return err
 	}
 	if created > 0 || dropped > 0 {
-		log.Printf("[store] partition maintenance: %d created, %d dropped (retention=%dh)",
-			created, dropped, retentionHours)
+		log.Printf("[store] partition maintenance: %d created, %d dropped (logs=%dh audit=%dh)",
+			created, dropped, retentionHours, auditHours)
 	}
 	return nil
 }

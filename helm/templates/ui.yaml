@@ -89,6 +89,8 @@ spec:
             - name: KVISIOR_ADVERTISE_URL
               value: {{ include "kvisior.advertiseURL" . | quote }}
             {{- end }}
+            - name: KVISIOR_AUDIT_RETENTION_HOURS
+              value: {{ .Values.ui.auditRetentionHours | quote }}
             {{- include "kvisior.clusterEnv" . | nindent 12 }}
             - name: CERT_SERVER_ADDR
               value: {{ .Values.global.certServerAddr | quote }}

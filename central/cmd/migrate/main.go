@@ -48,6 +48,9 @@ func main() {
 	if err := applyDDL(ctx, pool); err != nil {
 		log.Fatalf("schema: %v", err)
 	}
+	if err := migrateAuditRules(ctx, pool); err != nil {
+		log.Fatalf("audit rules: %v", err)
+	}
 	if err := seedAccounts(ctx, pool); err != nil {
 		log.Fatalf("seed accounts: %v", err)
 	}

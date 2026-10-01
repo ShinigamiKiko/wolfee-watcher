@@ -107,6 +107,8 @@ export function AuditDetail({ v, onClose }) {
          {kv('ServiceAccount', v.serviceAccount)}
         {kv('Groups',    v.groups?.join(', '))}
         {kv('Source IPs', v.sourceIPs?.join(', '))}
+        {kv('Client', v.userAgent)}
+        {kv('Occurrences', v.hits > 1 ? String(v.hits) : '')}
          {kv('Resource',  v.resource)}
          {kv('Webhook type', v.webhookType)}
          {kv('Name',      v.name)}

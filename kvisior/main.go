@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wolfee-watcher/kvisior/internal/accounts"
 	"github.com/wolfee-watcher/kvisior/internal/apihandler"
+	"github.com/wolfee-watcher/kvisior/internal/auditengine"
 	"github.com/wolfee-watcher/kvisior/internal/auth"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/collector"
@@ -192,7 +193,6 @@ func main() {
 
 	evHub := hub.New(5000)
 	matcher := rules.New()
-	auditMatcher := rules.NewAuditMatcher()
 	mkBkCl := func() *http.Client { return &http.Client{Transport: baseTransport, Timeout: 10 * time.Second} }
 
 	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
@@ -211,6 +211,9 @@ func main() {
 		pgPool *pgxpool.Pool
 		st     *store.Store
 	)
+	if h, err := strconv.Atoi(os.Getenv("KVISIOR_AUDIT_RETENTION_HOURS")); err == nil && h > 0 {
+		store.SetAuditRetention(time.Duration(h) * time.Hour)
+	}
 	if pgDSN := os.Getenv("POSTGRES_DSN"); pgDSN != "" {
 		var err error
 		pgPool, err = pgxpool.New(ctx, pgDSN)
@@ -246,6 +249,11 @@ func main() {
 
 	if clusterctx.Hub() && st == nil {
 		log.Fatalf("[kvisior] hub mode needs the database: set POSTGRES_DSN and run central-migrate first")
+	}
+
+	auditEng := auditengine.New(st, uiBus)
+	if st != nil && !clusterctx.Hub() {
+		go auditEng.Run(ctx)
 	}
 
 	ctrlPool := pgPool
@@ -286,7 +294,7 @@ func main() {
 		evHub,
 		mkBkCl(), mkBkCl(),
 		anomalyBase, sensorBase,
-		auditMatcher, st,
+		st,
 	)
 	if !clusterctx.Hub() {
 		go agg.Run(ctx)
@@ -323,14 +331,15 @@ func main() {
 	}
 	if clusterctx.Hub() {
 		log.Printf("[kvisior] hub mode: gRPC push listener disabled")
-	} else if _, err := grpcserver.Start(ctx, grpcAddr, grpcCreds, uiBus, evHub, matcher, auditMatcher, st); err != nil {
+	} else if _, err := grpcserver.Start(ctx, grpcAddr, grpcCreds, uiBus, evHub, matcher, auditEng, st); err != nil {
 		log.Fatalf("[kvisior] grpc: %v", err)
 	}
 
-	pushH := push.New(uiBus, evHub, matcher, auditMatcher, st)
+	pushH := push.New(uiBus, evHub, matcher, auditEng, st)
 	pushWrap := pushSecretMiddleware(os.Getenv("INTERNAL_PUSH_SECRET"))
 	mux.HandleFunc("/internal/push/events", pushWrap(pushH.HandleEvents))
 	mux.HandleFunc("/internal/push/audit", pushWrap(pushH.HandleAuditEvents))
+	mux.HandleFunc("/internal/push/audit-log", pushWrap(pushH.HandleAuditLog))
 	mux.HandleFunc("/internal/push/sensor", pushWrap(pushH.HandleSensorSnapshot))
 	mux.HandleFunc("/internal/push/anomaly", pushWrap(pushH.HandleAnomalyEvents))
 	mux.HandleFunc("/internal/push/honeypot", pushWrap(pushH.HandleHoneypotEvents))
@@ -739,6 +748,12 @@ func main() {
 		mux.Handle("/audit/runs", authed(auditRunsHandler(st)))
 
 		mux.Handle("/sentry/api/events", authed(auditEventsHandler(st)))
+		mux.Handle("/api/audit/rules", adminMut(auditRulesHandler(st, auditEng)))
+		mux.Handle(auditRulesPath, adminMut(auditRuleItemHandler(st, auditEng)))
+		mux.Handle("/v1/audit/events", authed(auditQueryHandler(st)))
+		mux.Handle("/v1/audit/summary", authed(auditSummaryHandler(st)))
+		mux.Handle("/v1/audit/groups", authed(auditGroupsHandler(st)))
+		mux.Handle("/v1/audit/sources", authed(auditSourcesHandler(st)))
 		mux.Handle("/sensor/api/forensic/diff/", authed(forensicDiffHandler(st)))
 		log.Printf("[kvisior] /scanner/{results,histories}, /audit/runs, /sentry/api/events, /sensor/api/forensic/diff → direct DB; other /scanner/*, /audit/*, /sentry/*, /sensor/* proxied")
 	}

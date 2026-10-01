@@ -108,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0012-multicluster"
+  schemaVersion: "0013-audit-rules"
   adminBootstrapPassword: ""
   resources:
     requests:
@@ -187,7 +187,28 @@ anomalyDetector:
 
 sentryAudit:
   enabled: true
-  replicaCount: 1
+  replicaCount: 2
+  auditLog:
+    enabled: false
+    path: /var/log/kubernetes/audit/audit.log
+    stateDir: /var/lib/wolfee-watcher/audit-tail
+    nodeLabels:
+      - node-role.kubernetes.io/control-plane
+      - node-role.kubernetes.io/master
+    tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      - operator: Exists
+        effect: NoExecute
+    dropResources: []
+    dropUsers: []
+    resources:
+      requests:
+        cpu: 20m
+        memory: 48Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
   image:
     repository: localhost/wolfee-watcher/sentry-audit
     tag: latest
@@ -275,6 +296,7 @@ ui:
     tlsSecret: kvisior-federation-tls
     allowedSources: []
   advertiseURL: ""
+  auditRetentionHours: 336
   controlPlaneDSN: ""
   enabled: true
   replicaCount: 1

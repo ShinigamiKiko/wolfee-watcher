@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0012-multicluster"
+const Version = "0013-audit-rules"
 
 var DDL = []string{
 

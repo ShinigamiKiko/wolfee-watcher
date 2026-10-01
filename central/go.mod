@@ -18,3 +18,7 @@ require (
 require github.com/wolfee-watcher/pkg/logging v0.0.0
 
 replace github.com/wolfee-watcher/pkg/logging => ../pkg/logging
+
+require github.com/wolfee-watcher/pkg/auditrules v0.0.0
+
+replace github.com/wolfee-watcher/pkg/auditrules => ../pkg/auditrules
