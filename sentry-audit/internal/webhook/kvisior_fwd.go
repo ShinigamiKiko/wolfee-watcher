@@ -19,35 +19,48 @@ const (
 	fwdAttempts  = 4
 	fwdBackoff   = 2 * time.Second
 	fwdDrainBudg = 10 * time.Second
+
+	pathAuditEvents = "/internal/push/audit"
+	pathAuditLog    = "/internal/push/audit-log"
 )
 
 type KvisiorForwarder struct {
 	pushURL string
+	bodyKey string
 	secret  string
 	client  *http.Client
 
 	q *alertspkg.PushQueue[[]json.RawMessage]
 }
 
-func NewKvisiorForwarder(pushURL, secret string, transport http.RoundTripper) *KvisiorForwarder {
+func newForwarder(name, pushURL, path, bodyKey, secret string, transport http.RoundTripper) *KvisiorForwarder {
 	if pushURL == "" {
 		return nil
 	}
 	f := &KvisiorForwarder{
-		pushURL: pushURL + "/internal/push/audit",
+		pushURL: pushURL + path,
+		bodyKey: bodyKey,
 		secret:  secret,
-		client:  &http.Client{Transport: transport, Timeout: 5 * time.Second},
+		client:  &http.Client{Transport: transport, Timeout: 10 * time.Second},
 	}
-	f.q = alertspkg.NewPushQueue("kvisior-fwd/audit", fwdQueueCap, fwdMaxBatch,
+	f.q = alertspkg.NewPushQueue(name, fwdQueueCap, fwdMaxBatch,
 		fwdAttempts, fwdBackoff, fwdDrainBudg, f.deliverBatch)
 	return f
 }
 
-func (f *KvisiorForwarder) Forward(events []json.RawMessage) {
-	if f == nil || len(events) == 0 {
+func NewKvisiorForwarder(pushURL, secret string, transport http.RoundTripper) *KvisiorForwarder {
+	return newForwarder("kvisior-fwd/audit", pushURL, pathAuditEvents, "events", secret, transport)
+}
+
+func NewLogForwarder(pushURL, secret string, transport http.RoundTripper) *KvisiorForwarder {
+	return newForwarder("kvisior-fwd/audit-log", pushURL, pathAuditLog, "records", secret, transport)
+}
+
+func (f *KvisiorForwarder) Forward(items []json.RawMessage) {
+	if f == nil || len(items) == 0 {
 		return
 	}
-	f.q.Push(events)
+	f.q.Push(items)
 }
 
 func (f *KvisiorForwarder) Close() {
@@ -58,20 +71,20 @@ func (f *KvisiorForwarder) Close() {
 }
 
 func (f *KvisiorForwarder) deliverBatch(ctx context.Context, batches [][]json.RawMessage) alertspkg.DeliveryResult {
-	events := make([]json.RawMessage, 0, len(batches))
+	items := make([]json.RawMessage, 0, len(batches))
 	for _, b := range batches {
-		events = append(events, b...)
+		items = append(items, b...)
 	}
-	body, err := json.Marshal(map[string]interface{}{"events": events})
+	body, err := json.Marshal(map[string]interface{}{f.bodyKey: items})
 	if err != nil {
-		f.q.LogErrOnce("marshal failed for %d event(s): %v", len(events), err)
+		f.q.LogErrOnce("marshal failed for %d item(s): %v", len(items), err)
 		return alertspkg.DeliveryPermanent
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, f.pushURL, bytes.NewReader(body))
 	if err != nil {
-		f.q.LogErrOnce("build request failed for %d event(s): %v", len(events), err)
+		f.q.LogErrOnce("build request failed for %d item(s): %v", len(items), err)
 		return alertspkg.DeliveryPermanent
 	}
 	req.Header.Set("Content-Type", "application/json")

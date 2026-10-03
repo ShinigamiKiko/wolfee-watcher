@@ -161,6 +161,7 @@ export function BridgeProvider({ children }) {
               _ruleId: data.ruleId,
               _ruleName: data.policy,
               _fp: data.fingerprint || '',
+              _eventId: data.eventId,
             };
             setAuditViolations(prev => {
               if (v._fp) {
@@ -278,6 +279,13 @@ export function BridgeProvider({ children }) {
             uid:       raw.uid,
             resourceVersion: raw.resourceVersion,
             source:    raw.source,
+            groups:    raw.groups,
+            sourceIPs: raw.sourceIPs,
+            userAgent: raw.userAgent,
+            commands:  raw.commands,
+            container: raw.container,
+            ports:     raw.ports,
+            hits:      row.hits,
             _matchedRule: { id: row.ruleId, name: row.ruleName, sev: row.sev },
             _ruleId:    row.ruleId,
             _ruleName:  row.ruleName,

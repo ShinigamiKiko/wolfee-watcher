@@ -76,6 +76,7 @@ services:
       KVISIOR_SECURE_COOKIE: "true"
       KVISIOR_FEDERATION_TOKEN: ${FEDERATION_TOKEN:?set FEDERATION_TOKEN in hub.env}
       KVISIOR_FEDERATION_CA_FILE: /etc/wolfee/ca.crt
+      KVISIOR_AUDIT_RETENTION_HOURS: ${AUDIT_RETENTION_HOURS:-336}
       POSTGRES_DSN: postgres://ww_ui:${PG_UI_PASSWORD}@127.0.0.1:5432/wolfee-watcher?sslmode=disable
     volumes:
       - ${WOLFEE_DATA:-/srv/wolfee}/pki/hub:/etc/wolfee/hub-tls:ro

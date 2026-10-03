@@ -572,7 +572,7 @@ export function Violations() {
                   <tbody>
                     {filteredAudit.length === 0
                        ? <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
-                          {apiRules.filter(r => r.enabled !== false && r.detType === 'Audit').length === 0 ? 'No Audit policies — create one in Policy Management' : 'Waiting for events from sentry-audit…'}
+                          No audit violations. Audit rules are managed in Audit logs, on the Rules tab.
                         </td></tr>
                       : paginate(sortRows(filteredAudit, auditCols, auditTimeOf)).map((v, i) => (
                           <tr key={v._eventId ? `${v._eventId}-${v.check}` : i}

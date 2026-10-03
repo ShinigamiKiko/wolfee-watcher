@@ -2,6 +2,7 @@ FROM golang:1.25-alpine AS build
 WORKDIR /repo
 COPY central/ ./central/
 COPY pkg/logging/ ./pkg/logging/
+COPY pkg/auditrules/ ./pkg/auditrules/
 WORKDIR /repo/central
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /central-migrate ./cmd/migrate
 

@@ -30,10 +30,6 @@ type EventPage struct {
 	LastID string       `json:"lastId"`
 }
 
-type Evaluator interface {
-	Evaluate(ev AuditEvent)
-}
-
 type eventForwarder interface {
 	Forward(events []json.RawMessage)
 }
@@ -41,7 +37,6 @@ type eventForwarder interface {
 type Handler struct {
 	store     EventStore
 	reader    EventReader
-	evaluator Evaluator
 	forwarder eventForwarder
 }
 
@@ -49,15 +44,10 @@ func NewHandler(s EventStore, r EventReader) *Handler {
 	return &Handler{store: s, reader: r}
 }
 
-func (h *Handler) SetEvaluator(e Evaluator) { h.evaluator = e }
-
 func (h *Handler) SetForwarder(f eventForwarder) { h.forwarder = f }
 
 func (h *Handler) Emit(ev AuditEvent) {
 	h.store.Push(ev)
-	if h.evaluator != nil {
-		h.evaluator.Evaluate(ev)
-	}
 	if h.forwarder != nil {
 		if raw, err := json.Marshal(ev); err == nil {
 			h.forwarder.Forward([]json.RawMessage{raw})
@@ -106,7 +96,11 @@ func (h *Handler) handleAdmission(w http.ResponseWriter, r *http.Request) {
 
 	resp := &admissionv1.AdmissionReview{
 		TypeMeta: metav1.TypeMeta{APIVersion: "admission.k8s.io/v1", Kind: "AdmissionReview"},
-		Response: &admissionv1.AdmissionResponse{UID: req.UID, Allowed: true},
+		Response: &admissionv1.AdmissionResponse{
+			UID:              req.UID,
+			Allowed:          true,
+			AuditAnnotations: map[string]string{EventIDAnnotation: ev.ID},
+		},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)

@@ -12,7 +12,6 @@ import (
 
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
-	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
 
@@ -54,11 +53,10 @@ func (b bk) post(ctx context.Context, path string) error {
 }
 
 type Aggregator struct {
-	hub          *hub.Hub
-	anomaly      bk
-	sensor       bk
-	auditMatcher *rules.AuditMatcher
-	store        *store.Store
+	hub     *hub.Hub
+	anomaly bk
+	sensor  bk
+	store   *store.Store
 
 	anomalyCursor  string
 	anomalyErrN    int
@@ -69,30 +67,25 @@ func New(
 	h *hub.Hub,
 	anomalyCl, sensorCl *http.Client,
 	anomalyBase, sensorBase string,
-	auditMatcher *rules.AuditMatcher,
 	st *store.Store,
 ) *Aggregator {
 	return &Aggregator{
 		hub:            h,
 		anomaly:        bk{anomalyCl, anomalyBase},
 		sensor:         bk{sensorCl, sensorBase},
-		auditMatcher:   auditMatcher,
 		store:          st,
 		pendingWatches: make(map[string]struct{}),
 	}
 }
 
 func (a *Aggregator) Run(ctx context.Context) {
-	a.refreshAuditRules(ctx)
 	a.pollAnomaly(ctx)
 	a.pollSensor(ctx)
 
 	pollTick := time.NewTicker(5 * time.Second)
 	sensorTick := time.NewTicker(60 * time.Second)
-	rulesTick := time.NewTicker(30 * time.Second)
 	defer pollTick.Stop()
 	defer sensorTick.Stop()
-	defer rulesTick.Stop()
 
 	for {
 		select {
@@ -102,50 +95,8 @@ func (a *Aggregator) Run(ctx context.Context) {
 			a.pollAnomaly(ctx)
 		case <-sensorTick.C:
 			a.pollSensor(ctx)
-		case <-rulesTick.C:
-			a.refreshAuditRules(ctx)
 		}
 	}
-}
-
-func (a *Aggregator) refreshAuditRules(ctx context.Context) {
-	if a.store == nil {
-		return
-	}
-	rCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	rows, err := a.store.LoadRules(rCtx)
-	if err != nil {
-		log.Printf("[collector/rules] load from PG: %v", err)
-		return
-	}
-
-	var auditRules []rules.AuditRule
-	var skipped, otherDet int
-
-	for _, r := range rows {
-		var base struct {
-			DetType string `json:"detType"`
-		}
-		if json.Unmarshal(r.Data, &base) != nil {
-			skipped++
-			continue
-		}
-		if base.DetType == "Audit" {
-			var ar rules.AuditRule
-			if json.Unmarshal(r.Data, &ar) == nil {
-				auditRules = append(auditRules, ar)
-			} else {
-				skipped++
-			}
-		} else {
-			otherDet++
-		}
-	}
-
-	a.auditMatcher.Replace(auditRules)
-	log.Printf("[collector/rules] audit rules refreshed: audit=%d skipped=%d other=%d (total=%d)",
-		len(auditRules), skipped, otherDet, len(rows))
 }
 
 func logPollErr(tag string, n *int, err error) {

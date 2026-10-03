@@ -25,7 +25,7 @@ type TableGrant struct {
 }
 
 var FunctionGrants = map[string][]string{
-	RoleUI: {"ww_maintain_partitions(INT, INT)"},
+	RoleUI: {"ww_maintain_partitions(INT, INT, INT, BOOLEAN)"},
 }
 
 var Grants = map[string][]TableGrant{
@@ -48,7 +48,9 @@ var Grants = map[string][]TableGrant{
 		{"audit_runs", "SELECT, INSERT, DELETE"},
 		{"runtime_policies", "SELECT, INSERT, UPDATE, DELETE"},
 		{"violation_acks", "SELECT, INSERT, UPDATE, DELETE"},
-		{"audit_events", "SELECT, INSERT, DELETE"},
+		{"audit_events", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_rules", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_violations", "SELECT, INSERT, UPDATE, DELETE"},
 		{"forensic_events", "SELECT, INSERT, DELETE"},
 		{"binary_exec_events", "SELECT, INSERT, DELETE"},
 		{"forensic_watches", "SELECT, INSERT, UPDATE, DELETE"},

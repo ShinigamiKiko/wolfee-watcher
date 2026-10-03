@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/wolfee-watcher/kvisior/api/wolfeewatcher"
+	"github.com/wolfee-watcher/kvisior/internal/auditengine"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
@@ -27,31 +28,26 @@ type sysViolSSE struct {
 	Fingerprint string `json:"fingerprint"`
 }
 
-type auditViolSSE struct {
-	rules.AuditViolation
-	Fingerprint string `json:"fingerprint"`
-}
-
 const maxConcurrentWrites = 50
 
 type PushServer struct {
 	pb.UnimplementedPushServiceServer
-	hub          hub.Publisher
-	localHub     hub.Publisher
-	matcher      *rules.Matcher
-	auditMatcher *rules.AuditMatcher
-	store        *store.Store
-	writeSem     chan struct{}
+	hub      hub.Publisher
+	localHub hub.Publisher
+	matcher  *rules.Matcher
+	audit    *auditengine.Engine
+	store    *store.Store
+	writeSem chan struct{}
 }
 
-func newPushServer(pub, local hub.Publisher, m *rules.Matcher, am *rules.AuditMatcher, st *store.Store) *PushServer {
+func newPushServer(pub, local hub.Publisher, m *rules.Matcher, audit *auditengine.Engine, st *store.Store) *PushServer {
 	return &PushServer{
-		hub:          pub,
-		localHub:     local,
-		matcher:      m,
-		auditMatcher: am,
-		store:        st,
-		writeSem:     make(chan struct{}, maxConcurrentWrites),
+		hub:      pub,
+		localHub: local,
+		matcher:  m,
+		audit:    audit,
+		store:    st,
+		writeSem: make(chan struct{}, maxConcurrentWrites),
 	}
 }
 
@@ -141,27 +137,20 @@ func (s *PushServer) PushAuditEvents(stream pb.PushService_PushAuditEventsServer
 		if err != nil {
 			return err
 		}
-		for _, raw := range req.Events {
-			var ev map[string]interface{}
-			if json.Unmarshal(raw, &ev) == nil {
-				for _, v := range s.auditMatcher.Match(ev) {
-					cl := clusterctx.ForGRPC(stream.Context())
-					s.store.EnsureClusterCached(cl)
-					fp := store.Fingerprint(cl, v.RuleID, v.Namespace, v.Name)
-					ruleID, policy, sev, ns, name := v.RuleID, v.Policy, v.Sev, v.Namespace, v.Name
-					rawCopy := append(json.RawMessage(nil), raw...)
-					if err := s.syncWrite(stream.Context(), "audit violation", func(ctx context.Context) error {
-						return s.store.Cluster(cl).WriteViolationChecked(ctx, "audit", ruleID, policy, sev, ns, name, fp, rawCopy)
-					}); err != nil {
-						return err
-					}
-					sseData, _ := json.Marshal(auditViolSSE{AuditViolation: v, Fingerprint: fp})
-					s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "audit_violation", Data: sseData})
-				}
-			}
-			s.hub.Publish(hub.Event{Cluster: clusterctx.ForGRPC(stream.Context()), Type: "audit_event", Data: raw})
-			accepted++
+		if len(req.Events) == 0 {
+			continue
 		}
+		cl := clusterctx.ForGRPC(stream.Context())
+		events := make([]json.RawMessage, len(req.Events))
+		for i, raw := range req.Events {
+			events[i] = raw
+		}
+		if err := s.syncWrite(stream.Context(), "audit events", func(ctx context.Context) error {
+			return s.audit.IngestEvents(ctx, cl, events)
+		}); err != nil {
+			return err
+		}
+		accepted += uint32(len(events))
 	}
 }
 
@@ -234,7 +223,7 @@ func streamAuth(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, hand
 	return handler(srv, ss)
 }
 
-func Start(ctx context.Context, addr string, tc credentials.TransportCredentials, pub, local hub.Publisher, m *rules.Matcher, am *rules.AuditMatcher, st *store.Store) (*grpc.Server, error) {
+func Start(ctx context.Context, addr string, tc credentials.TransportCredentials, pub, local hub.Publisher, m *rules.Matcher, audit *auditengine.Engine, st *store.Store) (*grpc.Server, error) {
 	if tc == nil {
 		slog.Warn("grpc_push_service_disabled",
 			"component", "kvisior/grpc-push",
@@ -248,7 +237,7 @@ func Start(ctx context.Context, addr string, tc credentials.TransportCredentials
 		grpc.UnaryInterceptor(unaryAuth),
 		grpc.StreamInterceptor(streamAuth),
 	)
-	pb.RegisterPushServiceServer(srv, newPushServer(pub, local, m, am, st))
+	pb.RegisterPushServiceServer(srv, newPushServer(pub, local, m, audit, st))
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

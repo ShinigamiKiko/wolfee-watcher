@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wolfee-watcher/kvisior/internal/auditengine"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
@@ -20,11 +21,6 @@ import (
 
 type sysViolSSE struct {
 	rules.Violation
-	Fingerprint string `json:"fingerprint"`
-}
-
-type auditViolSSE struct {
-	rules.AuditViolation
 	Fingerprint string `json:"fingerprint"`
 }
 
@@ -40,22 +36,22 @@ const (
 var pullableIntegrations = map[string]bool{"harbor": true}
 
 type Handler struct {
-	hub          hub.Publisher
-	localHub     hub.Publisher
-	matcher      *rules.Matcher
-	auditMatcher *rules.AuditMatcher
-	store        *store.Store
-	writeSem     chan struct{}
+	hub      hub.Publisher
+	localHub hub.Publisher
+	matcher  *rules.Matcher
+	audit    *auditengine.Engine
+	store    *store.Store
+	writeSem chan struct{}
 }
 
-func New(pub, local hub.Publisher, m *rules.Matcher, am *rules.AuditMatcher, st *store.Store) *Handler {
+func New(pub, local hub.Publisher, m *rules.Matcher, audit *auditengine.Engine, st *store.Store) *Handler {
 	return &Handler{
-		hub:          pub,
-		localHub:     local,
-		matcher:      m,
-		auditMatcher: am,
-		store:        st,
-		writeSem:     make(chan struct{}, maxConcurrentWrites),
+		hub:      pub,
+		localHub: local,
+		matcher:  m,
+		audit:    audit,
+		store:    st,
+		writeSem: make(chan struct{}, maxConcurrentWrites),
 	}
 }
 
@@ -158,33 +154,35 @@ func (h *Handler) HandleAuditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(body.Events) > 0 {
-		batch := make([]json.RawMessage, len(body.Events))
-		for i, raw := range body.Events {
-			batch[i] = append(json.RawMessage(nil), raw...)
-		}
+		cluster := clusterctx.ForPush(r)
 		if !h.syncWrite(w, r, "audit events", func(ctx context.Context) error {
-			return h.cluster(r).InsertAuditEvents(ctx, batch)
+			return h.audit.IngestEvents(ctx, cluster, body.Events)
 		}) {
 			return
 		}
 	}
-	for _, raw := range body.Events {
-		h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "audit_event", Data: raw})
+	w.WriteHeader(http.StatusNoContent)
+}
 
-		var ev map[string]interface{}
-		if json.Unmarshal(raw, &ev) == nil {
-			for _, v := range h.auditMatcher.Match(ev) {
-				fp := store.Fingerprint(clusterctx.ForPush(r), v.RuleID, v.Namespace, v.Name)
-				ruleID, policy, sev, ns, name := v.RuleID, v.Policy, v.Sev, v.Namespace, v.Name
-				rawCopy := append(json.RawMessage(nil), raw...)
-				if !h.syncWrite(w, r, "audit violation", func(ctx context.Context) error {
-					return h.cluster(r).WriteViolationChecked(ctx, "audit", ruleID, policy, sev, ns, name, fp, rawCopy)
-				}) {
-					return
-				}
-				sseData, _ := json.Marshal(auditViolSSE{AuditViolation: v, Fingerprint: fp})
-				h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "audit_violation", Data: sseData})
-			}
+func (h *Handler) HandleAuditLog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxPushBody)
+	var body struct {
+		Records []auditengine.LogRecord `json:"records"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(body.Records) > 0 {
+		cluster := clusterctx.ForPush(r)
+		if !h.syncWrite(w, r, "audit log", func(ctx context.Context) error {
+			return h.audit.IngestLog(ctx, cluster, body.Records)
+		}) {
+			return
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

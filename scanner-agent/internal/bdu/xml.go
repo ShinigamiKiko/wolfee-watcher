@@ -1,15 +1,6 @@
 package bdu
 
-import (
-	"encoding/xml"
-	"strconv"
-	"strings"
-)
-
-type bduRoot struct {
-	XMLName         xml.Name  `xml:"vulnerabilities"`
-	Vulnerabilities []bduVuln `xml:"vul"`
-}
+import "strings"
 
 type bduVuln struct {
 	Identifier      string           `xml:"identifier"`
@@ -116,17 +107,4 @@ type bduEnvPlatform struct {
 	Vendor  string `xml:"vendor"`
 	Name    string `xml:"name"`
 	Version string `xml:"version"`
-}
-
-func parseScore(s string) float64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	s = strings.ReplaceAll(s, ",", ".")
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	return f
 }

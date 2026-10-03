@@ -94,9 +94,13 @@ var v0012PartitionDDL = []string{
 	  autovacuum_vacuum_threshold    = 1000
 	)`,
 
+	`DROP FUNCTION IF EXISTS ww_maintain_partitions(INT, INT)`,
+
 	`CREATE OR REPLACE FUNCTION ww_maintain_partitions(
-	  retention_hours INT DEFAULT 26,
-	  ahead_hours     INT DEFAULT 48
+	  retention_hours       INT DEFAULT 26,
+	  ahead_hours           INT DEFAULT 48,
+	  audit_retention_hours INT DEFAULT NULL,
+	  drop_expired          BOOLEAN DEFAULT TRUE
 	) RETURNS TABLE (created INT, dropped INT)
 	LANGUAGE plpgsql
 	SECURITY DEFINER
@@ -108,8 +112,9 @@ var v0012PartitionDDL = []string{
 	  part   TEXT;
 	  lo     TIMESTAMPTZ;
 	  h      INT;
+	  keep   INT;
 	  base   TIMESTAMPTZ := date_trunc('hour', NOW());
-	  cutoff TIMESTAMPTZ := date_trunc('hour', NOW()) - make_interval(hours => retention_hours);
+	  cutoff TIMESTAMPTZ;
 	BEGIN
 	  created := 0;
 	  dropped := 0;
@@ -119,8 +124,14 @@ var v0012PartitionDDL = []string{
 	      CONTINUE;
 	    END IF;
 
-	    FOR h IN 0..(retention_hours + ahead_hours) LOOP
-	      lo   := base - make_interval(hours => retention_hours - h);
+	    keep := retention_hours;
+	    IF tbl = 'audit_events' AND audit_retention_hours IS NOT NULL THEN
+	      keep := audit_retention_hours;
+	    END IF;
+	    cutoff := base - make_interval(hours => keep);
+
+	    FOR h IN 0..(keep + ahead_hours) LOOP
+	      lo   := base - make_interval(hours => keep - h);
 	      part := tbl || '_p' || to_char(lo, 'YYYYMMDDHH24');
 	      IF to_regclass(part) IS NULL THEN
 	        EXECUTE format('CREATE TABLE %I PARTITION OF %I FOR VALUES FROM (%L) TO (%L)',
@@ -128,6 +139,8 @@ var v0012PartitionDDL = []string{
 	        created := created + 1;
 	      END IF;
 	    END LOOP;
+
+	    IF NOT drop_expired THEN CONTINUE; END IF;
 
 	    FOR part IN
 	      SELECT c.relname FROM pg_class c
@@ -144,5 +157,5 @@ var v0012PartitionDDL = []string{
 	  RETURN NEXT;
 	END $$`,
 
-	`SELECT ww_maintain_partitions()`,
+	`SELECT ww_maintain_partitions(26, 48, NULL, FALSE)`,
 }

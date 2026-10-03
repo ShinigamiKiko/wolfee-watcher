@@ -348,14 +348,27 @@ func Register(ctx context.Context, client kubernetes.Interface, caBundle []byte)
 		},
 	}
 
-	_, err := client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Create(ctx, cfg, metav1.CreateOptions{})
-	if k8serrors.IsAlreadyExists(err) {
-		existing, getErr := client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(ctx, webhookConfigName, metav1.GetOptions{})
-		if getErr != nil {
-			return fmt.Errorf("get existing webhook config: %w", getErr)
+	api := client.AdmissionregistrationV1().ValidatingWebhookConfigurations()
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		_, err = api.Create(ctx, cfg, metav1.CreateOptions{})
+		if k8serrors.IsAlreadyExists(err) {
+			existing, getErr := api.Get(ctx, webhookConfigName, metav1.GetOptions{})
+			if getErr != nil {
+				return fmt.Errorf("get existing webhook config: %w", getErr)
+			}
+			cfg.ResourceVersion = existing.ResourceVersion
+			_, err = api.Update(ctx, cfg, metav1.UpdateOptions{})
 		}
-		cfg.ResourceVersion = existing.ResourceVersion
-		_, err = client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Update(ctx, cfg, metav1.UpdateOptions{})
+		if !k8serrors.IsConflict(err) {
+			break
+		}
+		cfg.ResourceVersion = ""
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt) * 300 * time.Millisecond):
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("upsert webhook config: %w", err)
