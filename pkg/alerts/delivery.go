@@ -125,11 +125,14 @@ func webhookIdempotencyKey(item webhookDelivery) string {
 
 func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDelivery, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT a.id, a.ts, a.source, a.det_type,
+		SELECT a.id, a.ts, a.cluster_id,
+		       COALESCE(NULLIF(BTRIM(c.name), ''), a.cluster_id), a.source, a.det_type,
 		       COALESCE(a.rule_id, ''), COALESCE(a.rule_name, ''), COALESCE(a.severity, ''),
 		       COALESCE(a.namespace, ''), COALESCE(a.target, ''), COALESCE(a.syscall, ''),
-		       COALESCE(a.detail, ''), i.kind, i.config, COALESCE(d.attempts, 0)
+		       COALESCE(a.detail, ''),
+		       i.kind, i.config, COALESCE(d.attempts, 0)
 		  FROM alerts a
+		  LEFT JOIN clusters c ON c.id = a.cluster_id
 		  JOIN integrations i
 		    ON i.enabled = TRUE
 		   AND i.kind IN ('discord', 'mattermost')
@@ -150,7 +153,8 @@ func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDe
 		var item webhookDelivery
 		var raw json.RawMessage
 		if err := rows.Scan(
-			&item.alertID, &item.alert.Timestamp, &item.alert.Source, &item.alert.DetType,
+			&item.alertID, &item.alert.Timestamp, &item.alert.ClusterID, &item.alert.ClusterName,
+			&item.alert.Source, &item.alert.DetType,
 			&item.alert.RuleID, &item.alert.RuleName, &item.alert.Severity,
 			&item.alert.Namespace, &item.alert.Target, &item.alert.Syscall,
 			&item.alert.Detail, &item.kind, &raw, &item.attempts,
@@ -160,6 +164,7 @@ func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDe
 		if err := json.Unmarshal(raw, &item.config); err != nil || item.config.WebhookURL == "" {
 			continue
 		}
+		item.alert.ID = item.alertID
 		items = append(items, item)
 	}
 	return items, rows.Err()

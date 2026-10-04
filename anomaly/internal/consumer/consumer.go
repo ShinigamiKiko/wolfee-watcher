@@ -202,6 +202,12 @@ func (c *Consumer) persistAlertBatch(batch []alertspkg.AlertLog) {
 			continue
 		}
 		c.alertsPersisted.Add(1)
+		al.ClusterID = mtls.ClusterID()
+		nameCtx, nameCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		al.ClusterName = alertspkg.ResolveClusterName(nameCtx, c.pool, al.ClusterID)
+		nameCancel()
+		al.Timestamp = ts
+		alertspkg.LogSecurityAlert(context.Background(), "anomaly-detector/alert-fallback", al)
 	}
 }
 

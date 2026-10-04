@@ -178,16 +178,21 @@ func (a *Alerter) persist(al alertspkg.AlertLog) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	al.Timestamp = alertTimestamp(al.Timestamp)
 	_, err := a.pool.Exec(ctx, `
 		INSERT INTO alerts
 		  (cluster_id, ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		mtls.ClusterID(), alertTimestamp(al.Timestamp), al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
+		mtls.ClusterID(), al.Timestamp, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
 		al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data,
 	)
 	if err != nil {
 		log.Printf("[alerter] fallback persist error: %v", err)
+		return
 	}
+	al.ClusterID = mtls.ClusterID()
+	al.ClusterName = alertspkg.ResolveClusterName(ctx, a.pool, al.ClusterID)
+	alertspkg.LogSecurityAlert(ctx, "tracee-bridge/alert-fallback", al)
 }
 
 func alertTimestamp(ts time.Time) time.Time {
