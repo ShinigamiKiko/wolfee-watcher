@@ -72,13 +72,12 @@ const multiImg = sbomPackages.filter(p => p.images.length >= 2).length;
         </div>
         {}
         <div
+          className="resize-grip"
           onMouseDown={onLibsResizeDown}
           onDoubleClick={() => setLibsExtraH(0)}
           title="Drag to resize · double-click to reset"
-          style={{ height: 6, margin: '-4px 0 -2px', cursor: 'row-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-        >
-          <div style={{ width: 40, height: 3, borderRadius: 2, background: 'var(--border)' }} />
-        </div>
+          style={{ height: 6, margin: '-4px 0 -2px' }}
+        />
         {}
         <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>

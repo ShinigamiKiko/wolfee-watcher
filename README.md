@@ -15,72 +15,11 @@ rotated by `cert-server`. Deployment is a single Helm chart into the
 
 ## Architecture
 
-Renders on GitHub. An interactive version (drag, click-to-highlight, dark mode)
-lives at [`docs/architecture.html`](docs/architecture.html).
+![Wolfee-Watcher architecture](docs/architecture.svg)
 
-```mermaid
-flowchart TB
-  kvisior(["kvisior — Central<br/>React UI + Go backend"])
-
-  browser([Browser / Operator])
-  tracee[tracee — eBPF DaemonSet]
-  bridge[tracee-bridge]
-  anomaly[anomaly-detector]
-  kafka[(Kafka — tracee-events)]
-  postgres[(PostgreSQL)]
-  migrate[central-migrate Job]
-  certserver[cert-server]
-  sentry[sentry-audit]
-  auditrunner[audit-runner]
-  forensic[forensic-watcher]
-  honeyop[honey-operator]
-  honeypot[honeypot]
-  sensor[sensor]
-  scanner[scanner-agent]
-  harbor[Harbor / Registry]
-  trivydb[Trivy Vuln DB]
-
-  browser -->|HTTPS / Ingress| kvisior
-
-  kvisior -.->|/api| bridge
-  kvisior -.->|/scanner| scanner
-  kvisior -.->|/sensor| sensor
-  kvisior -.->|/sentry| sentry
-  kvisior -.->|/anomaly| anomaly
-  kvisior -.->|/honey| honeyop
-  kvisior -.->|/audit| auditrunner
-
-  sentry -->|push| kvisior
-  forensic -->|push| kvisior
-  sensor -->|push| kvisior
-  scanner -->|push scan / pull harbor| kvisior
-  auditrunner -->|push| kvisior
-  honeyop -->|push| kvisior
-  anomaly -->|alerts / rules| kvisior
-  bridge -->|alerts / rules| kvisior
-
-  tracee -->|webhook| bridge
-  bridge -->|produce| kafka
-  kafka -->|consume| anomaly
-  kafka -->|consume| kvisior
-
-  kvisior --> postgres
-  bridge -.->|fallback| postgres
-  anomaly --> postgres
-  migrate -->|schema / roles| postgres
-
-  honeyop -->|deploy/watch| honeypot
-  scanner -->|pull images| harbor
-  scanner -->|vuln DB| trivydb
-
-  certserver -.->|mTLS certs| kvisior
-
-  classDef hub fill:#a371f7,stroke:#6f42c1,color:#fff,stroke-width:2px;
-  class kvisior hub;
-```
-
-`cert-server` issues rotating TLS 1.3 client certs to every Go service; those
-edges are omitted above for readability.
+The diagram shows a cluster connected as an edge to an external kvisior hub and
+the shared PostgreSQL. Without a hub, kvisior-ui is the only UI and PostgreSQL
+can run in the cluster.
 
 ## Features
 
