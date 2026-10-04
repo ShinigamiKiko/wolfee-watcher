@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -33,7 +34,8 @@ const (
 )
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	clusterNames sync.Map
 }
 
 type execer interface {
