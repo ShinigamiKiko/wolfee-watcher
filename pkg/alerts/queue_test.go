@@ -83,6 +83,87 @@ func TestPushQueue_BackpressuresWhenQueueFull(t *testing.T) {
 	q.Close()
 }
 
+func TestPushQueue_SpillsToFallbackWhenFull(t *testing.T) {
+	release := make(chan struct{})
+	delivered := make(chan int, 16)
+	q := NewPushQueue[int]("test", 2, 1, 1, time.Millisecond, time.Second,
+		func(_ context.Context, batch []int) DeliveryResult {
+			<-release
+			for _, v := range batch {
+				delivered <- v
+			}
+			return DeliveryOK
+		})
+	spilled := make(chan int, 16)
+	q.OnDrop(func(batch []int) {
+		for _, v := range batch {
+			spilled <- v
+		}
+	})
+	q.SpillWhenFull()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 8; i++ {
+			q.Push(i)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("producer blocked although the fallback had room")
+	}
+	close(release)
+	q.Close()
+	seen := map[int]bool{}
+	for len(seen) < 8 {
+		select {
+		case v := <-delivered:
+			seen[v] = true
+		case v := <-spilled:
+			seen[v] = true
+		case <-time.After(2 * time.Second):
+			t.Fatalf("received %d/8 items", len(seen))
+		}
+	}
+	if q.Dropped() == 0 || q.Lost() != 0 {
+		t.Fatalf("dropped=%d lost=%d", q.Dropped(), q.Lost())
+	}
+}
+
+func TestPushQueue_SpillBackpressuresWhenFallbackFull(t *testing.T) {
+	release := make(chan struct{})
+	q := NewPushQueue[int]("test", 2, 1, 1, time.Millisecond, time.Second,
+		func(context.Context, []int) DeliveryResult {
+			<-release
+			return DeliveryOK
+		})
+	q.OnDrop(func([]int) { <-release })
+	q.SpillWhenFull()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 128; i++ {
+			q.Push(i)
+		}
+	}()
+	select {
+	case <-done:
+		t.Fatal("producer did not wait when both the queue and the fallback were full")
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("producer remained blocked after delivery resumed")
+	}
+	q.Close()
+	if q.Lost() != 0 {
+		t.Fatalf("lost=%d", q.Lost())
+	}
+}
+
 func TestPushQueue_OnDropOnShutdown(t *testing.T) {
 	got := make(chan int, 8)
 	q := NewPushQueue[int]("test", 16, 8, 10, 50*time.Millisecond, 20*time.Millisecond,

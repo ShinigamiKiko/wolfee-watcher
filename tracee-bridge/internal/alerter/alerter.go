@@ -55,6 +55,7 @@ func New(ctx context.Context, pool *pgxpool.Pool) *Alerter {
 	}
 
 	a.fwd.OnDeliveryFailed(a.persistBatch)
+	a.fwd.SpillWhenFull()
 	if pool == nil {
 		return a
 	}

@@ -166,6 +166,7 @@ func New(ctx context.Context, brokers []string, topic string, pool *pgxpool.Pool
 		ctx:       ctx,
 	}
 	c.fwd.OnDeliveryFailed(c.persistAlertBatch)
+	c.fwd.SpillWhenFull()
 	go c.cleanupMemfd()
 	return c
 }
