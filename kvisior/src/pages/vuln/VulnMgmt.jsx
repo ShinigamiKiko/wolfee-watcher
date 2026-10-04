@@ -45,6 +45,8 @@ export function VulnMgmt() {
   const [sbomSearch,    setSbomSearch]    = useState('');
   const [sbomFilter,    setSbomFilter]    = useState('all');
   const [libsExtraH,    setLibsExtraH]    = useState(0);
+  const [summaryH,      setSummaryH]      = useState(null);
+  const summaryRef = useRef(null);
 
   const [starting, setStarting] = useState(false);
 
@@ -52,6 +54,7 @@ export function VulnMgmt() {
     setShowProgress(true);
     setLogCollapsed(false);
     setErrorsDismissed(false);
+    setSummaryH(null);
     setStarting(true);
     const res = await startScan([]);
     setStarting(false);
@@ -85,26 +88,39 @@ export function VulnMgmt() {
     wasScanningRef.current = scanning;
   }, [scanning]);
 
-  const libsDragCleanupRef = useRef(null);
-  useEffect(() => () => { libsDragCleanupRef.current?.(); }, []);
-  const onLibsResizeDown = (e) => {
+  const dragCleanupRef = useRef(null);
+  useEffect(() => () => { dragCleanupRef.current?.(); }, []);
+  const startRowDrag = (e, onMove) => {
     e.preventDefault();
-    libsDragCleanupRef.current?.();
+    dragCleanupRef.current?.();
     const startY = e.clientY;
-    const startH = libsExtraH;
-    const onMove = (ev) => setLibsExtraH(Math.max(0, Math.min(400, startH + (startY - ev.clientY))));
+    const move = (ev) => onMove(startY - ev.clientY);
     const cleanup = () => {
-      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', cleanup);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      libsDragCleanupRef.current = null;
+      dragCleanupRef.current = null;
     };
-    libsDragCleanupRef.current = cleanup;
+    dragCleanupRef.current = cleanup;
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', cleanup);
+  };
+  const onLibsResizeDown = (e) => {
+    const startH = libsExtraH;
+    startRowDrag(e, dy => setLibsExtraH(Math.max(0, Math.min(400, startH + dy))));
+  };
+  const onSummaryResizeDown = (e) => {
+    const el = summaryRef.current;
+    if (!el) return;
+    const full = el.scrollHeight;
+    const startH = el.offsetHeight;
+    startRowDrag(e, dy => {
+      const h = Math.max(0, Math.min(full, startH - dy));
+      setSummaryH(h >= full ? null : h);
+    });
   };
   const handleStop = async () => {
     const res = await stopScan();
@@ -157,7 +173,7 @@ export function VulnMgmt() {
 
   const sortedFiltered = useMemo(() => {
     const filtered = allCVEs.filter(c => !q || c.id?.toLowerCase().includes(q) || c.bduId?.toLowerCase().includes(q) || c.pkgName?.toLowerCase().includes(q) || c._imageName?.toLowerCase().includes(q));
-    const dir = sortDir === 'desc' ? -1 : 1;
+    const dir = sortDir === 'desc' ? 1 : -1;
     return [...filtered].sort((a, b) => {
       if (sortCol === 'cvss') return dir * ((b.cvssV3Score || 0) - (a.cvssV3Score || 0));
       if (sortCol === 'risk') return dir * ((b.riskScore || 0)   - (a.riskScore || 0));
@@ -240,6 +256,7 @@ export function VulnMgmt() {
           </div>
         </div>
 
+        <div ref={summaryRef} style={{ maxHeight: summaryH ?? 'none', overflow: 'hidden', opacity: summaryH == null ? 1 : Math.min(1, summaryH / 60) }}>
         {failedResults.length > 0 && !errorsDismissed && (
           <div className="card" style={{ padding: '12px 14px', marginBottom: 14, borderLeft: '3px solid var(--danger)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -307,10 +324,18 @@ export function VulnMgmt() {
             )}
           </div>
         )}
+        </div>
 
         <div className="tabs">
           {TABS.map(t => <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => { setTab(t); setSelected(null); setSearch(''); setNodeDrill(null); setDeployDrill(null); setImageDrill(null); }}>{t}</div>)}
         </div>
+        <div
+          className="resize-grip"
+          onMouseDown={onSummaryResizeDown}
+          onDoubleClick={() => setSummaryH(null)}
+          title="Drag up to enlarge the table · double-click to reset"
+          style={{ height: 12, margin: '-17px 0 5px' }}
+        />
       </div>
 
       <div style={{ display: tab === 'Libs' ? 'none' : 'flex', flex: 1, overflow: 'hidden' }}>

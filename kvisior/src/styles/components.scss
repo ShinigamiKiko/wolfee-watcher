@@ -68,6 +68,9 @@
 .ctx-item:hover { background:rgba(255,255,255,.05); color:var(--text-primary); }
 .ctx-item.danger { color:var(--danger); }
 .ctx-item.danger:hover { background:rgba(239,68,68,.08); }
+.resize-grip { display:flex; align-items:center; justify-content:center; cursor:row-resize; flex-shrink:0; }
+.resize-grip::before { content:''; width:40px; height:3px; border-radius:2px; background:var(--text-muted); transition:width .15s, background .15s; }
+.resize-grip:hover::before, .resize-grip:active::before { width:72px; background:var(--accent); }
 .notif-badge { position:relative; }
 .notif-badge .dot { position:absolute; top:-2px; right:-2px; width:7px; height:7px; background:var(--danger); border-radius:50%; border:1.5px solid var(--bg-surface); animation:blink 2s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:1}50%{opacity:.4} }
