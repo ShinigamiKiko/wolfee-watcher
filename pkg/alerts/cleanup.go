@@ -2,10 +2,10 @@ package alerts
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -14,7 +14,15 @@ const (
 	CleanupInterval = 1 * time.Minute
 
 	cleanupLockKey int64 = 0x77770002
+
+	cleanupBatchSize        = 10000
+	cleanupStatementTimeout = 10 * time.Second
+	cleanupSweepBudget      = 45 * time.Second
 )
+
+type cleanupDB interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
 
 func RunCleanup(ctx context.Context, pool *pgxpool.Pool) {
 	if pool == nil {
@@ -34,31 +42,49 @@ func RunCleanup(ctx context.Context, pool *pgxpool.Pool) {
 }
 
 func sweepAlertsOnce(ctx context.Context, pool *pgxpool.Pool) {
-	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	tx, err := pool.Begin(cctx)
+	conn, err := pool.Acquire(ctx)
 	if err != nil {
-		log.Printf("[cleanup] alerts sweep begin: %v", err)
+		log.Printf("[cleanup] alerts sweep acquire: %v", err)
 		return
 	}
-	defer tx.Rollback(cctx)
+	defer conn.Release()
 	var got bool
-	if err := tx.QueryRow(cctx, `SELECT pg_try_advisory_xact_lock($1)`, cleanupLockKey).Scan(&got); err != nil || !got {
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, cleanupLockKey).Scan(&got); err != nil || !got {
 		return
 	}
-	tag, err := tx.Exec(cctx,
-		`DELETE FROM alerts WHERE ts < NOW() - $1::interval`,
-		fmt.Sprintf("%d milliseconds", AlertsTTL.Milliseconds()),
-	)
+	defer func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, cleanupLockKey)
+	}()
+	n, err := deleteExpiredAlerts(ctx, conn, time.Now().Add(-AlertsTTL), cleanupBatchSize, cleanupSweepBudget)
 	if err != nil {
-		log.Printf("[cleanup] alerts sweep error: %v", err)
+		log.Printf("[cleanup] alerts sweep error after %d row(s): %v", n, err)
 		return
 	}
-	if err := tx.Commit(cctx); err != nil {
-		log.Printf("[cleanup] alerts sweep commit: %v", err)
-		return
-	}
-	if n := tag.RowsAffected(); n > 0 {
+	if n > 0 {
 		log.Printf("[cleanup] alerts: deleted %d row(s) older than %s", n, AlertsTTL)
 	}
+}
+
+func deleteExpiredAlerts(ctx context.Context, db cleanupDB, cutoff time.Time, batch int, budget time.Duration) (int64, error) {
+	var total int64
+	deadline := time.Now().Add(budget)
+	for ctx.Err() == nil && time.Now().Before(deadline) {
+		cctx, cancel := context.WithTimeout(ctx, cleanupStatementTimeout)
+		tag, err := db.Exec(cctx, `
+			DELETE FROM alerts
+			 WHERE id IN (
+			       SELECT id FROM alerts
+			        WHERE ts < $1
+			        ORDER BY ts
+			        LIMIT $2)`, cutoff, batch)
+		cancel()
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
+		if tag.RowsAffected() < int64(batch) {
+			break
+		}
+	}
+	return total, nil
 }
