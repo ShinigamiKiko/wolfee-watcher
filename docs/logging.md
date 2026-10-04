@@ -66,6 +66,11 @@ reads `alerts.cluster_id` and joins the current `clusters.name` at delivery time
 so renamed clusters and direct-database fallback alerts are covered. Missing
 cluster registration does not exclude an alert.
 
+Each tick the worker keeps fetching batches until the queue is empty, sending
+to Discord and Mattermost in parallel. A destination that answers HTTP 429 is
+paused until the next tick. New alerts are looked up from the last delivered
+alert ID, so the query cost does not grow with the size of the `alerts` table.
+
 Example notification:
 
 ```text

@@ -150,3 +150,26 @@ func TestSecurityLogIncludesClusterAndInvestigationContext(t *testing.T) {
 		t.Fatal("untrusted identity or raw credentials leaked into the security log")
 	}
 }
+
+func TestInvestigationFieldsSkipOversizedData(t *testing.T) {
+	data := `{"pod":"api-123","padding":"` + strings.Repeat("x", investigationDataLimit) + `"}`
+	if got := (AlertLog{Data: json.RawMessage(data)}).InvestigationFields(); len(got) != 0 {
+		t.Fatalf("oversized payload produced %d fields", len(got))
+	}
+}
+
+func TestInvestigationFieldsPreferFirstPathAndNestedObjects(t *testing.T) {
+	data := `{"pod":"","podName":"api-123","user":{"username":"alice"},"objectRef":{"resource":"secrets"},"sourceIPs":[1,"  ","10.0.0.7"]}`
+	got := map[string]string{}
+	for _, field := range (AlertLog{Data: json.RawMessage(data)}).InvestigationFields() {
+		got[field.Key] = field.Value
+	}
+	for key, want := range map[string]string{
+		"kubernetes.pod.name": "api-123", "user.name": "alice",
+		"resource.type": "secrets", "source.ip": "10.0.0.7",
+	} {
+		if got[key] != want {
+			t.Errorf("%s = %q, want %q", key, got[key], want)
+		}
+	}
+}
