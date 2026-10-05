@@ -125,6 +125,32 @@ func (q *PushQueue[T]) Push(item T) {
 	}
 }
 
+func (q *PushQueue[T]) TryPush(item T) bool {
+	if q == nil {
+		return false
+	}
+	q.once.Do(q.start)
+	if !q.mu.TryLock() {
+		q.lost.Add(1)
+		q.dropped.Add(1)
+		return false
+	}
+	defer q.mu.Unlock()
+	if q.closed {
+		q.lost.Add(1)
+		q.dropped.Add(1)
+		return false
+	}
+	select {
+	case q.ch <- item:
+		return true
+	default:
+		q.lost.Add(1)
+		q.dropped.Add(1)
+		return false
+	}
+}
+
 func (q *PushQueue[T]) handoffLocked(item T) {
 	if q.onDrop.Load() == nil || q.dropClosed {
 		q.lost.Add(1)

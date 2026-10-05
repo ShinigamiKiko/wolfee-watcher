@@ -21,6 +21,12 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
+      {{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+      volumes:
+        - name: postgres-ca
+          configMap:
+            name: postgres-ca
+      {{- end }}
       containers:
         - name: migrate
           image: "{{ include "kvisior.image" .Values.centralMigrate.image }}"
@@ -40,6 +46,12 @@ spec:
               value: {{ .Values.postgres.serviceCredentials.traceeBridge.password | quote }}
             - name: SERVICE_DB_PASSWORD_ANOMALY
               value: {{ .Values.postgres.serviceCredentials.anomaly.password | quote }}
+          {{- if and .Values.postgres.external.enabled .Values.postgres.external.caBundle }}
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/wolfee-watcher/pg-ca
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.centralMigrate.resources | nindent 12 }}
           securityContext:

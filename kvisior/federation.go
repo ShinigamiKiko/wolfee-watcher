@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -76,13 +77,23 @@ func (f *federation) register(ctx context.Context) {
 	if f.st == nil || f.advertise == "" {
 		return
 	}
-	regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err := f.st.SetClusterEndpoint(regCtx, clusterctx.Local(), f.advertise); err != nil {
-		log.Printf("[federation] advertise %q for %q: %v", f.advertise, clusterctx.Local(), err)
-		return
-	}
-	log.Printf("[federation] advertised %q as the endpoint of cluster %q", f.advertise, clusterctx.Local())
+	go func() {
+		for delay := time.Second; ; delay = min(2*delay, time.Minute) {
+			regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err := f.st.SetClusterEndpoint(regCtx, clusterctx.Local(), f.advertise)
+			cancel()
+			if err == nil {
+				log.Printf("[federation] advertised %q as the endpoint of cluster %q", f.advertise, clusterctx.Local())
+				return
+			}
+			log.Printf("[federation] advertise %q for %q: %v (retrying in %s)", f.advertise, clusterctx.Local(), err, delay)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+		}
+	}()
 }
 
 func (f *federation) trusted(r *http.Request) bool {
@@ -108,6 +119,17 @@ func (f *federation) requireAuth(authMgr *auth.Manager) func(http.Handler) http.
 				r.Header.Set("X-Acting-Role", role)
 				next.ServeHTTP(w, r)
 				return
+			}
+			token, fedUser, fedRole := r.Header.Get(federationTokenHeader), r.Header.Get(federatedUserHeader), r.Header.Get(federatedRoleHeader)
+			if token != "" || fedUser != "" || fedRole != "" {
+				slog.Warn("federation_headers_rejected",
+					"component", "kvisior/federation",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"remote", r.RemoteAddr,
+					"token_present", token != "",
+					"claimed_user", auth.ClipForLog(fedUser),
+					"claimed_role", auth.ClipForLog(fedRole))
 			}
 			r.Header.Del(federationTokenHeader)
 			r.Header.Del(federatedUserHeader)

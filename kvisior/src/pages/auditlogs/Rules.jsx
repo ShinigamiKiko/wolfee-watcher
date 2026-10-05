@@ -7,7 +7,7 @@ import { KINDS, READ_KINDS, RESOURCES, SEVERITIES, fmtDate, num } from './shared
 
 const BLANK_SPEC = {
   kinds: [], resources: [], ns: '', nsExclude: '', objName: '', subject: 'any', users: '', usersExclude: '',
-  ipMode: 'any', ipList: '', result: 'any', cmd: '', alertEvery: 'each', thN: 3, thMin: 10, clusters: [],
+  ipMode: 'any', ipList: '', forwarded: false, result: 'any', cmd: '', alertEvery: 'each', thN: 3, thMin: 10, clusters: [],
 };
 const blankRule = () => ({ name: '', severity: 'high', enabled: true, alert: false, spec: { ...BLANK_SPEC } });
 
@@ -23,6 +23,7 @@ export function describeRule(r) {
   if (s.usersExclude) parts.push(`not ${s.usersExclude}`);
   if (s.ipMode === 'in') parts.push(`from ${s.ipList}`);
   if (s.ipMode === 'notin') parts.push(`not from ${s.ipList}`);
+  if (s.forwarded) parts.push('client set X-Forwarded-For');
   if (s.result && s.result !== 'any') parts.push(`${s.result} only`);
   if (s.cmd) parts.push(`command has ${s.cmd}`);
   if (r.alert && s.alertEvery === 'threshold') parts.push(`alert after ${s.thN} in ${s.thMin} min`);
@@ -57,7 +58,7 @@ function RuleForm({ initial, editing, onSave, onCancel }) {
   const spec = rule.spec;
   const setSpec = (key, value) => setRule(r => ({ ...r, spec: { ...r.spec, [key]: value } }));
   const toggle = (key, value) => setSpec(key, spec[key].includes(value) ? spec[key].filter(v => v !== value) : [...spec[key], value]);
-  const needsLog = spec.ipMode !== 'any' || (spec.kinds.length > 0 && spec.kinds.every(k => READ_KINDS.includes(k)));
+  const needsLog = spec.ipMode !== 'any' || spec.forwarded || spec.result !== 'any' || spec.kinds.some(k => READ_KINDS.includes(k));
   const repeat = rule.alert && spec.alertEvery === 'threshold';
   const thisClusterOnly = spec.clusters.length > 0;
 
@@ -143,13 +144,18 @@ function RuleForm({ initial, editing, onSave, onCancel }) {
               {errors.ip && <span className="al-err">{errors.ip}</span>}
             </label>
           )}
+          <label>Forwarding headers
+            <select className="al-input" value={spec.forwarded ? 'claimed' : 'any'} onChange={e => setSpec('forwarded', e.target.value === 'claimed')}>
+              <option value="any">Any request</option><option value="claimed">Only when the client set X-Forwarded-For</option>
+            </select>
+          </label>
           <label>Result
             <select className="al-input" value={spec.result} onChange={e => setSpec('result', e.target.value)}>
               <option value="any">Allowed or denied</option><option value="allowed">Allowed only</option><option value="denied">Denied only</option>
             </select>
           </label>
         </div>
-        {needsLog && <p className="al-hint al-gap">Read actions and source IP come only from the kube-apiserver log. On a cluster without it this rule cannot match.</p>}
+        {needsLog && <p className="al-hint al-gap">Read actions, source IP filters, forwarding-header filters and final-result filters require the kube-apiserver audit log. Without it, those conditions cannot be evaluated.</p>}
       </fieldset>
       <fieldset>
         <legend>Response</legend>

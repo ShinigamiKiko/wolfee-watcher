@@ -19,7 +19,8 @@ const (
 	AuditOriginAPILog    = "apilog"
 	AuditOriginBoth      = "both"
 
-	auditEnrichWindow = 30 * time.Minute
+	auditJoinSlack = time.Hour
+	auditTwinSlack = 30 * time.Second
 )
 
 var (
@@ -154,7 +155,7 @@ type AuditRuleStat struct {
 }
 
 func (c *Scoped) AuditRuleStats(ctx context.Context) (map[string]AuditRuleStat, error) {
-	rows, err := c.s.pool.Query(ctx,
+	rows, err := c.db().Query(ctx,
 		`SELECT rule_id, COUNT(*), COALESCE(SUM(hits), 0), MAX(last_seen)
 		   FROM audit_violations WHERE cluster_id = $1 GROUP BY rule_id`, c.id)
 	if err != nil {
@@ -188,7 +189,7 @@ type AuditViolationWrite struct {
 }
 
 func (c *Scoped) WriteAuditViolation(ctx context.Context, v AuditViolationWrite) error {
-	_, err := c.s.pool.Exec(ctx,
+	_, err := c.db().Exec(ctx,
 		`INSERT INTO audit_violations
 		   (cluster_id, rule_id, rule_name, sev, kind, resource, namespace, name, actor, source_ip, fingerprint, data, last_seen)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
@@ -246,14 +247,14 @@ func (c *Scoped) InsertAuditEvents(ctx context.Context, items []AuditEventInsert
 		}
 		rows = append(rows, []interface{}{
 			c.id, ts, ev.User, ev.Kind, ev.Namespace, ev.Resource, it.Raw,
-			nullable(ev.ID), ev.Name, nullable(ev.SourceIP()), ev.IsAllowed(), it.Origin,
+			nullable(ev.ID), ev.Name, nullable(ev.SourceIP()), ev.Allowed, it.Origin,
 			nullable(it.RuleID), nullable(it.Sev),
 		})
 	}
 	if len(rows) == 0 {
 		return nil
 	}
-	_, err := c.s.pool.CopyFrom(ctx, pgx.Identifier{"audit_events"},
+	_, err := c.db().CopyFrom(ctx, pgx.Identifier{"audit_events"},
 		[]string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data",
 			"event_uid", "name", "source_ip", "allowed", "origin", "rule_id", "sev"},
 		pgx.CopyFromRows(rows))
@@ -261,12 +262,79 @@ func (c *Scoped) InsertAuditEvents(ctx context.Context, items []AuditEventInsert
 }
 
 type AuditEnrichment struct {
-	EventUID   string
-	SourceIPs  []string
-	UserAgent  string
-	AuditID    string
-	StatusCode int32
-	Allowed    bool
+	EventUID           string
+	SourceIPs          []string
+	ClientIP           string
+	UserAgent          string
+	AuditID            string
+	StatusCode         int32
+	Allowed            bool
+	At                 time.Time
+	User               string
+	Groups             []string
+	ImpersonatedUser   string
+	ImpersonatedGroups []string
+	Attribution        string
+	Event              *auditrules.Event `json:",omitempty"`
+	Materialized       bool              `json:",omitempty"`
+}
+
+type AuditPendingKey struct {
+	Cluster, Key string
+}
+
+func (s *Store) StaleAuditPending(ctx context.Context, cluster string, grace time.Duration, limit int) ([]AuditPendingKey, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT cluster_id, event_key FROM audit_ingest_state
+		  WHERE NOT admitted AND pending IS NOT NULL AND jsonb_typeof(pending->'Event') = 'object'
+		    AND created_at < clock_timestamp() - $1::interval AND ($3 = '' OR cluster_id = $3)
+		  ORDER BY created_at LIMIT $2`,
+		fmt.Sprintf("%d milliseconds", grace.Milliseconds()), limit, cluster)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditPendingKey
+	for rows.Next() {
+		var k AuditPendingKey
+		if err := rows.Scan(&k.Cluster, &k.Key); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+func (c *Scoped) MergeAdmissionDetails(ctx context.Context, eventUID string, around time.Time, details map[string]interface{}) (AuditEventRow, bool, error) {
+	patch, err := json.Marshal(details)
+	if err != nil {
+		return AuditEventRow{}, false, err
+	}
+	from, to := auditJoinWindow(around)
+	var row AuditEventRow
+	var ruleID, sev *string
+	err = c.db().QueryRow(ctx,
+		`UPDATE audit_events SET origin = $5,
+		        data = data || CASE WHEN COALESCE(data->>'impersonatedUser', '') <> '' THEN $6::jsonb - 'serviceAccount' ELSE $6::jsonb END
+		  WHERE cluster_id = $1 AND event_uid = $2 AND ts >= $3 AND ts <= $4 AND origin = $7
+		 RETURNING id, ts, rule_id, sev, data`,
+		pgx.QueryExecModeExec,
+		c.id, eventUID, from, to, AuditOriginBoth, string(StorableJSON(patch)), AuditOriginAPILog,
+	).Scan(&row.ID, &row.Ts, &ruleID, &sev, &row.Data)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return row, false, nil
+	}
+	if err != nil {
+		return row, false, err
+	}
+	row.Origin = AuditOriginBoth
+	if ruleID != nil {
+		row.RuleID = *ruleID
+	}
+	if sev != nil {
+		row.Sev = *sev
+	}
+	return row, true, nil
 }
 
 type AuditEventRow struct {
@@ -279,29 +347,46 @@ type AuditEventRow struct {
 }
 
 func (c *Scoped) EnrichAuditEvent(ctx context.Context, en AuditEnrichment) (AuditEventRow, bool, error) {
-	patch, err := json.Marshal(map[string]interface{}{
+	ip := en.ClientIP
+	if ip == "" {
+		ip = auditrules.ClientIP(en.SourceIPs, nil)
+	}
+	fields := map[string]interface{}{
 		"sourceIPs":  en.SourceIPs,
+		"clientIP":   ip,
 		"userAgent":  en.UserAgent,
 		"auditID":    en.AuditID,
 		"statusCode": en.StatusCode,
 		"allowed":    en.Allowed,
-	})
+	}
+	if en.User != "" {
+		fields["user"] = en.User
+		fields["groups"] = en.Groups
+		fields["serviceAccount"] = ""
+		if en.ImpersonatedUser != "" {
+			fields["impersonatedUser"] = en.ImpersonatedUser
+			fields["impersonatedGroups"] = en.ImpersonatedGroups
+		}
+		if en.Attribution != "" {
+			fields["attribution"] = en.Attribution
+		}
+	}
+	patch, err := json.Marshal(fields)
 	if err != nil {
 		return AuditEventRow{}, false, err
 	}
-	ip := ""
-	if len(en.SourceIPs) > 0 {
-		ip = en.SourceIPs[0]
-	}
+	from, to := auditJoinWindow(en.At)
 	var row AuditEventRow
 	var ruleID, sev *string
-	err = c.s.pool.QueryRow(ctx,
+	err = c.db().QueryRow(ctx,
 		`UPDATE audit_events
-		    SET source_ip = $3, allowed = $4, origin = $5, data = data || $6::jsonb
-		  WHERE cluster_id = $1 AND event_uid = $2 AND ts > $7 AND origin = $8
+		    SET source_ip = $3, allowed = $4, origin = $5, data = data || $6::jsonb,
+		        "user" = CASE WHEN $10 <> '' THEN $10 ELSE "user" END
+		  WHERE cluster_id = $1 AND event_uid = $2 AND ts >= $7 AND ts <= $8 AND origin = $9
 		 RETURNING id, ts, rule_id, sev, data`,
-		c.id, en.EventUID, nullable(ip), en.Allowed, AuditOriginBoth, patch,
-		time.Now().Add(-auditEnrichWindow), AuditOriginAdmission,
+		pgx.QueryExecModeExec,
+		c.id, en.EventUID, nullable(ip), en.Allowed, AuditOriginBoth, string(patch),
+		from, to, AuditOriginAdmission, en.User,
 	).Scan(&row.ID, &row.Ts, &ruleID, &sev, &row.Data)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return row, false, nil
@@ -320,9 +405,9 @@ func (c *Scoped) EnrichAuditEvent(ctx context.Context, en AuditEnrichment) (Audi
 }
 
 func (c *Scoped) MarkAuditEventRule(ctx context.Context, id int64, ts time.Time, ruleID, sev string) error {
-	_, err := c.s.pool.Exec(ctx,
+	_, err := c.db().Exec(ctx,
 		`UPDATE audit_events SET rule_id = $4, sev = $5 WHERE cluster_id = $1 AND id = $2 AND ts = $3`,
-		c.id, id, ts, ruleID, sev)
+		pgx.QueryExecModeExec, c.id, id, ts, ruleID, sev)
 	return err
 }
 
@@ -337,9 +422,16 @@ type AuditEventQuery struct {
 	Result     string
 	Search     string
 	DangerOnly bool
+	Object     *AuditObject
 	BeforeTs   time.Time
 	BeforeID   int64
 	Limit      int
+}
+
+type AuditObject struct {
+	Resource  string `json:"resource"`
+	Namespace string `json:"ns"`
+	Name      string `json:"name"`
 }
 
 const auditDangerExpr = `(rule_id IS NOT NULL OR COALESCE(allowed, TRUE) = FALSE)`
@@ -376,6 +468,11 @@ func (c *Scoped) auditWhere(q AuditEventQuery) (string, []interface{}) {
 	if q.SourceIP != "" {
 		add("source_ip LIKE $%d", likeEscape(q.SourceIP)+"%")
 	}
+	if q.Object != nil {
+		add("resource = $%d", q.Object.Resource)
+		add("COALESCE(ns, '') = $%d", q.Object.Namespace)
+		add("COALESCE(name, '') = $%d", q.Object.Name)
+	}
 	if q.Search != "" {
 		args = append(args, "%"+likeEscape(q.Search)+"%")
 		n := len(args)
@@ -385,9 +482,9 @@ func (c *Scoped) auditWhere(q AuditEventQuery) (string, []interface{}) {
 	}
 	switch q.Result {
 	case auditrules.ResultAllowed:
-		where = append(where, "COALESCE(allowed, TRUE) = TRUE")
+		where = append(where, "allowed = TRUE")
 	case auditrules.ResultDenied:
-		where = append(where, "COALESCE(allowed, TRUE) = FALSE")
+		where = append(where, "allowed = FALSE")
 	}
 	if q.DangerOnly {
 		where = append(where, auditDangerExpr)
@@ -406,10 +503,10 @@ func (c *Scoped) QueryAuditEvents(ctx context.Context, q AuditEventQuery) ([]Aud
 		where += fmt.Sprintf(" AND (ts, id) < ($%d, $%d)", len(args)-1, len(args))
 	}
 	args = append(args, limit)
-	rows, err := c.s.pool.Query(ctx,
+	rows, err := c.db().Query(ctx,
 		`SELECT id, ts, COALESCE(rule_id, ''), COALESCE(sev, ''), COALESCE(origin, ''), data
 		   FROM audit_events WHERE `+where+
-			fmt.Sprintf(` ORDER BY ts DESC, id DESC LIMIT $%d`, len(args)), args...)
+			fmt.Sprintf(` ORDER BY ts DESC, id DESC LIMIT $%d`, len(args)), append([]interface{}{pgx.QueryExecModeExec}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -443,10 +540,10 @@ func (c *Scoped) AuditEventHistogram(ctx context.Context, q AuditEventQuery, buc
 	where, args := c.auditWhere(q)
 	args = append(args, q.From, step.Seconds(), buckets)
 	n := len(args)
-	rows, err := c.s.pool.Query(ctx, fmt.Sprintf(
+	rows, err := c.db().Query(ctx, fmt.Sprintf(
 		`SELECT LEAST($%d::int - 1, FLOOR(EXTRACT(EPOCH FROM (ts - $%d::timestamptz))::float8 / $%d::float8)::int) AS b,
 		        COUNT(*), COUNT(*) FILTER (WHERE %s)
-		   FROM audit_events WHERE %s GROUP BY b`, n, n-2, n-1, auditDangerExpr, where), args...)
+		   FROM audit_events WHERE %s GROUP BY b`, n, n-2, n-1, auditDangerExpr, where), append([]interface{}{pgx.QueryExecModeExec}, args...)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -472,32 +569,34 @@ func (c *Scoped) AuditEventHistogram(ctx context.Context, q AuditEventQuery, buc
 }
 
 type AuditGroup struct {
-	Key       string    `json:"key"`
-	Events    int64     `json:"events"`
-	Dangerous int64     `json:"dangerous"`
-	Denied    int64     `json:"denied"`
-	Others    []string  `json:"others"`
-	LastSeen  time.Time `json:"lastSeen"`
+	Key       string       `json:"key"`
+	Events    int64        `json:"events"`
+	Dangerous int64        `json:"dangerous"`
+	Denied    int64        `json:"denied"`
+	Others    []string     `json:"others"`
+	LastSeen  time.Time    `json:"lastSeen"`
+	Object    *AuditObject `json:"object,omitempty"`
 }
 
 func (c *Scoped) AuditEventGroups(ctx context.Context, q AuditEventQuery, by string, limit int) ([]AuditGroup, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	key, other := `"user"`, `source_ip`
+	key, other, object := `"user"`, `source_ip`, `'', '', ''`
 	if by == "object" {
 		key = `resource || '/' || CASE WHEN COALESCE(ns, '') = '' THEN '' ELSE ns || '/' END || COALESCE(NULLIF(name, ''), '*')`
 		other = `"user"`
+		object = `COALESCE(MIN(resource), ''), COALESCE(MIN(ns), ''), COALESCE(MIN(name), '')`
 	}
 	where, args := c.auditWhere(q)
 	args = append(args, limit)
-	rows, err := c.s.pool.Query(ctx, fmt.Sprintf(
+	rows, err := c.db().Query(ctx, fmt.Sprintf(
 		`SELECT %s AS k, COUNT(*), COUNT(*) FILTER (WHERE %s),
 		        COUNT(*) FILTER (WHERE COALESCE(allowed, TRUE) = FALSE),
 		        COALESCE((ARRAY_AGG(DISTINCT %s) FILTER (WHERE %s IS NOT NULL AND %s != ''))[1:6], '{}'),
-		        MAX(ts)
+		        MAX(ts), %s
 		   FROM audit_events WHERE %s GROUP BY k ORDER BY 2 DESC LIMIT $%d`,
-		key, auditDangerExpr, other, other, other, where, len(args)), args...)
+		key, auditDangerExpr, other, other, other, object, where, len(args)), append([]interface{}{pgx.QueryExecModeExec}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -505,24 +604,134 @@ func (c *Scoped) AuditEventGroups(ctx context.Context, q AuditEventQuery, by str
 	out := []AuditGroup{}
 	for rows.Next() {
 		var g AuditGroup
-		if err := rows.Scan(&g.Key, &g.Events, &g.Dangerous, &g.Denied, &g.Others, &g.LastSeen); err != nil {
+		var obj AuditObject
+		if err := rows.Scan(&g.Key, &g.Events, &g.Dangerous, &g.Denied, &g.Others, &g.LastSeen,
+			&obj.Resource, &obj.Namespace, &obj.Name); err != nil {
 			return nil, err
+		}
+		if by == "object" {
+			g.Object = &obj
 		}
 		out = append(out, g)
 	}
 	return out, rows.Err()
 }
 
-func (c *Scoped) AttachAuditViolationSource(ctx context.Context, eventUID, sourceIP string, data json.RawMessage) error {
+func (c *Scoped) AttachAuditViolationSource(ctx context.Context, eventUID, sourceIP, actor string, data json.RawMessage) error {
 	if eventUID == "" {
 		return nil
 	}
-	_, err := c.s.pool.Exec(ctx,
+	_, err := c.db().Exec(ctx,
 		`UPDATE audit_violations
-		    SET source_ip = $3, data = $4
+		    SET source_ip = $3, data = $4, actor = CASE WHEN $6 <> '' THEN $6 ELSE actor END
 		  WHERE cluster_id = $1 AND data->>'id' = $2 AND last_seen > $5`,
-		c.id, eventUID, sourceIP, data, time.Now().Add(-auditEnrichWindow))
+		c.id, eventUID, sourceIP, data, time.Now().Add(-AuditRetention), actor)
 	return err
+}
+
+func (c *Scoped) AttachAuditAlertActor(ctx context.Context, eventUID string, around time.Time, actor string, data json.RawMessage) error {
+	if eventUID == "" || actor == "" {
+		return nil
+	}
+	from, to := auditJoinWindow(around)
+	run := func(db auditDB) error {
+		_, err := db.Exec(ctx,
+			`UPDATE alerts
+			    SET detail = CASE WHEN starts_with(detail, (data->>'user') || ' ')
+			                      THEN $6 || substr(detail, char_length(data->>'user') + 1) ELSE detail END,
+			        data = $7::jsonb
+			  WHERE cluster_id = $1 AND source = $2 AND ts >= $3 AND ts <= $4 AND data->>'id' = $5`,
+			pgx.QueryExecModeExec, c.id, auditAlertSource, from, to, eventUID, actor, string(data))
+		return err
+	}
+	if c.tx == nil {
+		return run(c.s.pool)
+	}
+	savepoint, err := c.tx.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	if err := run(savepoint); err != nil {
+		_ = savepoint.Rollback(ctx)
+		return err
+	}
+	return savepoint.Commit(ctx)
+}
+
+var auditInformerResources = map[string]bool{
+	"mutatingwebhookconfigurations":   true,
+	"validatingwebhookconfigurations": true,
+}
+
+func AuditInformerResource(resource string) bool { return auditInformerResources[resource] }
+
+func (c *Scoped) LockAuditObject(ctx context.Context, kind, resource, name string) error {
+	_, err := c.db().Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+		pgx.QueryExecModeExec, strings.Join([]string{"audit-object", c.id, kind, resource, name}, "|"))
+	return err
+}
+
+func (c *Scoped) MergeAuditObjectMeta(ctx context.Context, eventUID string, around time.Time, meta map[string]string) error {
+	fields := map[string]string{}
+	for k, v := range meta {
+		if v != "" {
+			fields[k] = v
+		}
+	}
+	patch, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = c.db().Exec(ctx,
+		`UPDATE audit_events SET origin = $5,
+		        data = data || CASE WHEN COALESCE(data->>'impersonatedUser', '') <> '' THEN $6::jsonb - 'serviceAccount' ELSE $6::jsonb END
+		  WHERE cluster_id = $1 AND event_uid = $2 AND ts >= $3 AND ts <= $4 AND origin = $7`,
+		pgx.QueryExecModeExec,
+		c.id, eventUID, around.Add(-auditTwinSlack), around.Add(auditTwinSlack), AuditOriginBoth, string(patch), AuditOriginAPILog)
+	return err
+}
+
+type AuditTwin struct {
+	EventUID            string
+	Origin              string
+	Source              string
+	ObjectUID           string
+	ResourceVersion     string
+	PrevResourceVersion string
+	At                  time.Time
+	CompletedAt         time.Time
+}
+
+func (c *Scoped) FindAuditTwins(ctx context.Context, kind, resource, name string, around time.Time) ([]AuditTwin, error) {
+	rows, err := c.db().Query(ctx,
+		`SELECT event_uid, COALESCE(origin, ''), COALESCE(data->>'source', ''), COALESCE(data->>'uid', ''),
+		        COALESCE(data->>'resourceVersion', ''), COALESCE(data->>'prevResourceVersion', ''),
+		        ts, COALESCE(data->>'completedAt', '')
+		   FROM audit_events
+		  WHERE cluster_id = $1 AND kind = $2 AND resource = $3 AND name = $4
+		    AND ts >= $5 AND ts <= $6 AND event_uid IS NOT NULL AND allowed IS DISTINCT FROM false
+		    AND COALESCE(data->>'unchanged', '') <> 'true'
+		  ORDER BY ABS(EXTRACT(EPOCH FROM (ts - $7::timestamptz)))`,
+		pgx.QueryExecModeExec,
+		c.id, kind, resource, name, around.Add(-auditTwinSlack), around.Add(auditTwinSlack), around)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditTwin
+	for rows.Next() {
+		var t AuditTwin
+		var completed string
+		if err := rows.Scan(&t.EventUID, &t.Origin, &t.Source, &t.ObjectUID, &t.ResourceVersion, &t.PrevResourceVersion, &t.At, &completed); err != nil {
+			return nil, err
+		}
+		t.CompletedAt = t.At
+		if at, err := time.Parse(time.RFC3339Nano, completed); err == nil {
+			t.CompletedAt = at
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 type AuditSource struct {
@@ -532,10 +741,10 @@ type AuditSource struct {
 }
 
 func (c *Scoped) AuditSources(ctx context.Context) ([]AuditSource, error) {
-	rows, err := c.s.pool.Query(ctx,
+	rows, err := c.db().Query(ctx,
 		`SELECT COALESCE(origin, $3), MAX(ts), COUNT(*)
-		   FROM audit_events WHERE cluster_id = $1 AND ts > $2 GROUP BY 1`,
-		c.id, time.Now().Add(-time.Hour), AuditOriginAdmission)
+		   FROM audit_events WHERE cluster_id = $1 AND ts > $2 AND ts <= $4 GROUP BY 1`,
+		pgx.QueryExecModeExec, c.id, time.Now().Add(-time.Hour), AuditOriginAdmission, time.Now().Add(time.Minute))
 	if err != nil {
 		return nil, err
 	}

@@ -1,10 +1,28 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $ns := include "kvisior.namespace" . }}
+{{- $cilium := include "kvisior.np.cilium" . }}
+{{- $components := include "kvisior.np.components" . | fromYamlArray }}
+{{- $postgresClients := include "kvisior.np.postgresClients" . | fromYamlArray }}
+{{- $ui := list "kvisior-ui" }}
+{{- $pushers := list "anomaly-detector" "audit-runner" "forensic-watcher" "honey-operator" "scanner-agent" "sensor" "sentry-audit" "sentry-audit-logtail" "tracee-bridge" }}
+{{- $grpcClients := list "anomaly-detector" "sensor" "sentry-audit" "tracee-bridge" }}
+{{- $certClients := append $pushers "kvisior-ui" }}
+{{- $kafkaClients := list "anomaly-detector" "kafka" "kvisior-ui" "kvisior-audit-ingest" "kvisior-audit-processor" "tracee-bridge" }}
+{{- $poolClients := list "anomaly-detector" "kvisior-ui" "kvisior-audit-ingest" "kvisior-audit-processor" "tracee-bridge" }}
+{{- if and .Values.traceeBridge.enabled (not $np.nodeCIDRs) (not $cilium) }}
+{{- fail "networkPolicy.nodeCIDRs is empty: Tracee runs hostNetwork and reaches tracee-bridge:8080 from node IPs, so its traffic would be denied. Set networkPolicy.nodeCIDRs to your node subnet CIDR(s), enable networkPolicy.cilium on a Cilium cluster, or set traceeBridge.enabled=false." }}
+{{- end }}
+{{- if and .Values.sentryAudit.enabled (not $np.nodeCIDRs) (not $np.apiServerCIDRs) (not $cilium) }}
+{{- fail "networkPolicy.nodeCIDRs and networkPolicy.apiServerCIDRs are empty: the API server could not reach the sentry-audit webhook on 8443. Set the CIDR(s) the API server connects from, enable networkPolicy.cilium on a Cilium cluster, or set sentryAudit.enabled=false." }}
+{{- end }}
+{{- if .Values.ui.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ .Release.Name }}-kvisior
-  namespace: {{ include "kvisior.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "kvisior.labels" . | nindent 4 }}
 spec:
@@ -15,20 +33,30 @@ spec:
     - Ingress
   ingress:
     - from:
+        {{- with $np.ingressControllerNamespace }}
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace | quote }}
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+        {{- if and (hasKey .Values "istio") .Values.istio.enabled }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
+        {{- end }}
+        {{- range $np.federationNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+        - podSelector:
+            {{- include "kvisior.np.selector" $pushers | nindent 12 }}
       ports:
         - protocol: TCP
           port: 8080
     - from:
-        - podSelector: {}
+        - podSelector:
+            {{- include "kvisior.np.selector" $grpcClients | nindent 12 }}
       ports:
-        - protocol: TCP
-          port: 8080
         - protocol: TCP
           port: 9091
     {{- if .Values.ui.federation.nodePort }}
@@ -41,40 +69,17 @@ spec:
         - protocol: TCP
           port: 8443
     {{- end }}
-    {{- with .Values.networkPolicy.federationNamespaces }}
-    - from:
-        {{- range . }}
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ . | quote }}
-        {{- end }}
-      ports:
-        - protocol: TCP
-          port: 8080
-    {{- end }}
-    {{- with .Values.networkPolicy.nodeCIDRs }}
-    - from:
-        {{- range . }}
-        - ipBlock:
-            cidr: {{ . | quote }}
-        {{- end }}
-      ports:
-        - protocol: TCP
-          port: 8080
-    {{- end }}
-    {{- with .Values.networkPolicy.extraIngress }}
+    {{- with $np.extraIngress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-{{- if .Values.traceeBridge.enabled }}
-{{- if not .Values.networkPolicy.nodeCIDRs }}
-{{- fail "networkPolicy.nodeCIDRs is empty: Tracee runs hostNetwork and reaches tracee-bridge:8080 from node IPs, so its traffic would be denied. Set networkPolicy.nodeCIDRs to your node subnet CIDR(s), or set traceeBridge.enabled=false." }}
 {{- end }}
+{{- if .Values.traceeBridge.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ .Release.Name }}-tracee-bridge
-  namespace: {{ include "kvisior.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "kvisior.labels" . | nindent 4 }}
 spec:
@@ -84,7 +89,7 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    {{- with .Values.networkPolicy.nodeCIDRs }}
+    {{- with $np.nodeCIDRs }}
     - from:
         {{- range . }}
         - ipBlock:
@@ -93,16 +98,157 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-        - protocol: TCP
-          port: 8081
     {{- end }}
     - from:
-        - podSelector: {}
+        - podSelector:
+            {{- include "kvisior.np.selector" $ui | nindent 12 }}
       ports:
         - protocol: TCP
           port: 8081
-    {{- with .Values.networkPolicy.extraIngress }}
+    {{- with $np.extraIngress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}
+{{- if .Values.auditDelivery.ingest.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-audit-ingest
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-audit-ingest
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            {{- include "kvisior.np.selector" $ui | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- if and .Values.auditDelivery.ingest.tlsSecret $np.ingressControllerNamespace }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressControllerNamespace | quote }}
+      ports:
+        - protocol: TCP
+          port: 8443
+    {{- end }}
+{{- end }}
+{{- if .Values.sentryAudit.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-sentry-audit
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sentry-audit
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- with concat ($np.nodeCIDRs | default (list)) ($np.apiServerCIDRs | default (list)) | uniq }}
+    - from:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8443
+    {{- end }}
+    - from:
+        - podSelector:
+            {{- include "kvisior.np.selector" $ui | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- if .Values.kafka.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-kafka
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            {{- include "kvisior.np.selector" $kafkaClients | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: 9092
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+      ports:
+        - protocol: TCP
+          port: 9093
+{{- end }}
+{{- range (list
+      (dict "enabled" .Values.sensor.enabled "name" "sensor" "from" $ui "port" 8080)
+      (dict "enabled" .Values.scannerAgent.enabled "name" "scanner-agent" "from" $ui "port" 9090)
+      (dict "enabled" .Values.anomalyDetector.enabled "name" "anomaly-detector" "from" $ui "port" 8080)
+      (dict "enabled" .Values.auditRunner.enabled "name" "audit-runner" "from" $ui "port" 8080)
+      (dict "enabled" .Values.honeyOperator.enabled "name" "honey-operator" "from" $ui "port" 9095)
+      (dict "enabled" .Values.forensicWatcher.enabled "name" "forensic-watcher" "from" (list "sensor") "port" 9090)
+      (dict "enabled" .Values.certServer.enabled "name" "cert-server" "from" $certClients "port" 8090)
+      (dict "enabled" .Values.postgres.enabled "name" "postgres" "from" $postgresClients "port" 5432)
+      (dict "enabled" .Values.pgbouncer.enabled "name" "pgbouncer" "from" $poolClients "port" .Values.pgbouncer.port)) }}
+{{- if .enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $.Release.Name }}-{{ .name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            {{- include "kvisior.np.selector" .from | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: {{ .port }}
+{{- end }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    {{- include "kvisior.np.selector" $components | nindent 4 }}
+  policyTypes:
+    - Ingress
 {{- end }}

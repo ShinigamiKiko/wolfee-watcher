@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wolfee-watcher/kvisior/internal/accounts"
 	"github.com/wolfee-watcher/kvisior/internal/apihandler"
+	"github.com/wolfee-watcher/kvisior/internal/auditdelivery"
 	"github.com/wolfee-watcher/kvisior/internal/auditengine"
 	"github.com/wolfee-watcher/kvisior/internal/auth"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
@@ -33,7 +34,6 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/store"
 	"github.com/wolfee-watcher/kvisior/internal/uibus"
 	"github.com/wolfee-watcher/kvisior/internal/watchring"
-	alertspkg "github.com/wolfee-watcher/pkg/alerts"
 	"github.com/wolfee-watcher/pkg/logging"
 	"github.com/wolfee-watcher/pkg/mtls"
 	"golang.org/x/sync/singleflight"
@@ -129,7 +129,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
+	if mode := os.Getenv("KVISIOR_MODE"); mode == "ingest" || mode == "audit-worker" {
+		if err := runAuditDelivery(ctx, mode); err != nil {
+			log.Fatalf("[audit-delivery] %v", err)
+		}
+		return
+	}
 	scheme := "http"
 	var baseTransport http.RoundTripper = http.DefaultTransport
 	var grpcCreds credentials.TransportCredentials
@@ -218,30 +223,19 @@ func main() {
 		var err error
 		pgPool, err = pgxpool.New(ctx, pgDSN)
 		if err != nil {
-			log.Printf("[kvisior] postgres pool: %v — falling back to proxy mode", err)
+			log.Fatalf("[kvisior] invalid postgres configuration: %v", err)
+		}
+		defer pgPool.Close()
+		initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		st, err = store.NewFromPool(initCtx, pgPool)
+		cancel()
+		if err != nil {
+			log.Printf("[kvisior] postgres unavailable at startup: %v — retaining reconnecting pool", err)
+			st = store.FromPool(pgPool)
+			go startDatabaseServicesWhenReady(ctx, st, pgPool)
 		} else {
-			initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			st, err = store.NewFromPool(initCtx, pgPool)
-			cancel()
-			if err != nil {
-				log.Printf("[kvisior] postgres store: %v — falling back to proxy mode", err)
-				pgPool.Close()
-				pgPool = nil
-			} else {
-				defer pgPool.Close()
-				log.Printf("[kvisior] PostgreSQL connected — serving /api/* directly from DB")
-				regCtx, cancelReg := context.WithTimeout(ctx, 5*time.Second)
-				if clusterctx.Hub() {
-					log.Printf("[kvisior] hub mode: not registering a local cluster")
-				} else if err := st.EnsureCluster(regCtx, clusterctx.Local()); err != nil {
-					log.Printf("[kvisior] register local cluster %q: %v", clusterctx.Local(), err)
-				}
-				cancelReg()
-				go st.RunRetention(ctx)
-
-				go alertspkg.RunCleanup(ctx, pgPool)
-				go alertspkg.RunWebhookDelivery(ctx, pgPool)
-			}
+			log.Printf("[kvisior] PostgreSQL connected — serving /api/* directly from DB")
+			startDatabaseServices(ctx, st, pgPool)
 		}
 	} else {
 		log.Printf("[kvisior] POSTGRES_DSN not set — /api/* proxied to tracee-bridge")
@@ -252,8 +246,11 @@ func main() {
 	}
 
 	auditEng := auditengine.New(st, uiBus)
-	if st != nil && !clusterctx.Hub() {
+	if st != nil {
 		go auditEng.Run(ctx)
+		if os.Getenv("KVISIOR_AUDIT_INGEST_URL") == "" {
+			go auditdelivery.Run(ctx, st, auditEng, auditWorkersForPool(pgPool))
+		}
 	}
 
 	ctrlPool := pgPool
@@ -262,17 +259,15 @@ func main() {
 		if err != nil {
 			log.Printf("[kvisior] control-plane postgres pool: %v — falling back to the data pool", err)
 		} else {
+			defer p.Close()
+			ctrlPool = p
 			pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err = p.Ping(pingCtx)
-			cancel()
-			if err != nil {
-				log.Printf("[kvisior] control-plane postgres ping: %v — falling back to the data pool", err)
-				p.Close()
+			if err = p.Ping(pingCtx); err != nil {
+				log.Printf("[kvisior] control-plane postgres unavailable at startup: %v — keeping its reconnecting pool", err)
 			} else {
-				defer p.Close()
-				ctrlPool = p
 				log.Printf("[kvisior] control-plane (accounts, sessions, tokens) on a separate pool")
 			}
+			cancel()
 		}
 	}
 
@@ -304,7 +299,8 @@ func main() {
 	podWatchMgr := podwatch.New(st.Cluster(clusterctx.Local()), watchRing)
 	if st != nil && !clusterctx.Hub() {
 		if err := podWatchMgr.Load(ctx); err != nil {
-			log.Printf("[kvisior] podwatch load: %v", err)
+			log.Printf("[kvisior] podwatch load: %v — retrying in the background", err)
+			go whenDatabaseReady(ctx, podWatchMgr.Load, func() { log.Printf("[kvisior] podwatch: forensic watches loaded") })
 		}
 	}
 	var policyConsumer *kafkaconsumer.Consumer
@@ -338,8 +334,22 @@ func main() {
 	pushH := push.New(uiBus, evHub, matcher, auditEng, st)
 	pushWrap := pushSecretMiddleware(os.Getenv("INTERNAL_PUSH_SECRET"))
 	mux.HandleFunc("/internal/push/events", pushWrap(pushH.HandleEvents))
-	mux.HandleFunc("/internal/push/audit", pushWrap(pushH.HandleAuditEvents))
-	mux.HandleFunc("/internal/push/audit-log", pushWrap(pushH.HandleAuditLog))
+	auditReceiver := newAuditReceiver(st)
+	auditEvents, auditLog := auditReceiver.Events, auditReceiver.Log
+	if target := os.Getenv("KVISIOR_AUDIT_INGEST_URL"); target != "" {
+		relay, err := auditRelay(target, os.Getenv("INTERNAL_PUSH_SECRET"), baseTransport)
+		if err != nil {
+			log.Fatal(err)
+		}
+		auditEvents, auditLog = relay, relay
+	}
+	mux.HandleFunc("/internal/push/audit", pushWrap(auditEvents))
+	mux.HandleFunc("/internal/push/audit-log", pushWrap(auditLog))
+	mux.HandleFunc("/internal/pull/audit-delivery", pushWrap(auditReceiver.Status))
+	mux.HandleFunc("/internal/pull/audit-log-config", pushWrap(auditLogConfigPull(st)))
+	mux.HandleFunc("/internal/push/audit-log-nodes", pushWrap(auditLogNodesPush(st)))
+	mux.HandleFunc("/internal/push/audit-log-status", pushWrap(auditLogStatusPush(st)))
+	mux.HandleFunc("/internal/push/audit-spool-status", pushWrap(auditSpoolStatusPush(st)))
 	mux.HandleFunc("/internal/push/sensor", pushWrap(pushH.HandleSensorSnapshot))
 	mux.HandleFunc("/internal/push/anomaly", pushWrap(pushH.HandleAnomalyEvents))
 	mux.HandleFunc("/internal/push/honeypot", pushWrap(pushH.HandleHoneypotEvents))
@@ -754,6 +764,9 @@ func main() {
 		mux.Handle("/v1/audit/summary", authed(auditSummaryHandler(st)))
 		mux.Handle("/v1/audit/groups", authed(auditGroupsHandler(st)))
 		mux.Handle("/v1/audit/sources", authed(auditSourcesHandler(st)))
+		mux.Handle("/api/audit/log-source", adminMut(auditLogSourceHandler(st)))
+		mux.Handle("/api/audit/log-source/test", adminMut(auditLogTestHandler(st)))
+		mux.Handle("/api/audit/log-source/proxies", adminMut(auditTrustedProxiesHandler(st)))
 		mux.Handle("/sensor/api/forensic/diff/", authed(forensicDiffHandler(st)))
 		log.Printf("[kvisior] /scanner/{results,histories}, /audit/runs, /sentry/api/events, /sensor/api/forensic/diff → direct DB; other /scanner/*, /audit/*, /sentry/*, /sensor/* proxied")
 	}
@@ -810,12 +823,13 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
+	var tlsSrv *http.Server
 	if tlsAddr := os.Getenv("KVISIOR_TLS_ADDR"); tlsAddr != "" {
 		certFile, keyFile := os.Getenv("KVISIOR_TLS_CERT_FILE"), os.Getenv("KVISIOR_TLS_KEY_FILE")
 		if certFile == "" || keyFile == "" {
 			log.Fatalf("[kvisior] KVISIOR_TLS_ADDR=%s needs KVISIOR_TLS_CERT_FILE and KVISIOR_TLS_KEY_FILE", tlsAddr)
 		}
-		tlsSrv := &http.Server{
+		tlsSrv = &http.Server{
 			Addr:              tlsAddr,
 			Handler:           mux,
 			ReadHeaderTimeout: 5 * time.Second,
@@ -830,7 +844,22 @@ func main() {
 			}
 		}()
 	}
-	if err := srv.ListenAndServe(); err != nil {
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if tlsSrv != nil {
+			tlsSrv.Shutdown(shutdownCtx)
+		}
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("[kvisior] shutdown: %v", err)
+		}
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("[kvisior] %v", err)
 	}
+	<-stopped
+	log.Printf("[kvisior] stopped")
 }

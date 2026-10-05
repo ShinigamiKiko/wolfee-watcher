@@ -8,42 +8,78 @@ import (
 )
 
 type Event struct {
-	ID              string    `json:"id"`
-	Timestamp       time.Time `json:"timestamp"`
-	User            string    `json:"user"`
-	ServiceAccount  string    `json:"serviceAccount,omitempty"`
-	Groups          []string  `json:"groups,omitempty"`
-	SourceIPs       []string  `json:"sourceIPs,omitempty"`
-	UserAgent       string    `json:"userAgent,omitempty"`
-	Kind            string    `json:"kind"`
-	Resource        string    `json:"resource"`
-	WebhookType     string    `json:"webhookType,omitempty"`
-	Namespace       string    `json:"namespace"`
-	Name            string    `json:"name"`
-	UID             string    `json:"uid,omitempty"`
-	ResourceVersion string    `json:"resourceVersion,omitempty"`
-	Source          string    `json:"source,omitempty"`
-	Container       string    `json:"container,omitempty"`
-	Commands        []string  `json:"commands,omitempty"`
-	Ports           []int32   `json:"ports,omitempty"`
-	Allowed         *bool     `json:"allowed,omitempty"`
-	StatusCode      int32     `json:"statusCode,omitempty"`
-	AuditID         string    `json:"auditID,omitempty"`
+	ID                  string     `json:"id"`
+	Timestamp           time.Time  `json:"timestamp"`
+	User                string     `json:"user"`
+	ImpersonatedUser    string     `json:"impersonatedUser,omitempty"`
+	ImpersonatedGroups  []string   `json:"impersonatedGroups,omitempty"`
+	ServiceAccount      string     `json:"serviceAccount,omitempty"`
+	Groups              []string   `json:"groups,omitempty"`
+	SourceIPs           []string   `json:"sourceIPs,omitempty"`
+	ClientIP            string     `json:"clientIP,omitempty"`
+	UserAgent           string     `json:"userAgent,omitempty"`
+	Kind                string     `json:"kind"`
+	Resource            string     `json:"resource"`
+	WebhookType         string     `json:"webhookType,omitempty"`
+	Namespace           string     `json:"namespace"`
+	Name                string     `json:"name"`
+	UID                 string     `json:"uid,omitempty"`
+	ResourceVersion     string     `json:"resourceVersion,omitempty"`
+	PrevResourceVersion string     `json:"prevResourceVersion,omitempty"`
+	Unchanged           bool       `json:"unchanged,omitempty"`
+	DryRun              bool       `json:"dryRun,omitempty"`
+	CompletedAt         *time.Time `json:"completedAt,omitempty"`
+	Source              string     `json:"source,omitempty"`
+	Attribution         string     `json:"attribution,omitempty"`
+	Container           string     `json:"container,omitempty"`
+	Commands            []string   `json:"commands,omitempty"`
+	Ports               []int32    `json:"ports,omitempty"`
+	Allowed             *bool      `json:"allowed,omitempty"`
+	StatusCode          int32      `json:"statusCode,omitempty"`
+	AuditID             string     `json:"auditID,omitempty"`
 }
+
+const AttributionUnconfirmed = "unconfirmed"
 
 func (e *Event) IsAllowed() bool {
 	return e.Allowed == nil || *e.Allowed
 }
 
 func (e *Event) SourceIP() string {
-	if len(e.SourceIPs) == 0 {
-		return ""
+	if e.ClientIP != "" {
+		return e.ClientIP
 	}
-	return e.SourceIPs[0]
+	return ClientIP(e.SourceIPs, nil)
 }
 
+func (e *Event) ForwardedClaims() []string {
+	client := e.SourceIP()
+	if client == "" {
+		return nil
+	}
+	end := -1
+	for i := len(e.SourceIPs) - 1; i >= 0; i-- {
+		if e.SourceIPs[i] == client {
+			end = i
+			break
+		}
+	}
+	if end <= 0 {
+		return nil
+	}
+	var claims []string
+	for _, ip := range e.SourceIPs[:end] {
+		if ip != client {
+			claims = append(claims, ip)
+		}
+	}
+	return claims
+}
+
+var humanSystemUsers = map[string]bool{"system:admin": true}
+
 func IsServiceIdentity(user string) bool {
-	return strings.HasPrefix(user, "system:")
+	return strings.HasPrefix(user, "system:") && !humanSystemUsers[user]
 }
 
 func IsPerson(user string) bool {
@@ -188,6 +224,9 @@ func (c *compiled) matches(cluster string, ev *Event) bool {
 	if len(c.usersExclude) > 0 && globAny(c.usersExclude, ev.User) {
 		return false
 	}
+	if s.Forwarded && len(ev.ForwardedClaims()) == 0 {
+		return false
+	}
 	if s.IPMode != IPAny {
 		ip := ev.SourceIP()
 		if ip == "" {
@@ -199,11 +238,11 @@ func (c *compiled) matches(cluster string, ev *Event) bool {
 	}
 	switch s.Result {
 	case ResultAllowed:
-		if !ev.IsAllowed() {
+		if ev.Allowed == nil || !ev.IsAllowed() {
 			return false
 		}
 	case ResultDenied:
-		if ev.IsAllowed() {
+		if ev.Allowed == nil || ev.IsAllowed() {
 			return false
 		}
 	}
@@ -254,7 +293,7 @@ func (m *Matcher) Match(cluster string, ev *Event, onlyIPRules bool) []Rule {
 
 	var hits []Rule
 	for _, c := range candidates {
-		if onlyIPRules && c.rule.Spec.IPMode == IPAny {
+		if onlyIPRules && c.rule.Spec.IPMode == IPAny && !c.rule.Spec.Forwarded {
 			continue
 		}
 		if c.matches(cluster, ev) {

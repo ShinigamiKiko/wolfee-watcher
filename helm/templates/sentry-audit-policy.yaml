@@ -1,0 +1,41 @@
+{{- $api := "" }}
+{{- if .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy" }}
+{{- $api = "admissionregistration.k8s.io/v1" }}
+{{- else if .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1beta1/ValidatingAdmissionPolicy" }}
+{{- $api = "admissionregistration.k8s.io/v1beta1" }}
+{{- end }}
+{{- if and .Values.sentryAudit.enabled .Values.sentryAudit.webhookChangePolicy.enabled $api }}
+apiVersion: {{ $api }}
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: webhook-changes.wolfee-watcher.io
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: sentry-audit
+spec:
+  failurePolicy: Ignore
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["admissionregistration.k8s.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+  auditAnnotations:
+    - key: object-uid
+      valueExpression: "string(request.operation == 'DELETE' ? oldObject.metadata.uid : object.metadata.uid)"
+    - key: previous-resource-version
+      valueExpression: "request.operation == 'CREATE' ? '' : string(oldObject.metadata.resourceVersion)"
+    - key: changed
+      valueExpression: "string(!(has(request.dryRun) && request.dryRun) && (request.operation != 'UPDATE' || object != oldObject))"
+---
+apiVersion: {{ $api }}
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: webhook-changes.wolfee-watcher.io
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+    app.kubernetes.io/name: sentry-audit
+spec:
+  policyName: webhook-changes.wolfee-watcher.io
+  validationActions: ["Audit"]
+{{- end }}

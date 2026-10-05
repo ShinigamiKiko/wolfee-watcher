@@ -22,26 +22,37 @@ const (
 	EventKindUnknown     EventKind = "unknown"
 
 	EventIDAnnotation = "event-id"
+
+	ChangePolicyName           = "webhook-changes.wolfee-watcher.io"
+	ObjectUIDAnnotation        = ChangePolicyName + "/object-uid"
+	PreviousRevisionAnnotation = ChangePolicyName + "/previous-resource-version"
+	ChangedAnnotation          = ChangePolicyName + "/changed"
 )
 
 type AuditEvent struct {
 	ID        string    `json:"id"`
 	Timestamp time.Time `json:"timestamp"`
 
-	User           string   `json:"user"`
-	ServiceAccount string   `json:"serviceAccount,omitempty"`
-	Groups         []string `json:"groups"`
-	SourceIPs      []string `json:"sourceIPs,omitempty"`
-	UserAgent      string   `json:"userAgent,omitempty"`
+	User               string   `json:"user"`
+	ImpersonatedUser   string   `json:"impersonatedUser,omitempty"`
+	ImpersonatedGroups []string `json:"impersonatedGroups,omitempty"`
+	ServiceAccount     string   `json:"serviceAccount,omitempty"`
+	Groups             []string `json:"groups"`
+	SourceIPs          []string `json:"sourceIPs,omitempty"`
+	UserAgent          string   `json:"userAgent,omitempty"`
 
-	Kind            EventKind `json:"kind"`
-	Resource        string    `json:"resource"`
-	WebhookType     string    `json:"webhookType,omitempty"`
-	Namespace       string    `json:"namespace"`
-	Name            string    `json:"name"`
-	UID             string    `json:"uid,omitempty"`
-	ResourceVersion string    `json:"resourceVersion,omitempty"`
-	Source          string    `json:"source,omitempty"`
+	Kind                EventKind  `json:"kind"`
+	Resource            string     `json:"resource"`
+	WebhookType         string     `json:"webhookType,omitempty"`
+	Namespace           string     `json:"namespace"`
+	Name                string     `json:"name"`
+	UID                 string     `json:"uid,omitempty"`
+	ResourceVersion     string     `json:"resourceVersion,omitempty"`
+	PrevResourceVersion string     `json:"prevResourceVersion,omitempty"`
+	Unchanged           bool       `json:"unchanged,omitempty"`
+	DryRun              bool       `json:"dryRun,omitempty"`
+	CompletedAt         *time.Time `json:"completedAt,omitempty"`
+	Source              string     `json:"source,omitempty"`
 
 	Container string   `json:"container,omitempty"`
 	Commands  []string `json:"commands,omitempty"`
@@ -95,6 +106,7 @@ func fromAdmissionRequest(req *admissionv1.AdmissionRequest) AuditEvent {
 		Resource:  req.Resource.Resource,
 		Namespace: req.Namespace,
 		Name:      req.Name,
+		DryRun:    req.DryRun != nil && *req.DryRun,
 		Allowed:   true,
 	}
 

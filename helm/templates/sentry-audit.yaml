@@ -1,6 +1,6 @@
 {{- if .Values.sentryAudit.enabled }}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ ternary "StatefulSet" "Deployment" .Values.sentryAudit.delivery.persistence.enabled }}
 metadata:
   name: sentry-audit
   namespace: {{ include "kvisior.namespace" . }}
@@ -8,6 +8,10 @@ metadata:
     {{- include "kvisior.labels" . | nindent 4 }}
     app.kubernetes.io/name: sentry-audit
 spec:
+  {{- if .Values.sentryAudit.delivery.persistence.enabled }}
+  serviceName: sentry-audit
+  podManagementPolicy: Parallel
+  {{- end }}
   replicas: {{ .Values.sentryAudit.replicaCount }}
   selector:
     matchLabels:
@@ -29,7 +33,13 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
       volumes:
+        {{- if not .Values.sentryAudit.delivery.persistence.enabled }}
+        - name: audit-delivery
+          emptyDir: {}
+        {{- end }}
         - name: wolfee-ca-bundle
           configMap:
             name: {{ include "kvisior.caBundleName" . }}
@@ -45,10 +55,20 @@ spec:
               name: api
               protocol: TCP
           volumeMounts:
+            - name: audit-delivery
+              mountPath: /var/lib/sentry-audit/delivery
             - name: wolfee-ca-bundle
               mountPath: /etc/wolfee-watcher/ca-bundle
               readOnly: true
           env:
+            - name: AUDIT_SPOOL_DIR
+              value: /var/lib/sentry-audit/delivery
+            - name: AUDIT_SPOOL_MAX_BYTES
+              value: {{ .Values.sentryAudit.delivery.maxBytes | int64 | quote }}
+            - name: AUDIT_SPOOL_SHED_AT
+              value: {{ .Values.sentryAudit.delivery.shedAt | default 0.8 | quote }}
+            - name: AUDIT_SPOOL_SHED_PER_ACTOR
+              value: {{ .Values.sentryAudit.delivery.shedPerActor | default 60 | int64 | quote }}
             - name: CERT_SERVER_ADDR
               value: {{ .Values.global.certServerAddr | quote }}
             - name: MTLS_CA_FILE
@@ -92,6 +112,19 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+  {{- if .Values.sentryAudit.delivery.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: audit-delivery
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.sentryAudit.delivery.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.sentryAudit.delivery.persistence.size | quote }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -128,7 +161,6 @@ spec:
     matchLabels:
       app.kubernetes.io/name: sentry-audit
 {{- end }}
-{{- if .Values.sentryAudit.auditLog.enabled }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -147,7 +179,11 @@ spec:
       labels:
         app.kubernetes.io/name: sentry-audit-logtail
     spec:
-      serviceAccountName: sentry-audit
+      serviceAccountName: sentry-audit-logtail
+      {{- if not .Values.sentryAudit.auditLog.enabled }}
+      nodeSelector:
+        wolfee-watcher.io/audit-log-off: "true"
+      {{- end }}
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -193,6 +229,12 @@ spec:
               value: "logtail"
             - name: AUDIT_LOG_PATH
               value: {{ .Values.sentryAudit.auditLog.path | quote }}
+            - name: AUDIT_LOG_NODE_PATHS
+              value: ""
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             - name: AUDIT_LOG_STATE_DIR
               value: /var/lib/sentry-audit
             {{- with .Values.sentryAudit.auditLog.dropResources }}
@@ -243,5 +285,4 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-{{- end }}
 {{- end }}

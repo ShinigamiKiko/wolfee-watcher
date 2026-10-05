@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0013-audit-rules"
+const Version = "0016-audit-spool-status"
 
 var DDL = []string{
 

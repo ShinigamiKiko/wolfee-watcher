@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { usePerms, actingHeaders } from '../../context/PermissionsContext';
 import { INTEGRATION_DEFS } from './settingsConstants';
 import { inputStyle, btnGhost, btnDanger } from './settingsUi';
+import { AuditLogSourceCard } from './AuditLogSourceCard';
 
 function mergeWithStored(def, values, record) {
   const out = {};
@@ -207,9 +208,12 @@ export function IntegrationsSection({ toast }) {
 
   if (error) {
     return (
-      <div className="card" style={{padding:24,border:'none'}}>
-        <div style={{fontSize:13,color:'var(--danger)'}}>Failed to load integrations: {error}</div>
-        <button className="btn" onClick={reload} style={{...btnGhost, marginTop:12}}>Retry</button>
+      <div>
+        <AuditLogSourceCard toast={toast} />
+        <div className="card" style={{padding:24,border:'none'}}>
+          <div style={{fontSize:13,color:'var(--danger)'}}>Failed to load integrations: {error}</div>
+          <button className="btn" onClick={reload} style={{...btnGhost, marginTop:12}}>Retry</button>
+        </div>
       </div>
     );
   }
@@ -219,6 +223,7 @@ export function IntegrationsSection({ toast }) {
 
   return (
     <div>
+      <AuditLogSourceCard toast={toast} />
       {INTEGRATION_DEFS.map(def => (
         <IntegrationCard key={def.kind} def={def} record={items[def.kind]} onSaved={reload} toast={toast} />
       ))}

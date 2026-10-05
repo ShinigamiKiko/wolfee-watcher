@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -91,18 +92,31 @@ type AlertRow struct {
 	Target      string  `json:"target,omitempty"`
 	Syscall     string  `json:"syscall,omitempty"`
 	Detail      string  `json:"detail,omitempty"`
+	User        string  `json:"user,omitempty"`
+	Action      string  `json:"action,omitempty"`
 	Fingerprint string  `json:"fingerprint,omitempty"`
 	DeliveredAt *string `json:"deliveredAt,omitempty"`
+}
+
+const auditAlertSource = "sentry-audit"
+
+func splitAlertDetail(user, detail string) string {
+	if user != "" && strings.HasPrefix(detail, user+" ") {
+		return detail[len(user)+1:]
+	}
+	return detail
 }
 
 func (c *Scoped) QueryAlerts(ctx context.Context, since int64, limit int) ([]AlertRow, int64, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
-	const cols = `id, ts, source, det_type,
+	const iso = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`
+	const cols = `id, to_char(ts AT TIME ZONE 'UTC', ` + iso + `), source, det_type,
 		COALESCE(rule_id,''), COALESCE(rule_name,''), COALESCE(severity,''),
 		COALESCE(namespace,''), COALESCE(target,''), COALESCE(syscall,''),
-		COALESCE(detail,''), COALESCE(fingerprint,''), delivered_at`
+		COALESCE(detail,''), COALESCE(fingerprint,''), to_char(delivered_at AT TIME ZONE 'UTC', ` + iso + `),
+		CASE WHEN source = '` + auditAlertSource + `' THEN COALESCE(data->>'user','') ELSE '' END`
 
 	var (
 		q    string
@@ -126,9 +140,10 @@ func (c *Scoped) QueryAlerts(ctx context.Context, since int64, limit int) ([]Ale
 	for rows.Next() {
 		var a AlertRow
 		if err := rows.Scan(&a.ID, &a.Ts, &a.Source, &a.DetType, &a.RuleID, &a.RuleName,
-			&a.Severity, &a.Namespace, &a.Target, &a.Syscall, &a.Detail, &a.Fingerprint, &a.DeliveredAt); err != nil {
+			&a.Severity, &a.Namespace, &a.Target, &a.Syscall, &a.Detail, &a.Fingerprint, &a.DeliveredAt, &a.User); err != nil {
 			continue
 		}
+		a.Action = splitAlertDetail(a.User, a.Detail)
 		out = append(out, a)
 		lastID = a.ID
 	}

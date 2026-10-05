@@ -18,3 +18,10 @@
 {{- if and .Values.ui.federation.nodePort (not .Values.ui.federation.allowedSources) -}}
 {{- fail "ui.federation.nodePort is set but ui.federation.allowedSources is empty: list the hub's address so the network policy lets it in (and nobody else)" -}}
 {{- end -}}
+
+{{- if and .Values.auditDelivery.ingest.enabled (not .Values.auditDelivery.processor.enabled) (lt (int .Values.auditDelivery.ingest.workers) 1) -}}
+{{- fail "auditDelivery.ingest.enabled requires ingest.workers>0 or processor.enabled=true" -}}
+{{- end -}}
+{{- if and .Values.auditDelivery.processor.enabled (lt (int .Values.auditDelivery.processor.workers) 1) -}}
+{{- fail "auditDelivery.processor.workers must be positive" -}}
+{{- end -}}

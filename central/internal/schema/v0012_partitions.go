@@ -141,6 +141,7 @@ var v0012PartitionDDL = []string{
 	    END LOOP;
 
 	    IF NOT drop_expired THEN CONTINUE; END IF;
+	    IF tbl = 'audit_events' AND audit_retention_hours IS NULL THEN CONTINUE; END IF;
 
 	    FOR part IN
 	      SELECT c.relname FROM pg_class c

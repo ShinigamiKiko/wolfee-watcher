@@ -88,26 +88,4 @@ spec:
       port: 8090
       targetPort: 8090
       protocol: TCP
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: cert-server-ingress
-  namespace: {{ include "kvisior.namespace" . }}
-  labels:
-    {{- include "kvisior.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: cert-server
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ include "kvisior.namespace" . }}
-      ports:
-        - port: 8090
-          protocol: TCP
 {{- end }}

@@ -80,9 +80,19 @@ Open the UI at the `ui.ingress.host` you set.
   requires the image to exist on each node.
 - **`global.internalPushSecret` is required** — an empty value disables auth on
   the `/internal/push/*` endpoints, so the install fails closed.
-- **`networkPolicy.nodeCIDRs` is required** when `networkPolicy.enabled=true`
-  (default) with Tracee: Tracee runs hostNetwork and reaches `tracee-bridge:8080`
-  from node IPs. The chart fails the render if it is unset.
+- **Network policies** are on by default. Every component accepts traffic only
+  from the components that call it. Tracee (hostNetwork) and the API server reach
+  `tracee-bridge:8080` and the sentry-audit webhook from node addresses: on Cilium
+  the chart allows the node entities, elsewhere set `networkPolicy.nodeCIDRs`
+  (and `networkPolicy.apiServerCIDRs` for a managed control plane), otherwise the
+  render fails. On Cilium the chart also restricts egress: DNS, the namespace,
+  the API server and PostgreSQL; scanner-agent may reach the internet on 443 and
+  audit-runner reaches avd.aquasec.com. Integrations are configured in the UI at
+  run time, so kvisior-ui and anomaly-detector, which deliver to them, may reach
+  the internet on the ports in `networkPolicy.cilium.integrations.ports` (443 by
+  default; an empty list closes it) and the networks in
+  `global.integrations.allowedCIDRs`. Add federation peers and anything else with
+  `networkPolicy.cilium.extraEgress.<component>`.
 - **mTLS is mandatory** — no plaintext fallback. Missing CA material means pods
   refuse to start.
 - **Install via Helm only**, and **not** with `--wait`: the `central-migrate`

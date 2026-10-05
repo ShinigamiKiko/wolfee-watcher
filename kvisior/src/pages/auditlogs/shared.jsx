@@ -24,6 +24,10 @@ export function normalizeEvent(raw, row) {
   const data = raw || {};
   const ts = row?.ts || data.timestamp;
   const sev = (row?.sev || data.sev || '').toLowerCase();
+  const chain = data.sourceIPs || [];
+  const ip = data.clientIP || chain[chain.length - 1] || '';
+  const at = ip ? chain.lastIndexOf(ip) : -1;
+  const ipClaims = at > 0 ? chain.slice(0, at).filter(a => a !== ip) : [];
   return {
     key: row?.id != null ? `db-${row.id}` : `live-${data.id}`,
     uid: data.id || '',
@@ -33,15 +37,22 @@ export function normalizeEvent(raw, row) {
     ns: data.namespace || '',
     name: data.name || '',
     user: data.user || '',
+    actedAs: data.impersonatedUser || '',
+    unconfirmedAuthor: data.attribution === 'unconfirmed',
+    actedAsGroups: data.impersonatedGroups || [],
     groups: data.groups || [],
-    ip: (data.sourceIPs && data.sourceIPs[0]) || '',
+    ip,
+    ipChain: chain,
+    ipClaims,
     agent: data.userAgent || '',
-    allowed: data.allowed !== false,
+    allowed: typeof data.allowed === 'boolean' ? data.allowed : null,
     status: data.statusCode || 0,
     origin: row?.origin || (data.source === 'apiserver-log' ? 'apilog' : data.sourceIPs ? 'both' : 'admission'),
     ruleId: row?.ruleId || data.ruleId || '',
     ruleName: data.ruleName || '',
     sev,
+    dryRun: !!data.dryRun,
+    unchanged: !!data.unchanged,
     container: data.container || '',
     commands: data.commands || null,
     ports: data.ports || null,
@@ -49,11 +60,11 @@ export function normalizeEvent(raw, row) {
   };
 }
 
-export const isDanger = ev => !!ev.ruleId || !ev.allowed;
+export const isDanger = ev => !!ev.ruleId || ev.allowed === false;
 
 export function rowClass(ev) {
   if (SEV_RANK[ev.sev] >= 3) return 'al-row-high';
-  if (ev.sev === 'medium' || !ev.allowed) return 'al-row-medium';
+  if (ev.sev === 'medium' || ev.allowed === false) return 'al-row-medium';
   return '';
 }
 
@@ -72,7 +83,10 @@ export function RuleTag({ ev, ruleNames }) {
   return (
     <>
       {ev.ruleId && <span className={`al-tag al-tag-${ev.sev || 'low'}`}>{name}</span>}
-      {!ev.allowed && <span className="al-tag al-tag-denied">denied{ev.status ? ` ${ev.status}` : ''}</span>}
+      {ev.allowed === false && <span className="al-tag al-tag-denied">denied{ev.status ? ` ${ev.status}` : ''}</span>}
+      {ev.dryRun
+        ? <span className="al-tag" title="A dry-run request: the API server validated it and changed nothing">dry run</span>
+        : ev.unchanged && <span className="al-tag" title="The request succeeded and the object stayed as it was">no change</span>}
     </>
   );
 }
@@ -96,9 +110,15 @@ export function EventTable({ events, selectedKey, onSelect, withDate, ruleNames,
             <td className="al-mono">{withDate ? fmtDate(ev.ts) : fmtTime(ev.ts)}</td>
             <td><span className={`al-kind al-kind-${ev.kind}`}>{ev.kind}</span></td>
             <td className="al-mono al-clip al-obj" title={objText(ev)}>{objText(ev)}</td>
-            <td className="al-clip al-usr" title={ev.user}><UserCell user={ev.user} /></td>
+            <td className="al-clip al-usr" title={ev.actedAs ? `${ev.user}, acting as ${ev.actedAs}` : ev.user}>
+              <UserCell user={ev.user} />{ev.actedAs && <span className="al-dim"> as {ev.actedAs}</span>}
+            </td>
             <td className="al-mono">{ev.ip || <Empty />}</td>
-            <td className="al-flags"><RuleTag ev={ev} ruleNames={ruleNames} /></td>
+            <td className="al-flags">
+              {ev.ipClaims?.length > 0 && <span className="al-tag al-tag-high" title={`The client set X-Forwarded-For: ${ev.ipClaims.join(', ')}`}>XFF</span>}
+              {ev.unconfirmedAuthor && <span className="al-tag al-tag-medium" title="The author was matched to this change by time only, and another request on the same object fits as well">Author?</span>}
+              <RuleTag ev={ev} ruleNames={ruleNames} />
+            </td>
           </tr>
         ))}
       </tbody>
@@ -151,11 +171,24 @@ export function EventDetail({ ev, ruleNames, apiLogConnected, onInvestigate, onC
           <>
             <dl className="al-kv">
               <dt>Time</dt><dd className="al-mono">{fmtDate(ev.ts)}</dd>
-              <dt>User</dt><dd>{ev.user || <Empty>unknown</Empty>}</dd>
+              <dt>User</dt><dd>{ev.user && ev.user !== 'unknown' ? ev.user : <Empty>unknown</Empty>}</dd>
+              {ev.unconfirmedAuthor && <><dt>Author</dt><dd title="Without RequestResponse audit logging the change is linked to a request by time. Several requests on this object fit, so the user above may be wrong">
+                <span className="al-tag al-tag-medium">unconfirmed</span><span className="al-dim"> matched by time, several requests fit</span>
+              </dd></>}
+              {ev.actedAs && <><dt>Acted as</dt><dd title="The request was made with impersonation; User is who actually authenticated">
+                <span className="al-mono">{ev.actedAs}</span>
+                {ev.actedAsGroups.length > 0 && <span className="al-dim"> in {ev.actedAsGroups.join(', ')}</span>}
+              </dd></>}
               <dt>Groups</dt><dd className="al-dim">{ev.groups.length ? ev.groups.join(', ') : '—'}</dd>
               <dt>Source IP</dt><dd className="al-mono">{ev.ip || <Empty />}</dd>
+              {ev.ipClaims?.length > 0 && <><dt>Spoofed by client</dt>
+                <dd title="The client put these addresses into X-Forwarded-For or X-Real-IP. Rules and the Source IP above ignore them">
+                  <span className="al-tag al-tag-high">X-Forwarded-For</span><span className="al-mono">{ev.ipClaims.join(', ')}</span>
+                </dd></>}
+              {ev.ipChain.length > 1 && <><dt>Reported chain</dt>
+                <dd className="al-mono al-dim" title="Everything the API server recorded for this request. Addresses before the last come from the X-Forwarded-For header, which the client can set, so rules use only the one above">{ev.ipChain.join(' → ')}</dd></>}
               <dt>Client</dt><dd className="al-mono">{ev.agent || <Empty />}</dd>
-              <dt>Result</dt><dd>{ev.allowed ? 'allowed' : <span className="al-tag al-tag-denied">denied{ev.status ? ` ${ev.status}` : ''}</span>}</dd>
+              <dt>Result</dt><dd>{ev.allowed == null ? <Empty>not recorded</Empty> : ev.allowed ? 'allowed' : <span className="al-tag al-tag-denied">denied{ev.status ? ` ${ev.status}` : ''}</span>}</dd>
               <dt>Rule</dt><dd>{ev.ruleId ? <RuleTag ev={{ ...ev, allowed: true }} ruleNames={ruleNames} /> : <span className="al-dim">no rule matched</span>}</dd>
               <dt>Source</dt><dd>{ORIGIN_LABEL[ev.origin] || ev.origin}</dd>
             </dl>
@@ -171,7 +204,7 @@ export function EventDetail({ ev, ruleNames, apiLogConnected, onInvestigate, onC
               ? 'No kube-apiserver record matched this change yet, so source IP and client are empty.'
               : 'This cluster has no kube-apiserver audit log connected, so source IP and client stay empty.'}</div>
           : <pre className="al-code">{JSON.stringify({
-              auditID: ev.raw.auditID, sourceIPs: ev.raw.sourceIPs, userAgent: ev.raw.userAgent,
+              auditID: ev.raw.auditID, sourceIPs: ev.raw.sourceIPs, clientIP: ev.ip || undefined, userAgent: ev.raw.userAgent,
               responseStatus: ev.status || undefined, allowed: ev.allowed,
             }, null, 2)}</pre>)}
         {sub === 'raw' && (

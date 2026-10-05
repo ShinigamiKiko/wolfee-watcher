@@ -73,7 +73,7 @@ func auditRulesHandler(st *store.Store, eng *auditengine.Engine) http.HandlerFun
 			for _, rule := range rules {
 				present[rule.ID] = true
 			}
-			for _, b := range auditrules.Catalog {
+			for _, b := range auditrules.BuiltinRules() {
 				if !present[b.ID] {
 					builtinMissing++
 				}
@@ -218,6 +218,13 @@ func auditQueryFromRequest(r *http.Request) store.AuditEventQuery {
 		Result:     v.Get("result"),
 		Search:     strings.TrimSpace(v.Get("q")),
 		DangerOnly: v.Get("danger") == "1",
+	}
+	if v.Has("objResource") {
+		q.Object = &store.AuditObject{
+			Resource:  v.Get("objResource"),
+			Namespace: v.Get("objNs"),
+			Name:      v.Get("objName"),
+		}
 	}
 	q.Limit, _ = strconv.Atoi(v.Get("limit"))
 	if ms, err := strconv.ParseInt(v.Get("beforeTs"), 10, 64); err == nil && ms > 0 {

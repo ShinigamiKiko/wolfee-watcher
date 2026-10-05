@@ -66,6 +66,7 @@ type Spec struct {
 	UsersExclude string   `json:"usersExclude"`
 	IPMode       string   `json:"ipMode"`
 	IPList       string   `json:"ipList"`
+	Forwarded    bool     `json:"forwarded"`
 	Result       string   `json:"result"`
 	Cmd          string   `json:"cmd"`
 	AlertEvery   string   `json:"alertEvery"`
@@ -248,13 +249,13 @@ func (r Rule) Validate() error {
 }
 
 func (r Rule) NeedsAPILog() bool {
-	if r.Spec.IPMode != IPAny {
+	if r.Spec.IPMode != IPAny || (r.Spec.Result != "" && r.Spec.Result != ResultAny) {
 		return true
 	}
 	for _, k := range r.Spec.Kinds {
-		if k != KindGet && k != KindList {
-			return false
+		if k == KindGet || k == KindList {
+			return true
 		}
 	}
-	return len(r.Spec.Kinds) > 0
+	return false
 }

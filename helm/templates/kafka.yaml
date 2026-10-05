@@ -159,6 +159,8 @@ spec:
                 secretKeyRef:
                   name: kafka-cluster-id
                   key: cluster-id
+            - name: KAFKA_HEAP_OPTS
+              value: {{ .Values.kafka.heapOpts | default "-Xmx512m -Xms512m" | quote }}
 
           ports:
             - containerPort: 9092
@@ -167,17 +169,25 @@ spec:
             - containerPort: 9093
               name: controller
               protocol: TCP
+          startupProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 90
           livenessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 30
-            periodSeconds: 15
-            failureThreshold: 5
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 6
           resources:
             {{- toYaml .Values.kafka.resources | nindent 12 }}

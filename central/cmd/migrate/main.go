@@ -51,6 +51,9 @@ func main() {
 	if err := migrateAuditRules(ctx, pool); err != nil {
 		log.Fatalf("audit rules: %v", err)
 	}
+	if err := addBuiltinRules(ctx, pool); err != nil {
+		log.Fatalf("audit rules: %v", err)
+	}
 	if err := seedAccounts(ctx, pool); err != nil {
 		log.Fatalf("seed accounts: %v", err)
 	}

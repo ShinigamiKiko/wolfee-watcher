@@ -1,0 +1,153 @@
+{{- range (list (dict "cfg" .Values.auditDelivery.ingest "name" "ingest" "mode" "ingest") (dict "cfg" .Values.auditDelivery.processor "name" "processor" "mode" "audit-worker")) }}
+{{- if .cfg.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kvisior-audit-{{ .name }}
+  namespace: {{ include "kvisior.namespace" $ }}
+  labels:
+    {{- include "kvisior.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ .cfg.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-audit-{{ .name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kvisior-audit-{{ .name }}
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kvisior-audit-{{ .name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      initContainers:
+        {{- include "kvisior.waitForSchema" (dict "ctx" $ "creds" $.Values.postgres.serviceCredentials.ui) | nindent 8 }}
+      volumes:
+        {{- if and $.Values.postgres.external.enabled $.Values.postgres.external.caBundle }}
+        - name: postgres-ca
+          configMap:
+            name: postgres-ca
+        {{- end }}
+        {{- if and (eq .name "ingest") .cfg.tlsSecret }}
+        - name: ingest-tls
+          secret:
+            secretName: {{ .cfg.tlsSecret }}
+        {{- end }}
+      containers:
+        - name: audit-delivery
+          image: "{{ include "kvisior.image" $.Values.ui.image }}"
+          imagePullPolicy: {{ $.Values.ui.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+            {{- if and (eq .name "ingest") .cfg.tlsSecret }}
+            - name: https
+              containerPort: 8443
+            {{- end }}
+          volumeMounts:
+            {{- if and $.Values.postgres.external.enabled $.Values.postgres.external.caBundle }}
+            - name: postgres-ca
+              mountPath: /etc/wolfee-watcher/pg-ca
+              readOnly: true
+            {{- end }}
+            {{- if and (eq .name "ingest") .cfg.tlsSecret }}
+            - name: ingest-tls
+              mountPath: /etc/wolfee-watcher/ingest-tls
+              readOnly: true
+            {{- end }}
+          env:
+            - name: KVISIOR_MODE
+              value: {{ .mode | quote }}
+            - name: KVISIOR_TRUST_CLUSTER_HEADER
+              value: "true"
+            - name: INTERNAL_PUSH_SECRET
+              value: {{ $.Values.global.internalPushSecret | quote }}
+            - name: POSTGRES_DSN
+              value: {{ include "kvisior.serviceDSN" (dict "ctx" $ "creds" $.Values.postgres.serviceCredentials.ui) | quote }}
+            - name: KAFKA_BROKERS
+              value: {{ $.Values.kafka.brokers | quote }}
+            - name: KVISIOR_AUDIT_WORKERS
+              value: {{ .cfg.workers | int64 | quote }}
+            - name: KVISIOR_AUDIT_RETENTION_HOURS
+              value: {{ $.Values.ui.auditRetentionHours | quote }}
+            - name: KVISIOR_AUDIT_INBOX_MAX_PENDING
+              value: {{ $.Values.auditDelivery.maxPendingPerCluster | int64 | quote }}
+            - name: KVISIOR_AUDIT_CLUSTER_CONCURRENCY
+              value: {{ $.Values.auditDelivery.perClusterConcurrency | int64 | quote }}
+            - name: KVISIOR_AUDIT_RECEIVE_BUDGET_BYTES
+              value: {{ $.Values.auditDelivery.receiveBudgetBytes | int64 | quote }}
+            {{- if eq .name "ingest" }}
+            - name: KVISIOR_INGEST_MAX_CONNS
+              value: {{ .cfg.maxConnections | default 512 | int64 | quote }}
+            {{- end }}
+            {{- if and (eq .name "ingest") .cfg.tlsSecret }}
+            - name: KVISIOR_TLS_ADDR
+              value: ":8443"
+            - name: KVISIOR_TLS_CERT_FILE
+              value: /etc/wolfee-watcher/ingest-tls/tls.crt
+            - name: KVISIOR_TLS_KEY_FILE
+              value: /etc/wolfee-watcher/ingest-tls/tls.key
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            {{- toYaml .cfg.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- if gt (int .cfg.replicaCount) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kvisior-audit-{{ .name }}
+  namespace: {{ include "kvisior.namespace" $ }}
+  labels:
+    {{- include "kvisior.labels" $ | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-audit-{{ .name }}
+{{- end }}
+{{- if eq .name "ingest" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kvisior-audit-ingest
+  namespace: {{ include "kvisior.namespace" $ }}
+  labels:
+    {{- include "kvisior.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: kvisior-audit-ingest
+spec:
+  selector:
+    app.kubernetes.io/name: kvisior-audit-ingest
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    {{- if .cfg.tlsSecret }}
+    - name: https
+      port: 443
+      targetPort: https
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

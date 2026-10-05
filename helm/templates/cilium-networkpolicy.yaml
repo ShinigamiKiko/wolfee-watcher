@@ -1,0 +1,235 @@
+{{- if and .Values.networkPolicy.enabled (include "kvisior.np.cilium" .) }}
+{{- $np := .Values.networkPolicy }}
+{{- $ns := include "kvisior.namespace" . }}
+{{- $components := include "kvisior.np.components" . | fromYamlArray }}
+{{- $postgresClients := include "kvisior.np.postgresClients" . | fromYamlArray }}
+{{- $apiClients := without $components "central-migrate" "kafka" "kvisior-audit-ingest" "kvisior-audit-processor" "pgbouncer" "postgres" }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    {{- include "kvisior.np.selector" $components | nindent 4 }}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-egress-kube-apiserver
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    {{- include "kvisior.np.selector" $apiClients | nindent 4 }}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            {{- range dig "cilium" "kubeAPIServerPorts" (list 443 6443) $np }}
+            - port: {{ . | quote }}
+              protocol: TCP
+            {{- end }}
+{{- if .Values.postgres.external.enabled }}
+{{- $pgHost := .Values.postgres.external.host | toString }}
+{{- $pgPort := .Values.postgres.external.port | toString }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-egress-postgres
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    {{- include "kvisior.np.selector" $postgresClients | nindent 4 }}
+  egress:
+    {{- if regexMatch "^[0-9]+(\\.[0-9]+){3}$" $pgHost }}
+    - toCIDR:
+        - {{ printf "%s/32" $pgHost }}
+    {{- else if contains ":" $pgHost }}
+    - toCIDR:
+        - {{ printf "%s/128" $pgHost | quote }}
+    {{- else }}
+    - toFQDNs:
+        - matchName: {{ $pgHost | quote }}
+    {{- end }}
+      toPorts:
+        - ports:
+            - port: {{ $pgPort | quote }}
+              protocol: TCP
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: {{ $pgPort | quote }}
+              protocol: TCP
+{{- end }}
+{{- $receiver := .Values.auditDelivery.receiverURL }}
+{{- $control := .Values.ui.controlPlaneDSN }}
+{{- if and .Values.ui.enabled (or $receiver (hasPrefix "postgres" ($control | default ""))) }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-egress-kvisior-upstreams
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: kvisior-ui
+  egress:
+    {{- with $receiver }}
+    {{- include "kvisior.np.urlEgress" (dict "url" . "port" (ternary "443" "80" (hasPrefix "https" .))) | trim | nindent 4 }}
+    {{- end }}
+    {{- if hasPrefix "postgres" ($control | default "") }}
+    {{- include "kvisior.np.urlEgress" (dict "url" $control "port" "5432") | trim | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- $integrationPorts := dig "cilium" "integrations" "ports" (list) $np }}
+{{- $integrationCIDRs := splitList "," (.Values.global.integrations.allowedCIDRs | default "" | nospace) | compact }}
+{{- if or $integrationPorts $integrationCIDRs }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-egress-integrations
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    {{- include "kvisior.np.selector" (list "kvisior-ui" "anomaly-detector") | nindent 4 }}
+  egress:
+    {{- if $integrationPorts }}
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            {{- range $integrationPorts }}
+            - port: {{ . | quote }}
+              protocol: TCP
+            {{- end }}
+    {{- end }}
+    {{- if $integrationCIDRs }}
+    - toCIDR:
+        {{- range $integrationCIDRs }}
+        - {{ . | quote }}
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- range $name, $rules := dig "cilium" "extraEgress" (dict) $np }}
+{{- if $rules }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ $.Release.Name }}-egress-{{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" $ | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  egress:
+    {{- toYaml $rules | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- if .Values.traceeBridge.enabled }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-tracee-bridge-nodes
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tracee-bridge
+  ingress:
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+{{- end }}
+{{- if .Values.sentryAudit.enabled }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-sentry-audit-apiserver
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: sentry-audit
+  ingress:
+    - fromEntities:
+        - kube-apiserver
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+{{- end }}
+{{- if .Values.honeyOperator.enabled }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-honeypot-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kvisior.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      component: deception
+      managed-by: h-operator
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+{{- end }}
+{{- end }}

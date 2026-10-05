@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"github.com/wolfee-watcher/pkg/mtls"
@@ -24,6 +26,8 @@ import (
 const (
 	serviceName = "sentry-audit"
 	secretName  = "sentry-audit-tls"
+
+	specHashAnnotation = "wolfee-watcher.io/webhook-spec-hash"
 )
 
 var (
@@ -234,7 +238,7 @@ func Register(ctx context.Context, client kubernetes.Interface, caBundle []byte)
 	svcRefValidate.Path = &validatePath
 	svcRef2.Path = &eventsPath
 
-	timeout := int32(12)
+	timeout := int32(1)
 
 	cfg := &admissionv1.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: webhookConfigName},
@@ -348,15 +352,29 @@ func Register(ctx context.Context, client kubernetes.Interface, caBundle []byte)
 		},
 	}
 
+	desired, err := json.Marshal(cfg.Webhooks)
+	if err != nil {
+		return fmt.Errorf("encode webhook config: %w", err)
+	}
+	specHash := fmt.Sprintf("%x", sha256.Sum256(desired))
+	cfg.Annotations = map[string]string{specHashAnnotation: specHash}
+
 	api := client.AdmissionregistrationV1().ValidatingWebhookConfigurations()
-	var err error
 	for attempt := 1; attempt <= 5; attempt++ {
-		_, err = api.Create(ctx, cfg, metav1.CreateOptions{})
-		if k8serrors.IsAlreadyExists(err) {
-			existing, getErr := api.Get(ctx, webhookConfigName, metav1.GetOptions{})
-			if getErr != nil {
-				return fmt.Errorf("get existing webhook config: %w", getErr)
+		var existing *admissionv1.ValidatingWebhookConfiguration
+		existing, err = api.Get(ctx, webhookConfigName, metav1.GetOptions{})
+		switch {
+		case k8serrors.IsNotFound(err):
+			_, err = api.Create(ctx, cfg, metav1.CreateOptions{})
+			if k8serrors.IsAlreadyExists(err) {
+				err = k8serrors.NewConflict(admissionv1.Resource("validatingwebhookconfigurations"), webhookConfigName, err)
 			}
+		case err != nil:
+			return fmt.Errorf("get existing webhook config: %w", err)
+		case existing.Annotations[specHashAnnotation] == specHash:
+			log.Printf("[sentry-audit] ValidatingWebhookConfiguration %q is up to date", webhookConfigName)
+			return nil
+		default:
 			cfg.ResourceVersion = existing.ResourceVersion
 			_, err = api.Update(ctx, cfg, metav1.UpdateOptions{})
 		}

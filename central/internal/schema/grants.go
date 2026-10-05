@@ -31,7 +31,7 @@ var FunctionGrants = map[string][]string{
 var Grants = map[string][]TableGrant{
 
 	RoleUI: {
-		{"alerts", "SELECT, INSERT, DELETE"},
+		{"alerts", "SELECT, INSERT, UPDATE, DELETE"},
 		{"alert_deliveries", "SELECT, INSERT, UPDATE, DELETE"},
 		{"clusters", "SELECT, INSERT, UPDATE, DELETE"},
 		{"integrations", "SELECT"},
@@ -51,6 +51,14 @@ var Grants = map[string][]TableGrant{
 		{"audit_events", "SELECT, INSERT, UPDATE, DELETE"},
 		{"audit_rules", "SELECT, INSERT, UPDATE, DELETE"},
 		{"audit_violations", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_inbox", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_spool_status", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_ingest_state", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_rule_matches", "SELECT, INSERT, DELETE"},
+		{"audit_thresholds", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_log_settings", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_log_nodes", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_trusted_proxies", "SELECT, INSERT, UPDATE, DELETE"},
 		{"forensic_events", "SELECT, INSERT, DELETE"},
 		{"binary_exec_events", "SELECT, INSERT, DELETE"},
 		{"forensic_watches", "SELECT, INSERT, UPDATE, DELETE"},

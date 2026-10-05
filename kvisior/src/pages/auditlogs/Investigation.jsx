@@ -3,7 +3,9 @@ import { fetchEvents, fetchGroups, fetchSummary } from './api';
 import { EventDetail, EventTable, Empty, KINDS, fmtDate, normalizeEvent, num } from './shared';
 
 const PAGE = 50;
-const BLANK = { hours: 24, user: '', ns: '', kind: '', resource: '', ip: '', result: '', danger: false };
+const BLANK = { hours: 24, user: '', ns: '', kind: '', resource: '', ip: '', result: '', danger: false, obj: null };
+
+const objLabel = o => [o.resource, o.ns, o.name || '*'].filter(Boolean).join('/');
 
 function niceMax(v) {
   if (v <= 5) return 5;
@@ -78,6 +80,7 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
   const params = useCallback(f => ({
     hours: f.hours, user: f.user.trim(), ns: f.ns.trim(), kind: f.kind,
     resource: f.resource.trim(), ip: f.ip.trim(), result: f.result, danger: f.danger,
+    objResource: f.obj?.resource, objNs: f.obj?.ns, objName: f.obj?.name,
   }), []);
 
   useEffect(() => {
@@ -113,10 +116,13 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
   const set = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
   const clear = () => { setFilters(BLANK); apply(BLANK); };
   const switchView = v => { setView(v); setCursors([null]); setSelected(null); };
-  const drill = key => {
-    const f = view === 'users' ? { ...filters, user: key } : { ...filters, resource: key.split('/')[0] };
+  const drill = g => {
+    const f = view === 'users' ? { ...applied, user: g.key }
+      : g.object ? { ...applied, obj: g.object }
+      : { ...applied, resource: g.key.split('/')[0] };
     setFilters(f); apply(f); setView('events');
   };
+  const clearObject = () => { const f = { ...applied, obj: null }; setFilters(f); apply(f); };
   const copy = () => navigator.clipboard?.writeText(JSON.stringify(events.map(e => e.raw), null, 2)).catch(() => {});
 
   const ranges = [[1, 'Last hour'], [6, 'Last 6 hours'], [24, 'Last 24 hours'], [72, 'Last 3 days'], [168, 'Last 7 days'], [336, 'Last 14 days']]
@@ -160,6 +166,11 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
             <button key={id} aria-pressed={view === id} onClick={() => switchView(id)}>{label}</button>
           ))}
         </div>
+        {applied.obj && (
+          <button className="al-link al-mono" type="button" onClick={clearObject} title="Remove the object filter">
+            Object: {objLabel(applied.obj)} ✕
+          </button>
+        )}
         {view === 'events' && <button className="btn btn-outline al-btn" type="button" onClick={copy}>Copy page as JSON</button>}
       </div>
 
@@ -202,7 +213,7 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
             <tbody>
               {groups.length === 0 && <tr className="al-norow"><td colSpan={6}><div className="al-blank">{emptyText}</div></td></tr>}
               {groups.map(g => (
-                <tr key={g.key} tabIndex={0} onClick={() => drill(g.key)} onKeyDown={e => { if (e.key === 'Enter') drill(g.key); }}>
+                <tr key={g.key} tabIndex={0} onClick={() => drill(g)} onKeyDown={e => { if (e.key === 'Enter') drill(g); }}>
                   <td className={view === 'users' ? '' : 'al-mono'}>{g.key || <Empty>unknown</Empty>}</td>
                   <td className="al-mono">{num(g.events)}</td>
                   <td className="al-mono">{g.dangerous ? <span className="al-tag al-tag-high">{num(g.dangerous)}</span> : '0'}</td>

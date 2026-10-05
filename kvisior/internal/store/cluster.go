@@ -23,6 +23,7 @@ func ValidClusterID(id string) bool { return clusterIDRe.MatchString(id) }
 type Scoped struct {
 	s  *Store
 	id string
+	tx pgx.Tx
 }
 
 const clusterTouchInterval = 5 * time.Minute
