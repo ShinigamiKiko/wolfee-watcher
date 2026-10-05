@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,26 +25,50 @@ type legacyAuditPolicy struct {
 	AuditChecks []string `json:"auditChecks"`
 }
 
-func legacyRules(p legacyAuditPolicy) []auditrules.Rule {
+const legacyNameLimit = 120
+
+func fitName(s string, limit int) string {
+	for len(s) > limit && len(s) > 0 {
+		_, size := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-size]
+	}
+	return strings.TrimSpace(s)
+}
+
+func legacyRules(p legacyAuditPolicy) ([]auditrules.Rule, error) {
+	if p.ID == "" || len(p.AuditChecks) == 0 {
+		return nil, fmt.Errorf("policy %q has no ID or audit checks", p.ID)
+	}
 	enabled := p.Enabled == nil || *p.Enabled
 	sev := strings.ToLower(strings.TrimSpace(p.Sev))
+	if sev != "" {
+		valid := false
+		for _, known := range auditrules.Severities {
+			if sev == known {
+				valid = true
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("policy %q has unsupported severity %q", p.ID, p.Sev)
+		}
+	}
 	var out []auditrules.Rule
 	for _, check := range p.AuditChecks {
 		b, ok := auditrules.LookupBuiltin(check)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("policy %q has unsupported check %q; source policy preserved", p.ID, check)
 		}
 		r := b.Rule()
 		r.ID = p.ID + ":" + check
 		r.Origin = auditrules.OriginCustom
 		r.Group = "Custom"
 		r.Enabled = enabled
-		r.Alert = p.AlertOnly
+		r.Alert = p.AlertOnly && enabled
 		r.Name = b.Name
 		if name := strings.TrimSpace(p.Name); name != "" {
-			r.Name = name
+			r.Name = fitName(name, legacyNameLimit)
 			if len(p.AuditChecks) > 1 {
-				r.Name = name + ": " + b.Name
+				r.Name = fitName(name, legacyNameLimit-len(b.Name)-2) + ": " + b.Name
 			}
 		}
 		for _, known := range auditrules.Severities {
@@ -56,12 +81,11 @@ func legacyRules(p legacyAuditPolicy) []auditrules.Rule {
 		}
 		r.Normalize()
 		if err := r.Validate(); err != nil {
-			log.Printf("audit rules: policy %q check %q skipped: %v", p.ID, check, err)
-			continue
+			return nil, fmt.Errorf("policy %q check %q: %w", p.ID, check, err)
 		}
 		out = append(out, r)
 	}
-	return out
+	return out, nil
 }
 
 func insertAuditRule(ctx context.Context, tx pgx.Tx, r auditrules.Rule, by string) (bool, error) {
@@ -78,6 +102,49 @@ func insertAuditRule(ctx context.Context, tx pgx.Tx, r auditrules.Rule, by strin
 		return false, fmt.Errorf("insert audit rule %q: %w", r.ID, err)
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+func addBuiltinRules(ctx context.Context, pool *pgxpool.Pool) error {
+	builtins := map[string]auditrules.Rule{}
+	for _, r := range auditrules.BuiltinRules() {
+		builtins[r.ID] = r
+	}
+	for _, addition := range schema.BuiltinRuleAdditions {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES ($1) ON CONFLICT DO NOTHING`, addition.Version)
+		if err != nil {
+			tx.Rollback(ctx)
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			tx.Rollback(ctx)
+			continue
+		}
+		added := 0
+		for _, id := range addition.IDs {
+			r, ok := builtins[id]
+			if !ok {
+				tx.Rollback(ctx)
+				return fmt.Errorf("built-in rule %q of %s is not in the catalog", id, addition.Version)
+			}
+			inserted, err := insertAuditRule(ctx, tx, r, "migration")
+			if err != nil {
+				tx.Rollback(ctx)
+				return err
+			}
+			if inserted {
+				added++
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		log.Printf("audit rules: %s added %d built-in rule(s)", addition.Version, added)
+	}
+	return nil
 }
 
 func migrateAuditRules(ctx context.Context, pool *pgxpool.Pool) error {
@@ -108,11 +175,12 @@ func migrateAuditRules(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
-	rows, err := tx.Query(ctx, `SELECT data FROM runtime_policies WHERE data->>'detType' = 'Audit'`)
+	rows, err := tx.Query(ctx, `SELECT data FROM runtime_policies WHERE data->>'detType' = 'Audit' FOR UPDATE`)
 	if err != nil {
 		return fmt.Errorf("read audit policies: %w", err)
 	}
 	var policies []legacyAuditPolicy
+	kept := 0
 	for rows.Next() {
 		var raw []byte
 		if err := rows.Scan(&raw); err != nil {
@@ -120,9 +188,12 @@ func migrateAuditRules(ctx context.Context, pool *pgxpool.Pool) error {
 			return err
 		}
 		var p legacyAuditPolicy
-		if json.Unmarshal(raw, &p) == nil && p.ID != "" {
-			policies = append(policies, p)
+		if err := json.Unmarshal(raw, &p); err != nil || p.ID == "" {
+			kept++
+			log.Printf("audit rules: a legacy audit policy is unreadable and stays in runtime_policies: %v", err)
+			continue
 		}
+		policies = append(policies, p)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -130,8 +201,15 @@ func migrateAuditRules(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	converted := 0
+	var convertedIDs, convertedChecks []string
 	for _, p := range policies {
-		for _, r := range legacyRules(p) {
+		rules, err := legacyRules(p)
+		if err != nil {
+			kept++
+			log.Printf("audit rules: %v; it stays in runtime_policies and is not evaluated", err)
+			continue
+		}
+		for _, r := range rules {
 			added, err := insertAuditRule(ctx, tx, r, "migration")
 			if err != nil {
 				return err
@@ -140,9 +218,16 @@ func migrateAuditRules(ctx context.Context, pool *pgxpool.Pool) error {
 				converted++
 			}
 		}
+		convertedIDs = append(convertedIDs, p.ID)
+		convertedChecks = append(convertedChecks, p.AuditChecks...)
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM runtime_policies WHERE data->>'detType' = 'Audit'`); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM runtime_policies WHERE data->>'detType' = 'Audit' AND data->>'id'=ANY($1::text[])`, convertedIDs); err != nil {
 		return fmt.Errorf("remove converted audit policies: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE audit_rules SET enabled = FALSE WHERE origin = $1 AND updated_by = 'migration' AND id = ANY($2::text[])`,
+		auditrules.OriginBuiltin, convertedChecks); err != nil {
+		return fmt.Errorf("disable built-in rules replaced by converted policies: %w", err)
 	}
 
 	moved, err := tx.Exec(ctx,
@@ -162,10 +247,13 @@ func migrateAuditRules(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("remove moved audit violations: %w", err)
 	}
 
+	if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES ($1) ON CONFLICT DO NOTHING`, schema.AuditRulesVersion); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	log.Printf("audit rules: %d built-in rule(s) seeded, %d audit polic(ies) converted into %d rule(s), %d violation(s) moved",
-		builtins, len(policies), converted, moved.RowsAffected())
+	log.Printf("audit rules: %d built-in rule(s) seeded, %d audit polic(ies) converted into %d rule(s), %d left unconverted, %d violation(s) moved",
+		builtins, len(convertedIDs), converted, kept, moved.RowsAffected())
 	return nil
 }

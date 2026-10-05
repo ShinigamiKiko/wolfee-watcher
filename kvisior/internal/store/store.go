@@ -191,6 +191,10 @@ func (c *Scoped) queryViolationTable(ctx context.Context, table, vtype, stateFil
 	if err != nil {
 		return nil, err
 	}
+	return scanViolations(rows)
+}
+
+func scanViolations(rows pgx.Rows) ([]ViolationRow, error) {
 	defer rows.Close()
 
 	var out []ViolationRow
@@ -212,15 +216,19 @@ func (c *Scoped) QueryViolations(ctx context.Context, vtype, stateFilter string,
 	if vtype == violationTypeAudit {
 		return c.queryViolationTable(ctx, tableAuditViolations, vtype, stateFilter, sinceID, limit)
 	}
-	out, err := c.queryViolationTable(ctx, tableViolations, vtype, stateFilter, sinceID, limit)
-	if err != nil || vtype != "" {
-		return out, err
+	if vtype != "" {
+		return c.queryViolationTable(ctx, tableViolations, vtype, stateFilter, sinceID, limit)
 	}
-	audit, err := c.queryViolationTable(ctx, tableAuditViolations, vtype, stateFilter, 0, limit)
+	q := `SELECT * FROM (
+ SELECT id,ts,vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,state,state_expires_at,0::bigint AS hits,NULL::timestamptz AS last_seen,data FROM kvisior_violations WHERE cluster_id=$1
+ UNION ALL
+ SELECT id,ts,'audit',rule_id,rule_name,sev,namespace,name,fingerprint,state,state_expires_at,hits,last_seen,data FROM audit_violations WHERE cluster_id=$1
+ ) violations WHERE id>$2` + violationStateClause(stateFilter) + ` ORDER BY id LIMIT $3`
+	rows, err := c.s.pool.Query(ctx, q, c.id, sinceID, limit)
 	if err != nil {
 		return nil, err
 	}
-	return append(out, audit...), nil
+	return scanViolations(rows)
 }
 
 func (c *Scoped) DeleteViolation(ctx context.Context, fingerprint string) error {
@@ -312,6 +320,12 @@ func (s *Store) sweepOnce(ctx context.Context) {
 			return fmt.Errorf("honeypot events: %w", err)
 		} else if n > 0 {
 			log.Printf("[store] honeypot-event retention sweep: %d expired rows dropped", n)
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM audit_ingest_state WHERE created_at < NOW() - $1::interval`, fmt.Sprintf("%d seconds", int64(AuditRetention.Seconds()))); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM audit_thresholds WHERE updated_at < NOW() - INTERVAL '2 days'`); err != nil {
+			return err
 		}
 		return sweepIngested(ctx, tx)
 	})

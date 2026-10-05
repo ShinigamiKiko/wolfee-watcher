@@ -31,7 +31,7 @@ type EventPage struct {
 }
 
 type eventForwarder interface {
-	Forward(events []json.RawMessage)
+	Forward(actor string, events []json.RawMessage)
 }
 
 type Handler struct {
@@ -50,7 +50,7 @@ func (h *Handler) Emit(ev AuditEvent) {
 	h.store.Push(ev)
 	if h.forwarder != nil {
 		if raw, err := json.Marshal(ev); err == nil {
-			h.forwarder.Forward([]json.RawMessage{raw})
+			h.forwarder.Forward(ev.User, []json.RawMessage{raw})
 		}
 	}
 }

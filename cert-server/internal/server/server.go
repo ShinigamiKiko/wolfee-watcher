@@ -39,7 +39,8 @@ var serviceToAllowedSAs = map[mtls.ServiceType]map[string]struct{}{
 		"anomaly-detector": {},
 	},
 	mtls.SentryAudit: {
-		"sentry-audit": {},
+		"sentry-audit":         {},
+		"sentry-audit-logtail": {},
 	},
 	mtls.ScannerAgent: {
 		"scanner-agent": {},

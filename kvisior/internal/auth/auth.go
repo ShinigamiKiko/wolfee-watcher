@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -290,9 +291,30 @@ func (m *Manager) invalidate(sessionID string) {
 	m.mu.Unlock()
 }
 
+const maxLoggedHeader = 128
+
+func ClipForLog(s string) string {
+	if len(s) > maxLoggedHeader {
+		return s[:maxLoggedHeader] + "…"
+	}
+	return s
+}
+
 func (m *Manager) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claimedUser, claimedRole := r.Header.Get("X-Acting-User"), r.Header.Get("X-Acting-Role")
 		u, err := m.Resolve(r)
+		if claimedUser != "" || claimedRole != "" {
+			slog.Warn("acting_header_spoof_attempt",
+				"component", "kvisior/auth",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"remote", r.RemoteAddr,
+				"authenticated", err == nil,
+				"user", u.Username,
+				"claimed_user", ClipForLog(claimedUser),
+				"claimed_role", ClipForLog(claimedRole))
+		}
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			writeError(w, http.StatusUnauthorized, "authentication required")

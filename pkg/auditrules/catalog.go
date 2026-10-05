@@ -66,10 +66,27 @@ func (b Builtin) Rule() Rule {
 	return r
 }
 
+var signals = []Rule{
+	{
+		ID:       "forwarded-spoof",
+		Name:     "X-Forwarded-For set by the client",
+		Group:    "Spoofing",
+		Origin:   OriginBuiltin,
+		Enabled:  true,
+		Severity: SevHigh,
+		Spec:     Spec{Forwarded: true},
+	},
+}
+
 func BuiltinRules() []Rule {
-	out := make([]Rule, 0, len(Catalog))
+	out := make([]Rule, 0, len(Catalog)+len(signals))
 	for _, b := range Catalog {
 		out = append(out, b.Rule())
+	}
+	for _, r := range signals {
+		r.Spec.Kinds = append([]string(nil), Kinds...)
+		r.Normalize()
+		out = append(out, r)
 	}
 	return out
 }

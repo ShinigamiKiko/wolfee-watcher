@@ -117,8 +117,8 @@ func TestMatchResult(t *testing.T) {
 	if got := ids(m.Match("c", &Event{Kind: KindCreate, Allowed: denied()}, false)); len(got) != 1 || got[0] != "denied" {
 		t.Errorf("denied event: got %v", got)
 	}
-	if got := ids(m.Match("c", &Event{Kind: KindCreate}, false)); len(got) != 1 || got[0] != "allowed" {
-		t.Errorf("event with no verdict counts as allowed: got %v", got)
+	if got := ids(m.Match("c", &Event{Kind: KindCreate}, false)); len(got) != 0 {
+		t.Errorf("unknown verdict must defer result rules: got %v", got)
 	}
 }
 
@@ -176,5 +176,37 @@ func TestNeedsAPILog(t *testing.T) {
 	}
 	if !rule("r", func(r *Rule) { r.Spec.IPMode = IPIn; r.Spec.IPList = "10.*" }).NeedsAPILog() {
 		t.Error("rule with an IP condition needs the API log")
+	}
+}
+
+func TestSystemAdminIsAPerson(t *testing.T) {
+	m := NewMatcher()
+	m.Replace([]Rule{
+		rule("people", func(r *Rule) { r.Spec.Subject = SubjectPeople }),
+		rule("robots", func(r *Rule) { r.Spec.Subject = SubjectSA }),
+	})
+	cases := map[string]string{
+		"system:admin":                      "people",
+		"kubernetes-admin":                  "people",
+		"system:serviceaccount:ci:deployer": "robots",
+		"system:node:w1":                    "robots",
+		"system:kube-controller-manager":    "robots",
+	}
+	for user, want := range cases {
+		got := ids(m.Match("c", &Event{Kind: KindExec, User: user}, false))
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("user %q matched %v, want [%s]", user, got, want)
+		}
+	}
+}
+
+func TestMixedKindsNeedAPILog(t *testing.T) {
+	for _, kinds := range [][]string{{KindCreate, KindGet}, {KindList, KindUpdate}, {KindCreate, KindList}} {
+		if !rule("mixed", func(r *Rule) { r.Spec.Kinds = kinds }).NeedsAPILog() {
+			t.Errorf("mixed kinds %v require API log", kinds)
+		}
+	}
+	if !rule("result", func(r *Rule) { r.Spec.Result = ResultDenied }).NeedsAPILog() {
+		t.Fatal("final result requires API log")
 	}
 }

@@ -32,7 +32,8 @@ var (
 )
 
 func Init() {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv(EnvMode)), "hub") {
+	trustHdr = strings.EqualFold(os.Getenv(EnvTrustHdr), "true") || os.Getenv(EnvTrustHdr) == "1" || strings.EqualFold(os.Getenv(EnvTrustHdr), "yes")
+	if mode := strings.ToLower(strings.TrimSpace(os.Getenv(EnvMode))); mode == "hub" || mode == "ingest" || mode == "audit-worker" {
 		hub = true
 		local = ""
 		log.Printf("[clusterctx] hub mode: no local cluster, every cluster is served through its kvisior")

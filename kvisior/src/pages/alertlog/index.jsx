@@ -122,7 +122,8 @@ export function AlertLog() {
                 <th>Rule</th>
                 <th>Namespace / Target</th>
                 <th>Syscall</th>
-                <th>Detail</th>
+                <th>User</th>
+                <th>Action</th>
                 <th style={{ textAlign: 'center' }} title="Delivered to an external webhook">Sent</th>
                 <th></th>
               </tr>
@@ -130,7 +131,7 @@ export function AlertLog() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
+                  <td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
                     {items.length === 0
                       ? 'No alerts yet — waiting for rule matches (or set the Alert checkbox on a policy).'
                       : `No alerts matching "${detFilter}".`}
@@ -152,10 +153,15 @@ export function AlertLog() {
                   <td style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'var(--accent)' }}>
                     {a.syscall || '—'}
                   </td>
+                  <td style={{ fontSize: 12, maxWidth: 220,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={a.user || ''}>
+                    {a.user || ''}
+                  </td>
                   <td style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 320,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={a.detail}>
-                    {a.detail || '—'}
+                      title={a.action ?? a.detail}>
+                    {(a.action ?? a.detail) || '—'}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     {a.deliveredAt

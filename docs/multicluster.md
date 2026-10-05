@@ -210,3 +210,6 @@ Verified end to end on the k8s-test stand: schema `0012-multicluster` applied to
 the live database, all thirteen pods healthy, and every event ingested since the
 upgrade carries `cluster_id = k8s-test` while the existing history stays under
 `default`.
+
+Durable audit delivery and separate ingestion/worker roles are described in
+[audit-delivery.md](audit-delivery.md).

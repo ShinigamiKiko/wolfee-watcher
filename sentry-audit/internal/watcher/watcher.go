@@ -42,23 +42,31 @@ func (w *Watcher) handlers(resource string) cache.ResourceEventHandlerFuncs {
 	return cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if w.ready.Load() {
-				w.emitEvent("create", resource, obj)
+				w.emitEvent("create", resource, obj, "")
 			}
 		},
-		UpdateFunc: func(_, obj interface{}) {
-			if w.ready.Load() {
-				w.emitEvent("update", resource, obj)
+		UpdateFunc: func(old, obj interface{}) {
+			if !w.ready.Load() {
+				return
 			}
+			previous := ""
+			if meta, ok := old.(metav1.Object); ok {
+				previous = meta.GetResourceVersion()
+			}
+			if meta, ok := obj.(metav1.Object); ok && previous != "" && previous == meta.GetResourceVersion() {
+				return
+			}
+			w.emitEvent("update", resource, obj, previous)
 		},
 		DeleteFunc: func(obj interface{}) {
 			if w.ready.Load() {
-				w.emitEvent("delete", resource, obj)
+				w.emitEvent("delete", resource, obj, "")
 			}
 		},
 	}
 }
 
-func (w *Watcher) emitEvent(action, resource string, obj interface{}) {
+func (w *Watcher) emitEvent(action, resource string, obj interface{}, previous string) {
 	meta, ok := obj.(metav1.Object)
 	if !ok {
 		if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
@@ -76,17 +84,18 @@ func (w *Watcher) emitEvent(action, resource string, obj interface{}) {
 		webhookType = "ValidatingWebhookConfiguration"
 	}
 	w.emit(webhook.AuditEvent{
-		ID:              fmt.Sprintf("informer-%s-%s-%s-%s", resource, action, meta.GetUID(), meta.GetResourceVersion()),
-		Timestamp:       time.Now().UTC(),
-		User:            "unknown",
-		ServiceAccount:  "unknown",
-		Kind:            webhook.EventKind(action),
-		Resource:        resource,
-		WebhookType:     webhookType,
-		Name:            meta.GetName(),
-		UID:             string(meta.GetUID()),
-		ResourceVersion: meta.GetResourceVersion(),
-		Source:          "kubernetes-informer",
-		Allowed:         true,
+		ID:                  fmt.Sprintf("informer-%s-%s-%s-%s", resource, action, meta.GetUID(), meta.GetResourceVersion()),
+		Timestamp:           time.Now().UTC(),
+		User:                "unknown",
+		ServiceAccount:      "unknown",
+		Kind:                webhook.EventKind(action),
+		Resource:            resource,
+		WebhookType:         webhookType,
+		Name:                meta.GetName(),
+		UID:                 string(meta.GetUID()),
+		ResourceVersion:     meta.GetResourceVersion(),
+		PrevResourceVersion: previous,
+		Source:              "kubernetes-informer",
+		Allowed:             true,
 	})
 }

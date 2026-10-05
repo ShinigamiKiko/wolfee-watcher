@@ -89,6 +89,18 @@ spec:
             - name: KVISIOR_ADVERTISE_URL
               value: {{ include "kvisior.advertiseURL" . | quote }}
             {{- end }}
+            - name: KVISIOR_AUDIT_WORKERS
+              value: {{ .Values.auditDelivery.workers | int64 | quote }}
+            - name: KVISIOR_AUDIT_INBOX_MAX_PENDING
+              value: {{ .Values.auditDelivery.maxPendingPerCluster | int64 | quote }}
+            - name: KVISIOR_AUDIT_CLUSTER_CONCURRENCY
+              value: {{ .Values.auditDelivery.perClusterConcurrency | int64 | quote }}
+            - name: KVISIOR_AUDIT_RECEIVE_BUDGET_BYTES
+              value: {{ .Values.auditDelivery.receiveBudgetBytes | int64 | quote }}
+            {{- if or .Values.auditDelivery.receiverURL .Values.auditDelivery.ingest.enabled }}
+            - name: KVISIOR_AUDIT_INGEST_URL
+              value: {{ .Values.auditDelivery.receiverURL | default (printf "http://kvisior-audit-ingest.%s.svc.cluster.local:80" (include "kvisior.namespace" .)) | quote }}
+            {{- end }}
             - name: KVISIOR_AUDIT_RETENTION_HOURS
               value: {{ .Values.ui.auditRetentionHours | quote }}
             {{- include "kvisior.clusterEnv" . | nindent 12 }}

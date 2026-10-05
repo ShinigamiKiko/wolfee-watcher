@@ -141,5 +141,5 @@ if [ $DO_KV -eq 1 ]; then
   out FEDERATION_TOKEN "$FEDERATION_TOKEN"
   out EDGE_TLS_CRT "$(cat "$dir/tls.crt")"
   out EDGE_TLS_KEY "$(cat "$dir/tls.key")"
-  out SCHEMA_VERSION "${SCHEMA_VERSION:-0013-audit-rules}"
+  out SCHEMA_VERSION "${SCHEMA_VERSION:-0016-audit-spool-status}"
 fi

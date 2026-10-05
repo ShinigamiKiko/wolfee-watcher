@@ -25,7 +25,8 @@ assessing reports:
   `INTERNAL_PUSH_SECRET`; an unset secret fails closed.
 - **`tracee-bridge:8080`** ingests Tracee events over plain HTTP by design
   (Tracee is a third-party hostNetwork DaemonSet that cannot present a client
-  cert). It is protected at the network layer via `networkPolicy.nodeCIDRs`.
+  cert). It is protected at the network layer: only node addresses may reach it
+  (`networkPolicy.nodeCIDRs`, or the node entities on Cilium).
   Reports about this path should account for that boundary.
 
 ## Supported versions

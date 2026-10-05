@@ -159,6 +159,8 @@ spec:
                 secretKeyRef:
                   name: kafka-cluster-id
                   key: cluster-id
+            - name: KAFKA_HEAP_OPTS
+              value: {{ .Values.kafka.heapOpts | default "-Xmx512m -Xms512m" | quote }}
 
           ports:
             - containerPort: 9092

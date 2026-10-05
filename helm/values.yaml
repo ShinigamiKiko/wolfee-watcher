@@ -9,7 +9,7 @@ global:
 
   certServerAddr: "https://cert-server.wolfee-watcher.svc.cluster.local:8090"
 
-  postgresDSN: "postgres://wolfee-watcher:wolfee-watcher@postgres.wolfee-watcher.svc.cluster.local:5432/wolfee-watcher?sslmode=disable"
+  postgresDSN: ""
 
   internalPushSecret: ""
   internalPushSecretSkipValidation: false
@@ -108,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0013-audit-rules"
+  schemaVersion: "0016-audit-spool-status"
   adminBootstrapPassword: ""
   resources:
     requests:
@@ -188,6 +188,16 @@ anomalyDetector:
 sentryAudit:
   enabled: true
   replicaCount: 2
+  delivery:
+    maxBytes: 1073741824
+    shedAt: 0.8
+    shedPerActor: 60
+    persistence:
+      enabled: true
+      size: 2Gi
+      storageClass: ""
+  webhookChangePolicy:
+    enabled: true
   auditLog:
     enabled: false
     path: /var/log/kubernetes/audit/audit.log
@@ -324,6 +334,7 @@ ui:
 kafka:
   enabled: true
   replicaCount: 2
+  heapOpts: "-Xmx512m -Xms512m"
 
   brokers: "kafka-0.kafka-headless.wolfee-watcher.svc.cluster.local:9092,kafka-1.kafka-headless.wolfee-watcher.svc.cluster.local:9092"
 
@@ -382,8 +393,60 @@ networkPolicy:
   enabled: true
   federationNamespaces: []
   ingressControllerNamespace: ingress-nginx
-  # Node subnet CIDRs. Tracee runs hostNetwork and reaches tracee-bridge:8080
-  # from node IPs, so these must be set when networkPolicy.enabled=true and
-  # traceeBridge.enabled=true — otherwise event ingestion is denied.
   nodeCIDRs: []
+  apiServerCIDRs: []
   extraIngress: []
+  cilium:
+    enabled: true
+    kubeAPIServerPorts:
+      - 443
+      - 6443
+    integrations:
+      ports:
+        - 443
+    extraEgress:
+      audit-runner:
+        - toFQDNs:
+            - matchName: avd.aquasec.com
+          toPorts:
+            - ports:
+                - port: "443"
+                  protocol: TCP
+      scanner-agent:
+        - toEntities:
+            - world
+          toPorts:
+            - ports:
+                - port: "443"
+                  protocol: TCP
+
+auditDelivery:
+  receiverURL: ""
+  workers: 4
+  maxPendingPerCluster: 10000
+  perClusterConcurrency: 4
+  receiveBudgetBytes: 25165824
+  ingest:
+    enabled: false
+    replicaCount: 2
+    workers: 0
+    maxConnections: 512
+    tlsSecret: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 1000m
+        memory: 256Mi
+  processor:
+    enabled: false
+    replicaCount: 2
+    workers: 4
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 2000m
+        memory: 512Mi

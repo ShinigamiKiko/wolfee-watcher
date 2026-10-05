@@ -2,6 +2,15 @@ package schema
 
 const AuditRulesVersion = "0013-audit-rules"
 
+type BuiltinRuleAddition struct {
+	Version string
+	IDs     []string
+}
+
+var BuiltinRuleAdditions = []BuiltinRuleAddition{
+	{Version: "0016-builtin-forwarded-spoof", IDs: []string{"forwarded-spoof"}},
+}
+
 func init() {
 	DDL = append(DDL, v0013DDL...)
 }

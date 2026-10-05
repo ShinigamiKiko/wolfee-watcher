@@ -58,7 +58,7 @@ func (c *Scoped) InsertAlerts(ctx context.Context, alerts []IncomingAlert) error
 			a.Namespace, a.Target, a.Syscall, a.Detail, a.Fingerprint, data,
 		})
 	}
-	_, err := c.s.pool.CopyFrom(ctx, pgx.Identifier{"alerts"},
+	_, err := c.db().CopyFrom(ctx, pgx.Identifier{"alerts"},
 		[]string{"cluster_id", "ts", "source", "det_type", "rule_id", "rule_name", "severity",
 			"namespace", "target", "syscall", "detail", "fingerprint", "data"},
 		pgx.CopyFromRows(rows))
@@ -89,14 +89,18 @@ func (s *Store) GetEnabledIntegration(ctx context.Context, kind string) (json.Ra
 	return cfg, true, nil
 }
 
+const auditEventsSinceWindow = 24 * time.Hour
+
 func (c *Scoped) QueryAuditEventsSince(ctx context.Context, since string, limit int) ([]json.RawMessage, string, error) {
 	sinceID, _ := strconv.ParseInt(since, 10, 64)
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
+	now := time.Now()
 	rows, err := c.s.pool.Query(ctx,
-		`SELECT id, data FROM audit_events WHERE cluster_id = $1 AND id > $2 ORDER BY id LIMIT $3`,
-		c.id, sinceID, limit)
+		`SELECT id, data FROM audit_events
+		  WHERE cluster_id = $1 AND id > $2 AND ts >= $4 AND ts <= $5 ORDER BY id LIMIT $3`,
+		pgx.QueryExecModeExec, c.id, sinceID, limit, now.Add(-auditEventsSinceWindow), now.Add(time.Hour))
 	if err != nil {
 		return nil, since, err
 	}

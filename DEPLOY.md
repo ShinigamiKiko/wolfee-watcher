@@ -117,8 +117,9 @@ and creates one login role per service with least-privilege table grants
 (`central/internal/schema/grants.go`). Services no longer execute any
 `CREATE TABLE` themselves and connect with their own credentials
 (`postgres.serviceCredentials` in `values.yaml` — override the default
-passwords for anything beyond a dev cluster). The database-owner DSN
-(`global.postgresDSN`) is used only by Postgres itself and this Job.
+passwords for anything beyond a dev cluster). This Job connects as the database
+owner: `global.postgresDSN` when set, otherwise `postgres.user`/`postgres.password`
+on the in-cluster or `postgres.external` server, with its TLS settings.
 
 The initial UI admin password comes from `centralMigrate.adminBootstrapPassword`;
 when left empty a one-shot password is generated and printed once in the Job

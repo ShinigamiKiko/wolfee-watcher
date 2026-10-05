@@ -108,7 +108,7 @@ export function Monitoring({ ruleNames, apiLogConnected, canEdit, onInvestigate,
   }, [events, search, dangerOnly, ruleNames]);
 
   const danger = useMemo(() => events.filter(isDanger).length, [events]);
-  const denied = useMemo(() => events.filter(e => !e.allowed).length, [events]);
+  const denied = useMemo(() => events.filter(e => e.allowed === false).length, [events]);
   const matched = useMemo(() => {
     const changes = events.filter(e => e.origin !== 'apilog');
     return changes.length ? Math.round(changes.filter(e => e.origin === 'both').length / changes.length * 100) : 0;
