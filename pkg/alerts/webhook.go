@@ -89,9 +89,19 @@ func SendWebhookIdempotent(ctx context.Context, hc *http.Client, kind string, cf
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("%s webhook: HTTP %d: %s", kind, resp.StatusCode, strings.TrimSpace(string(buf)))
+		return &WebhookStatusError{Kind: kind, StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(buf))}
 	}
 	return nil
+}
+
+type WebhookStatusError struct {
+	Kind       string
+	StatusCode int
+	Body       string
+}
+
+func (e *WebhookStatusError) Error() string {
+	return fmt.Sprintf("%s webhook: HTTP %d: %s", e.Kind, e.StatusCode, e.Body)
 }
 
 func webhookPayload(kind string, cfg WebhookConfig, alert AlertLog) (map[string]any, error) {

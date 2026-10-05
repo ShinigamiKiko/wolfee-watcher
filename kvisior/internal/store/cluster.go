@@ -108,7 +108,7 @@ func (s *Store) UpsertCluster(ctx context.Context, id, name, description string,
 		   name = EXCLUDED.name, description = EXCLUDED.description, enabled = EXCLUDED.enabled`,
 		id, name, description, enabled)
 	if err == nil {
-		s.clusterNames.Delete(id)
+		s.clusterNames.Invalidate(id)
 	}
 	return err
 }
@@ -119,7 +119,7 @@ func (s *Store) DeleteCluster(ctx context.Context, id string) error {
 	}
 	_, err := s.pool.Exec(ctx, `DELETE FROM clusters WHERE id = $1`, id)
 	if err == nil {
-		s.clusterNames.Delete(id)
+		s.clusterNames.Invalidate(id)
 	}
 	return err
 }

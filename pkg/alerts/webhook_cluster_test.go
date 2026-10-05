@@ -17,11 +17,11 @@ func TestWebhookClusterContextForBothDestinations(t *testing.T) {
 					alert := AlertLog{
 						ID: 42, ClusterID: cluster, ClusterName: "Production",
 						Timestamp: time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC),
-						Source: "tracee-bridge", DetType: "Runtime", RuleID: "shell",
+						Source:    "tracee-bridge", DetType: "Runtime", RuleID: "shell",
 						RuleName: "Shell spawned", Severity: severity,
 						Namespace: "prod", Target: "api-123", Syscall: "execve",
 						Detail: "unexpected shell",
-						Data: json.RawMessage(`{"src_ip":"private-address","user":"private-actor","node":"private-node"}`),
+						Data:   json.RawMessage(`{"src_ip":"private-address","user":"private-actor","node":"private-node"}`),
 					}
 					payload, err := webhookPayload(kind, WebhookConfig{}, alert)
 					if err != nil {

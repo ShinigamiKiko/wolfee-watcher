@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
+
+const investigationDataLimit = 256 << 10
 
 // ClusterLabel keeps the stable ID visible even when a display name is renamed.
 func (a AlertLog) ClusterLabel() string {
@@ -21,90 +21,122 @@ func (a AlertLog) ClusterLabel() string {
 	return name + " (" + id + ")"
 }
 
-// ResolveClusterName falls back to the stable ID if registration or the DB is
-// unavailable. The receiver and delivery worker determine identity, not Data.
-func ResolveClusterName(ctx context.Context, db interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, id string) string {
-	id = firstNonEmpty(id, "default")
-	if db == nil {
-		return id
-	}
-	var name string
-	if err := db.QueryRow(ctx, "SELECT name FROM clusters WHERE id = $1", id).Scan(&name); err != nil {
-		return id
-	}
-	return firstNonEmpty(name, id)
-}
-
 type InvestigationField struct {
 	Label string
 	Key   string
 	Value string
 }
 
+type investigationSpec struct {
+	label string
+	key   string
+	paths [][]string
+}
+
+var investigationSpecs = []investigationSpec{
+	newInvestigationSpec("Pod", "kubernetes.pod.name", "src_pod", "pod", "podName"),
+	newInvestigationSpec("Node", "host.name", "src_node", "node", "nodeName"),
+	newInvestigationSpec("Container", "container.name", "src_container", "container", "containerName"),
+	newInvestigationSpec("Process", "process.name", "src_process", "process", "processName"),
+	newInvestigationSpec("Source IP", "source.ip", "src_ip", "sourceIP", "sourceIPs", "podIP", "sourceIp"),
+	newInvestigationSpec("Source port", "source.port", "src_port", "sourcePort"),
+	newInvestigationSpec("Destination IP", "destination.ip", "dst_ip", "dest_ip", "destinationIP", "args.addr.sin_addr", "args.addr.sin6_addr"),
+	newInvestigationSpec("Destination port", "destination.port", "dst_port", "dest_port", "destinationPort", "args.addr.sin_port", "args.addr.sin6_port"),
+	newInvestigationSpec("User", "user.name", "user.username", "user", "actor"),
+	newInvestigationSpec("Process ID", "process.pid", "pid"),
+	newInvestigationSpec("Container ID", "container.id", "containerId", "containerID"),
+	newInvestigationSpec("Event ID", "event.id", "auditID", "auditId", "id"),
+	newInvestigationSpec("Action", "event.action", "kind", "verb"),
+	newInvestigationSpec("Resource", "resource.type", "resource", "objectRef.resource"),
+}
+
+func newInvestigationSpec(label, key string, paths ...string) investigationSpec {
+	spec := investigationSpec{label: label, key: key}
+	for _, path := range paths {
+		spec.paths = append(spec.paths, strings.Split(path, "."))
+	}
+	return spec
+}
+
 // InvestigationFields deliberately reads only location and actor metadata.
 // Request bodies, credentials and other raw payload fields are not exported.
 func (a AlertLog) InvestigationFields() []InvestigationField {
-	var data map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(a.Data))
-	decoder.UseNumber()
-	if decoder.Decode(&data) != nil {
+	if len(a.Data) == 0 || len(a.Data) > investigationDataLimit {
 		return nil
 	}
-	value := func(keys ...string) string {
-		for _, key := range keys {
-			var raw any = data
-			for _, part := range strings.Split(key, ".") {
-				object, ok := raw.(map[string]any)
-				if !ok {
-					raw = nil
-					break
-				}
-				raw = object[part]
-			}
-			switch v := raw.(type) {
-			case string:
-				if v = strings.TrimSpace(v); v != "" {
-					return v
-				}
-			case json.Number:
-				return v.String()
-			case []any:
-				var items []string
-				for _, item := range v {
-					if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-						items = append(items, strings.TrimSpace(s))
-					}
-				}
-				if len(items) > 0 {
-					return items[0]
-				}
+	var root map[string]json.RawMessage
+	if json.Unmarshal(a.Data, &root) != nil || len(root) == 0 {
+		return nil
+	}
+	objects := map[string]map[string]json.RawMessage{"": root}
+	var fields []InvestigationField
+	for _, spec := range investigationSpecs {
+		for _, path := range spec.paths {
+			if value := investigationValue(objects, path); value != "" {
+				fields = append(fields, InvestigationField{Label: spec.label, Key: spec.key, Value: value})
+				break
 			}
 		}
+	}
+	return fields
+}
+
+func investigationValue(objects map[string]map[string]json.RawMessage, path []string) string {
+	object := objects[""]
+	prefix := ""
+	for _, part := range path[:len(path)-1] {
+		if prefix == "" {
+			prefix = part
+		} else {
+			prefix += "." + part
+		}
+		next, seen := objects[prefix]
+		if !seen {
+			if raw, ok := object[part]; ok && json.Unmarshal(raw, &next) != nil {
+				next = nil
+			}
+			objects[prefix] = next
+		}
+		if next == nil {
+			return ""
+		}
+		object = next
+	}
+	raw := bytes.TrimSpace(object[path[len(path)-1]])
+	if len(raw) == 0 {
 		return ""
 	}
-	var fields []InvestigationField
-	add := func(label, key string, keys ...string) {
-		if v := value(keys...); v != "" {
-			fields = append(fields, InvestigationField{Label: label, Key: key, Value: v})
+	switch raw[0] {
+	case '"':
+		return investigationString(raw)
+	case '[':
+		var items []json.RawMessage
+		if json.Unmarshal(raw, &items) != nil {
+			return ""
+		}
+		for _, item := range items {
+			if value := investigationString(bytes.TrimSpace(item)); value != "" {
+				return value
+			}
+		}
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		var number json.Number
+		if json.Unmarshal(raw, &number) == nil {
+			return number.String()
 		}
 	}
-	add("Pod", "kubernetes.pod.name", "src_pod", "pod", "podName")
-	add("Node", "host.name", "src_node", "node", "nodeName")
-	add("Container", "container.name", "src_container", "container", "containerName")
-	add("Process", "process.name", "src_process", "process", "processName")
-	add("Source IP", "source.ip", "src_ip", "sourceIP", "sourceIPs", "podIP", "sourceIp")
-	add("Source port", "source.port", "src_port", "sourcePort")
-	add("Destination IP", "destination.ip", "dst_ip", "dest_ip", "destinationIP", "args.addr.sin_addr", "args.addr.sin6_addr")
-	add("Destination port", "destination.port", "dst_port", "dest_port", "destinationPort", "args.addr.sin_port", "args.addr.sin6_port")
-	add("User", "user.name", "user.username", "user", "actor")
-	add("Process ID", "process.pid", "pid")
-	add("Container ID", "container.id", "containerId", "containerID")
-	add("Event ID", "event.id", "auditID", "auditId", "id")
-	add("Action", "event.action", "kind", "verb")
-	add("Resource", "resource.type", "resource", "objectRef.resource")
-	return fields
+	return ""
+}
+
+func investigationString(raw json.RawMessage) string {
+	if len(raw) == 0 || raw[0] != '"' {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 // LogSecurityAlert is shared by the receiver, audit engine and DB fallbacks.

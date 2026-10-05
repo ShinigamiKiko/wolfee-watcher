@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	alertspkg "github.com/wolfee-watcher/pkg/alerts"
 )
 
 const (
@@ -35,7 +35,7 @@ const (
 
 type Store struct {
 	pool         *pgxpool.Pool
-	clusterNames sync.Map
+	clusterNames alertspkg.ClusterNameCache
 }
 
 type execer interface {

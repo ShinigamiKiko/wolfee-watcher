@@ -106,6 +106,13 @@ func (f *Forwarder) OnDeliveryFailed(fn func(batch []AlertLog)) {
 	f.q.OnDrop(fn)
 }
 
+func (f *Forwarder) SpillWhenFull() {
+	if f == nil || f.q == nil {
+		return
+	}
+	f.q.SpillWhenFull()
+}
+
 func (f *Forwarder) QueueStats() (buffered, capacity int, dropped, lost int64) {
 	if f == nil || f.q == nil {
 		return 0, 0, 0, 0
