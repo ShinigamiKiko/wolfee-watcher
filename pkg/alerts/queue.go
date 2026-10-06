@@ -52,6 +52,7 @@ type PushQueue[T any] struct {
 
 	deliver  func(ctx context.Context, batch []T) DeliveryResult
 	onDrop   atomic.Pointer[dropHandler[T]]
+	spill    atomic.Bool
 	maxBatch int
 	attempts int
 	backoff  time.Duration
@@ -97,6 +98,13 @@ func (q *PushQueue[T]) OnDrop(fn func(batch []T)) {
 	q.onDrop.Store(&dropHandler[T]{fn: fn})
 }
 
+func (q *PushQueue[T]) SpillWhenFull() {
+	if q == nil {
+		return
+	}
+	q.spill.Store(true)
+}
+
 func (q *PushQueue[T]) start() {
 	go q.loop()
 	go q.dropLoop()
@@ -118,6 +126,17 @@ func (q *PushQueue[T]) Push(item T) {
 	select {
 	case q.ch <- item:
 		return
+	default:
+	}
+	var spill chan T
+	if q.spill.Load() && q.onDrop.Load() != nil {
+		spill = q.dropCh
+	}
+	select {
+	case q.ch <- item:
+	case spill <- item:
+		q.dropped.Add(1)
+		q.LogErrOnce("queue full, handing items to fallback")
 	case <-q.stopCtx.Done():
 		q.dropped.Add(1)
 		q.LogErrOnce("queue stopped, handing item to fallback")

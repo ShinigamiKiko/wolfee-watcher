@@ -14,16 +14,19 @@ import (
 )
 
 type AlertLog struct {
-	Timestamp time.Time `json:"timestamp,omitempty"`
-	DetType   string    `json:"detType"`
-	Source    string    `json:"source"`
-	RuleID    string    `json:"ruleId,omitempty"`
-	RuleName  string    `json:"ruleName"`
-	Severity  string    `json:"severity,omitempty"`
-	Namespace string    `json:"namespace,omitempty"`
-	Target    string    `json:"target,omitempty"`
-	Syscall   string    `json:"syscall,omitempty"`
-	Detail    string    `json:"detail,omitempty"`
+	ID          int64     `json:"id,omitempty"`
+	ClusterID   string    `json:"clusterId,omitempty"`
+	ClusterName string    `json:"clusterName,omitempty"`
+	Timestamp   time.Time `json:"timestamp,omitempty"`
+	DetType     string    `json:"detType"`
+	Source      string    `json:"source"`
+	RuleID      string    `json:"ruleId,omitempty"`
+	RuleName    string    `json:"ruleName"`
+	Severity    string    `json:"severity,omitempty"`
+	Namespace   string    `json:"namespace,omitempty"`
+	Target      string    `json:"target,omitempty"`
+	Syscall     string    `json:"syscall,omitempty"`
+	Detail      string    `json:"detail,omitempty"`
 
 	Persist     bool            `json:"persist,omitempty"`
 	Fingerprint string          `json:"fingerprint,omitempty"`
@@ -89,6 +92,10 @@ func (f *Forwarder) Send(a AlertLog) {
 	if f == nil || f.url == "" {
 		return
 	}
+	a.ClusterID = clusterID()
+	if a.ClusterName == "" {
+		a.ClusterName = firstNonEmpty(os.Getenv("CLUSTER_NAME"), a.ClusterID)
+	}
 	f.q.Push(a)
 }
 
@@ -97,6 +104,13 @@ func (f *Forwarder) OnDeliveryFailed(fn func(batch []AlertLog)) {
 		return
 	}
 	f.q.OnDrop(fn)
+}
+
+func (f *Forwarder) SpillWhenFull() {
+	if f == nil || f.q == nil {
+		return
+	}
+	f.q.SpillWhenFull()
 }
 
 func (f *Forwarder) QueueStats() (buffered, capacity int, dropped, lost int64) {

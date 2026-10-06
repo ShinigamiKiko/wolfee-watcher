@@ -31,6 +31,8 @@ type Alerter struct {
 	pool *pgxpool.Pool
 	fwd  *alertspkg.Forwarder
 
+	clusterNames alertspkg.ClusterNameCache
+
 	mu    sync.RWMutex
 	rules []matcher.Rule
 
@@ -53,6 +55,7 @@ func New(ctx context.Context, pool *pgxpool.Pool) *Alerter {
 	}
 
 	a.fwd.OnDeliveryFailed(a.persistBatch)
+	a.fwd.SpillWhenFull()
 	if pool == nil {
 		return a
 	}
@@ -167,34 +170,23 @@ func alertSeverity(r matcher.Rule, ev *mapper.UIEvent) string {
 }
 
 func (a *Alerter) persistBatch(batch []alertspkg.AlertLog) {
-	for i := range batch {
-		a.persist(batch[i])
-	}
-}
-
-func (a *Alerter) persist(al alertspkg.AlertLog) {
 	if a.pool == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_, err := a.pool.Exec(ctx, `
-		INSERT INTO alerts
-		  (cluster_id, ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		mtls.ClusterID(), alertTimestamp(al.Timestamp), al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
-		al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data,
-	)
-	if err != nil {
-		log.Printf("[alerter] fallback persist error: %v", err)
+	clusterID := mtls.ClusterID()
+	errs := alertspkg.InsertFallbackAlerts(a.pool, clusterID, batch)
+	clusterName := ""
+	for i, al := range batch {
+		if errs[i] != nil {
+			log.Printf("[alerter] fallback persist error: %v", errs[i])
+			continue
+		}
+		if clusterName == "" {
+			clusterName = a.clusterNames.Resolve(context.Background(), a.pool, clusterID)
+		}
+		al.ClusterID, al.ClusterName = clusterID, clusterName
+		alertspkg.LogSecurityAlert(context.Background(), "tracee-bridge/alert-fallback", al)
 	}
-}
-
-func alertTimestamp(ts time.Time) time.Time {
-	if ts.IsZero() {
-		return time.Now()
-	}
-	return ts
 }
 
 func (a *Alerter) markFresh(fp string) bool {

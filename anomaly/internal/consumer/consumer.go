@@ -102,6 +102,7 @@ type Consumer struct {
 	anomalies atomic.Int64
 
 	emitFailures    atomic.Int64
+	clusterNames    alertspkg.ClusterNameCache
 	alertsPersisted atomic.Int64
 	alertsLost      atomic.Int64
 
@@ -165,6 +166,7 @@ func New(ctx context.Context, brokers []string, topic string, pool *pgxpool.Pool
 		ctx:       ctx,
 	}
 	c.fwd.OnDeliveryFailed(c.persistAlertBatch)
+	c.fwd.SpillWhenFull()
 	go c.cleanupMemfd()
 	return c
 }
@@ -177,21 +179,11 @@ func (c *Consumer) persistAlertBatch(batch []alertspkg.AlertLog) {
 			"reason", "no_database_pool")
 		return
 	}
-	for i := range batch {
-		al := batch[i]
-		ts := al.Timestamp
-		if ts.IsZero() {
-			ts = time.Now()
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		_, err := c.pool.Exec(ctx, `
-			INSERT INTO alerts
-			  (cluster_id, ts, source, det_type, rule_id, rule_name, severity, namespace, target, syscall, detail, fingerprint, data)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-			mtls.ClusterID(), ts, al.Source, al.DetType, al.RuleID, al.RuleName, al.Severity, al.Namespace,
-			al.Target, al.Syscall, al.Detail, al.Fingerprint, al.Data)
-		cancel()
-		if err != nil {
+	clusterID := mtls.ClusterID()
+	errs := alertspkg.InsertFallbackAlerts(c.pool, clusterID, batch)
+	clusterName := ""
+	for i, al := range batch {
+		if err := errs[i]; err != nil {
 			c.alertsLost.Add(1)
 			slog.Error("alert_fallback_persist_failed",
 				"component", "anomaly-detector/consumer",
@@ -202,6 +194,11 @@ func (c *Consumer) persistAlertBatch(batch []alertspkg.AlertLog) {
 			continue
 		}
 		c.alertsPersisted.Add(1)
+		if clusterName == "" {
+			clusterName = c.clusterNames.Resolve(context.Background(), c.pool, clusterID)
+		}
+		al.ClusterID, al.ClusterName = clusterID, clusterName
+		alertspkg.LogSecurityAlert(context.Background(), "anomaly-detector/alert-fallback", al)
 	}
 }
 

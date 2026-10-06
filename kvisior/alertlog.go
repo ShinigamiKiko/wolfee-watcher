@@ -5,31 +5,15 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/store"
+	alertspkg "github.com/wolfee-watcher/pkg/alerts"
 )
 
-type alertLogReq struct {
-	Timestamp time.Time `json:"timestamp,omitempty"`
-	DetType   string    `json:"detType"`
-	Source    string    `json:"source"`
-	RuleID    string    `json:"ruleId,omitempty"`
-	RuleName  string    `json:"ruleName"`
-	Severity  string    `json:"severity,omitempty"`
-	Namespace string    `json:"namespace,omitempty"`
-	Target    string    `json:"target,omitempty"`
-	Syscall   string    `json:"syscall,omitempty"`
-	Detail    string    `json:"detail,omitempty"`
-
-	Persist     bool            `json:"persist,omitempty"`
-	Fingerprint string          `json:"fingerprint,omitempty"`
-	Data        json.RawMessage `json:"data,omitempty"`
-}
+type alertLogReq = alertspkg.AlertLog
 
 func makeAlertLogHandler(st *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -63,8 +47,19 @@ func handleAlertLog(st *store.Store, w http.ResponseWriter, r *http.Request) {
 		alerts = wrapper.Alerts
 	}
 
+	cl := clusterctx.ForPush(r)
+	if cl == "" {
+		cl = store.DefaultCluster
+	}
+	name := st.ClusterDisplayName(r.Context(), cl)
 	persist := make([]store.IncomingAlert, 0, len(alerts))
 	for _, req := range alerts {
+		// Identity belongs to the authenticated push context, never the JSON body.
+		req.ID = 0
+		if req.Timestamp.IsZero() {
+			req.Timestamp = time.Now().UTC()
+		}
+		req.ClusterID, req.ClusterName = cl, name
 		logAlert(req)
 		if req.Persist {
 			persist = append(persist, store.IncomingAlert{
@@ -82,7 +77,6 @@ func handleAlertLog(st *store.Store, w http.ResponseWriter, r *http.Request) {
 		} else {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-			cl := clusterctx.ForPush(r)
 			st.EnsureClusterCached(cl)
 			if err := st.Cluster(cl).InsertAlerts(ctx, persist); err != nil {
 				log.Printf("[alert-log] persist %d alert(s): %v", len(persist), err)
@@ -95,46 +89,5 @@ func handleAlertLog(st *store.Store, w http.ResponseWriter, r *http.Request) {
 }
 
 func logAlert(req alertLogReq) {
-	detType := strings.ToLower(req.DetType)
-	if detType == "" {
-		detType = "alert"
-	}
-	name := req.RuleName
-	if name == "" {
-		name = req.RuleID
-	}
-	sev := strings.ToUpper(req.Severity)
-
-	attrs := []slog.Attr{
-		slog.String("component", "kvisior/alert-log"),
-		slog.String("event.kind", "alert"),
-		slog.String("alert.type", detType),
-		slog.String("alert.source", req.Source),
-	}
-	appendIf := func(key, val string) {
-		if val != "" {
-			attrs = append(attrs, slog.String(key, val))
-		}
-	}
-	appendIf("rule.name", name)
-	appendIf("rule.id", req.RuleID)
-	appendIf("alert.severity", sev)
-	appendIf("namespace", req.Namespace)
-	appendIf("target", req.Target)
-	appendIf("syscall", req.Syscall)
-	appendIf("detail", req.Detail)
-	appendIf("alert.fingerprint", req.Fingerprint)
-
-	slog.LogAttrs(context.Background(), alertLevel(sev), "security_alert", attrs...)
-}
-
-func alertLevel(sev string) slog.Level {
-	switch sev {
-	case "CRITICAL", "HIGH":
-		return slog.LevelError
-	case "LOW", "INFO", "INFORMATIONAL":
-		return slog.LevelInfo
-	default:
-		return slog.LevelWarn
-	}
+	alertspkg.LogSecurityAlert(context.Background(), "kvisior/alert-log", req)
 }

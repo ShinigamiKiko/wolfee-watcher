@@ -3,20 +3,31 @@ package alerts
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
 	webhookDeliveryInterval   = 10 * time.Second
-	webhookDeliveryBatch      = 25
+	webhookDeliveryBatch      = 50
+	webhookDeliveryBudget     = time.Minute
+	webhookDeliveryLookback   = 10000
 	webhookDeliveryLockKey    = int64(0x77770003)
 	defaultWebhookMaxAttempts = 10
 )
+
+type webhookDB interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Begin(context.Context) (pgx.Tx, error)
+}
 
 type webhookDelivery struct {
 	alertID  int64
@@ -60,23 +71,57 @@ func deliverWebhookBatch(ctx context.Context, pool *pgxpool.Pool, hc *http.Clien
 		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, webhookDeliveryLockKey)
 	}()
 
-	items, err := loadWebhookDeliveries(ctx, conn)
-	if err != nil {
-		slog.Error("alert_webhook_load_failed", "component", "pkg/alerts/webhook-delivery", "error", err)
-		return
-	}
 	maxAttempts := webhookMaxAttempts()
-	for _, item := range items {
-		if ctx.Err() != nil {
+	deadline := time.Now().Add(webhookDeliveryBudget)
+	throttled := []string{}
+	for ctx.Err() == nil && time.Now().Before(deadline) {
+		items, err := loadWebhookDeliveries(ctx, conn, throttled)
+		if err != nil {
+			slog.Error("alert_webhook_load_failed", "component", "pkg/alerts/webhook-delivery", "error", err)
 			return
 		}
+		queues := make(map[string][]webhookDelivery)
+		for _, item := range items {
+			queues[item.kind] = append(queues[item.kind], item)
+		}
+		var (
+			wg      sync.WaitGroup
+			mu      sync.Mutex
+			handled int
+		)
+		for kind, queue := range queues {
+			wg.Add(1)
+			go func(kind string, queue []webhookDelivery) {
+				defer wg.Done()
+				n, limited := deliverWebhookQueue(ctx, pool, hc, queue, maxAttempts)
+				mu.Lock()
+				handled += n
+				if limited {
+					throttled = append(throttled, kind)
+				}
+				mu.Unlock()
+			}(kind, queue)
+		}
+		wg.Wait()
+		if len(items) < webhookDeliveryBatch || handled == 0 {
+			return
+		}
+	}
+}
+
+func deliverWebhookQueue(ctx context.Context, db webhookDB, hc *http.Client, queue []webhookDelivery, maxAttempts int) (handled int, throttled bool) {
+	for _, item := range queue {
+		if ctx.Err() != nil {
+			return handled, false
+		}
 		if item.attempts >= maxAttempts {
-			if markErr := markWebhookExhausted(ctx, conn, item, maxAttempts); markErr != nil {
+			if markErr := markWebhookExhausted(ctx, db, item, maxAttempts); markErr != nil {
 				slog.Error("alert_webhook_exhaust_record_failed",
 					"component", "pkg/alerts/webhook-delivery", "alert_id", item.alertID,
 					"integration", item.kind, "error", markErr)
 				continue
 			}
+			handled++
 			slog.Error("alert_webhook_gave_up",
 				"component", "pkg/alerts/webhook-delivery", "alert_id", item.alertID,
 				"integration", item.kind, "attempts", item.attempts,
@@ -85,18 +130,19 @@ func deliverWebhookBatch(ctx context.Context, pool *pgxpool.Pool, hc *http.Clien
 		}
 
 		attempts := item.attempts + 1
-		if err := reserveWebhookAttempt(ctx, conn, item, attempts); err != nil {
+		if err := reserveWebhookAttempt(ctx, db, item, attempts); err != nil {
 			slog.Error("alert_webhook_reserve_failed",
 				"component", "pkg/alerts/webhook-delivery", "alert_id", item.alertID,
 				"integration", item.kind, "error", err)
 			continue
 		}
+		handled++
 
 		sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err := SendWebhookIdempotent(sendCtx, hc, item.kind, item.config, item.alert, webhookIdempotencyKey(item))
 		cancel()
 		if err != nil {
-			if markErr := markWebhookFailure(ctx, conn, item, err); markErr != nil {
+			if markErr := markWebhookFailure(ctx, db, item, err); markErr != nil {
 				slog.Error("alert_webhook_failure_record_failed",
 					"component", "pkg/alerts/webhook-delivery", "alert_id", item.alertID,
 					"integration", item.kind, "error", markErr)
@@ -105,14 +151,19 @@ func deliverWebhookBatch(ctx context.Context, pool *pgxpool.Pool, hc *http.Clien
 				"component", "pkg/alerts/webhook-delivery", "alert_id", item.alertID,
 				"integration", item.kind, "attempt", attempts,
 				"max_attempts", maxAttempts, "error", err)
+			var statusErr *WebhookStatusError
+			if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusTooManyRequests {
+				return handled, true
+			}
 			continue
 		}
-		if err := markWebhookDelivered(ctx, conn, item, attempts); err != nil {
+		if err := markWebhookDelivered(ctx, db, item, attempts); err != nil {
 			slog.Error("alert_webhook_success_record_failed",
 				"component", "pkg/alerts/webhook-delivery", "alert_id", item.alertID,
 				"integration", item.kind, "error", err)
 		}
 	}
+	return handled, false
 }
 
 func webhookMaxAttempts() int {
@@ -123,24 +174,56 @@ func webhookIdempotencyKey(item webhookDelivery) string {
 	return fmt.Sprintf("wolfee-alert-%d-%s", item.alertID, item.kind)
 }
 
-func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDelivery, error) {
+func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn, throttled []string) ([]webhookDelivery, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT a.id, a.ts, a.source, a.det_type,
+		WITH enabled AS (
+			SELECT i.kind, i.config, i.updated_at,
+			       COALESCE((SELECT MAX(d.alert_id) FROM alert_deliveries d WHERE d.integration = i.kind), 0) AS seen
+			  FROM integrations i
+			 WHERE i.enabled = TRUE
+			   AND i.kind IN ('discord', 'mattermost')
+			   AND i.kind <> ALL($3::text[])
+			   AND NULLIF(i.config->>'webhook_url', '') IS NOT NULL
+		), pending AS (
+			(SELECT d.alert_id, d.integration, d.attempts
+			   FROM alert_deliveries d
+			   JOIN enabled e ON e.kind = d.integration
+			  WHERE d.delivered_at IS NULL
+			    AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= NOW())
+			  ORDER BY d.alert_id
+			  LIMIT $1)
+			UNION ALL
+			SELECT fresh.id, e.kind, 0
+			  FROM enabled e
+			  CROSS JOIN LATERAL (
+				SELECT CASE
+				         WHEN e.seen > 0 THEN e.seen
+				         ELSE COALESCE((SELECT f.id FROM alerts f WHERE f.ts >= e.updated_at ORDER BY f.ts LIMIT 1),
+				                       9223372036854775807)
+				       END - $2 AS after_id) b
+			  CROSS JOIN LATERAL (
+				SELECT a.id
+				  FROM alerts a
+				 WHERE a.id > b.after_id
+				   AND a.ts >= e.updated_at
+				   AND NOT EXISTS (
+				         SELECT 1 FROM alert_deliveries d
+				          WHERE d.alert_id = a.id AND d.alert_id > b.after_id AND d.integration = e.kind)
+				 ORDER BY a.id
+				 LIMIT $1) fresh
+		)
+		SELECT a.id, a.ts, a.cluster_id,
+		       COALESCE(NULLIF(BTRIM(c.name), ''), a.cluster_id), a.source, a.det_type,
 		       COALESCE(a.rule_id, ''), COALESCE(a.rule_name, ''), COALESCE(a.severity, ''),
 		       COALESCE(a.namespace, ''), COALESCE(a.target, ''), COALESCE(a.syscall, ''),
-		       COALESCE(a.detail, ''), i.kind, i.config, COALESCE(d.attempts, 0)
-		  FROM alerts a
-		  JOIN integrations i
-		    ON i.enabled = TRUE
-		   AND i.kind IN ('discord', 'mattermost')
-		   AND NULLIF(i.config->>'webhook_url', '') IS NOT NULL
-		  LEFT JOIN alert_deliveries d
-		    ON d.alert_id = a.id AND d.integration = i.kind
-		 WHERE d.delivered_at IS NULL
-		   AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= NOW())
-		   AND (d.alert_id IS NOT NULL OR a.ts >= i.updated_at)
-		 ORDER BY a.id, i.kind
-		 LIMIT $1`, webhookDeliveryBatch)
+		       COALESCE(a.detail, ''),
+		       e.kind, e.config, p.attempts
+		  FROM pending p
+		  JOIN alerts a ON a.id = p.alert_id
+		  JOIN enabled e ON e.kind = p.integration
+		  LEFT JOIN clusters c ON c.id = a.cluster_id
+		 ORDER BY a.id, e.kind
+		 LIMIT $1`, webhookDeliveryBatch, webhookDeliveryLookback, throttled)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +233,8 @@ func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDe
 		var item webhookDelivery
 		var raw json.RawMessage
 		if err := rows.Scan(
-			&item.alertID, &item.alert.Timestamp, &item.alert.Source, &item.alert.DetType,
+			&item.alertID, &item.alert.Timestamp, &item.alert.ClusterID, &item.alert.ClusterName,
+			&item.alert.Source, &item.alert.DetType,
 			&item.alert.RuleID, &item.alert.RuleName, &item.alert.Severity,
 			&item.alert.Namespace, &item.alert.Target, &item.alert.Syscall,
 			&item.alert.Detail, &item.kind, &raw, &item.attempts,
@@ -160,14 +244,15 @@ func loadWebhookDeliveries(ctx context.Context, conn *pgxpool.Conn) ([]webhookDe
 		if err := json.Unmarshal(raw, &item.config); err != nil || item.config.WebhookURL == "" {
 			continue
 		}
+		item.alert.ID = item.alertID
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
-func reserveWebhookAttempt(ctx context.Context, conn *pgxpool.Conn, item webhookDelivery, attempts int) error {
+func reserveWebhookAttempt(ctx context.Context, db webhookDB, item webhookDelivery, attempts int) error {
 	backoff := webhookRetryBackoff(attempts)
-	_, err := conn.Exec(ctx, `
+	_, err := db.Exec(ctx, `
 		INSERT INTO alert_deliveries
 		  (alert_id, integration, attempts, delivered_at, next_attempt_at, last_error)
 		VALUES ($1, $2, $3, NULL, NOW() + $4::interval, NULL)
@@ -179,8 +264,8 @@ func reserveWebhookAttempt(ctx context.Context, conn *pgxpool.Conn, item webhook
 	return err
 }
 
-func markWebhookDelivered(ctx context.Context, conn *pgxpool.Conn, item webhookDelivery, attempts int) error {
-	tx, err := conn.Begin(ctx)
+func markWebhookDelivered(ctx context.Context, db webhookDB, item webhookDelivery, attempts int) error {
+	tx, err := db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -203,12 +288,12 @@ func markWebhookDelivered(ctx context.Context, conn *pgxpool.Conn, item webhookD
 	return tx.Commit(ctx)
 }
 
-func markWebhookFailure(ctx context.Context, conn *pgxpool.Conn, item webhookDelivery, sendErr error) error {
+func markWebhookFailure(ctx context.Context, db webhookDB, item webhookDelivery, sendErr error) error {
 	message := []rune(sendErr.Error())
 	if len(message) > 500 {
 		message = message[:500]
 	}
-	_, err := conn.Exec(ctx, `
+	_, err := db.Exec(ctx, `
 		UPDATE alert_deliveries
 		   SET last_error = $3
 		 WHERE alert_id = $1 AND integration = $2`,
@@ -216,8 +301,8 @@ func markWebhookFailure(ctx context.Context, conn *pgxpool.Conn, item webhookDel
 	return err
 }
 
-func markWebhookExhausted(ctx context.Context, conn *pgxpool.Conn, item webhookDelivery, maxAttempts int) error {
-	_, err := conn.Exec(ctx, `
+func markWebhookExhausted(ctx context.Context, db webhookDB, item webhookDelivery, maxAttempts int) error {
+	_, err := db.Exec(ctx, `
 		INSERT INTO alert_deliveries
 		  (alert_id, integration, attempts, delivered_at, next_attempt_at, last_error)
 		VALUES ($1, $2, $3, NULL, 'infinity'::timestamptz, $4)

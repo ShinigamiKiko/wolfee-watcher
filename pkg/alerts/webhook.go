@@ -89,9 +89,19 @@ func SendWebhookIdempotent(ctx context.Context, hc *http.Client, kind string, cf
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("%s webhook: HTTP %d: %s", kind, resp.StatusCode, strings.TrimSpace(string(buf)))
+		return &WebhookStatusError{Kind: kind, StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(buf))}
 	}
 	return nil
+}
+
+type WebhookStatusError struct {
+	Kind       string
+	StatusCode int
+	Body       string
+}
+
+func (e *WebhookStatusError) Error() string {
+	return fmt.Sprintf("%s webhook: HTTP %d: %s", e.Kind, e.StatusCode, e.Body)
 }
 
 func webhookPayload(kind string, cfg WebhookConfig, alert AlertLog) (map[string]any, error) {
@@ -118,8 +128,16 @@ func webhookPayload(kind string, cfg WebhookConfig, alert AlertLog) (map[string]
 	}
 
 	fields := alertFields(alert)
-	description := safeText(alert.Detail, 3500)
-	title := fmt.Sprintf("🚨 %s · %s", severity, safeText(name, 180))
+	title := safeText(fmt.Sprintf("🚨 %s · %s", severity, safeText(name, 180)), 256)
+	// Discord counts title, description, fields and footer toward 6000 characters.
+	budget := 6000 - webhookTextLength(title) - webhookTextLength("Wolfee-Watcher")
+	for _, field := range fields {
+		budget -= webhookTextLength(field.name) + webhookTextLength(field.value)
+	}
+	if budget > 3500 {
+		budget = 3500
+	}
+	description := safeText(alert.Detail, budget)
 	if kind == WebhookDiscord {
 		discordFields := make([]map[string]any, 0, len(fields))
 		for _, field := range fields {
@@ -178,14 +196,23 @@ type webhookField struct {
 }
 
 func alertFields(alert AlertLog) []webhookField {
-	fields := make([]webhookField, 0, 5)
+	fields := make([]webhookField, 0, 20)
 	add := func(name, value string) {
 		if value = strings.TrimSpace(value); value != "" {
-			fields = append(fields, webhookField{name: name, value: safeText(value, 900)})
+			fields = append(fields, webhookField{name: name, value: safeText(value, 256)})
 		}
+	}
+	add("Cluster", alert.ClusterLabel())
+	add("Cluster ID", firstNonEmpty(alert.ClusterID, "default"))
+	if alert.ID > 0 {
+		add("Alert ID", fmt.Sprintf("%d", alert.ID))
+	}
+	if !alert.Timestamp.IsZero() {
+		add("Time (UTC)", alert.Timestamp.UTC().Format(time.RFC3339))
 	}
 	add("Source", alert.Source)
 	add("Type", alert.DetType)
+	add("Rule ID", alert.RuleID)
 	location := alert.Namespace
 	if alert.Target != "" {
 		if location != "" {
@@ -199,13 +226,26 @@ func alertFields(alert AlertLog) []webhookField {
 }
 
 func summary(alert AlertLog, name string) string {
-	parts := []string{name}
+	parts := []string{
+		"Cluster: " + safeText(alert.ClusterLabel(), 256),
+		"Cluster ID: " + firstNonEmpty(alert.ClusterID, "default"),
+		safeText(name, 180),
+	}
+	if alert.ID > 0 {
+		parts = append(parts, fmt.Sprintf("Alert #%d", alert.ID))
+	}
+	if !alert.Timestamp.IsZero() {
+		parts = append(parts, alert.Timestamp.UTC().Format(time.RFC3339))
+	}
 	if alert.Source != "" {
-		parts = append(parts, "from "+alert.Source)
+		parts = append(parts, "from "+safeText(alert.Source, 120))
+	}
+	if alert.RuleID != "" {
+		parts = append(parts, "Rule ID: "+safeText(alert.RuleID, 120))
 	}
 	if alert.Namespace != "" || alert.Target != "" {
 		location := strings.Trim(strings.TrimSpace(alert.Namespace)+" / "+strings.TrimSpace(alert.Target), " / ")
-		parts = append(parts, "at "+location)
+		parts = append(parts, "at "+safeText(location, 256))
 	}
 	if alert.Detail != "" {
 		parts = append(parts, alert.Detail)
@@ -222,13 +262,40 @@ func applyMattermostOverrides(payload map[string]any, cfg WebhookConfig) {
 	}
 }
 
+// Count UTF-16 units conservatively for Discord, including supplementary Unicode.
+func webhookTextLength(value string) int {
+	n := 0
+	for _, r := range value {
+		n++
+		if r > 0xffff {
+			n++
+		}
+	}
+	return n
+}
+
 func safeText(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
 	value = strings.ReplaceAll(strings.TrimSpace(value), "@", "@\u200b")
-	runes := []rune(value)
-	if len(runes) <= limit {
+	if webhookTextLength(value) <= limit {
 		return value
 	}
-	return string(runes[:limit-1]) + "…"
+	var clipped strings.Builder
+	n := 0
+	for _, r := range value {
+		width := 1
+		if r > 0xffff {
+			width = 2
+		}
+		if n+width > limit-1 {
+			break
+		}
+		clipped.WriteRune(r)
+		n += width
+	}
+	return clipped.String() + "…"
 }
 
 func firstNonEmpty(values ...string) string {
