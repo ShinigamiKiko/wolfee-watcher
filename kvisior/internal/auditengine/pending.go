@@ -166,14 +166,12 @@ func (e *Engine) mergeAdmission(ctx context.Context, scoped *store.Scoped, clust
 	}
 	if top, marked := topRule(hits); marked && sevRank[top.Severity] > sevRank[strings.ToLower(row.Sev)] {
 		sev := strings.ToUpper(top.Severity)
-		if err := scoped.MarkAuditEventRule(ctx, row.ID, row.Ts, top.ID, sev); err != nil {
+		if err := scoped.MarkAuditEventRule(ctx, row, ev.ID, top.ID, sev); err != nil {
 			return fmt.Errorf("audit event mark: %w", err)
 		}
 		update["ruleId"], update["ruleName"], update["sev"] = top.ID, top.Name, sev
 	}
-	if data, err := json.Marshal(update); err == nil {
-		pub.Publish(hub.Event{Cluster: cluster, Type: "audit_event_update", Data: data})
-	}
+	publishUpdate(pub, cluster, ev.ID, row, update)
 	alerts, err := e.act(ctx, scoped, cluster, key, merged, row.Data, hits, pub)
 	if err != nil {
 		return err
@@ -182,4 +180,19 @@ func (e *Engine) mergeAdmission(ctx context.Context, scoped *store.Scoped, clust
 		return fmt.Errorf("audit alerts: %w", err)
 	}
 	return nil
+}
+
+func publishUpdate(pub hub.Publisher, cluster, uid string, row store.AuditEventRow, update map[string]interface{}) {
+	if row.NewlySilenced {
+		if data, err := json.Marshal(map[string]string{"id": uid}); err == nil {
+			pub.Publish(hub.Event{Cluster: cluster, Type: "audit_event_silenced", Data: data})
+		}
+		return
+	}
+	if row.Silenced {
+		return
+	}
+	if data, err := json.Marshal(update); err == nil {
+		pub.Publish(hub.Event{Cluster: cluster, Type: "audit_event_update", Data: data})
+	}
 }

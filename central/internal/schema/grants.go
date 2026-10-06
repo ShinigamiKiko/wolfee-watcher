@@ -59,6 +59,8 @@ var Grants = map[string][]TableGrant{
 		{"audit_log_settings", "SELECT, INSERT, UPDATE, DELETE"},
 		{"audit_log_nodes", "SELECT, INSERT, UPDATE, DELETE"},
 		{"audit_trusted_proxies", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_silences", "SELECT, INSERT, UPDATE, DELETE"},
+		{"audit_silenced_events", "SELECT, INSERT, UPDATE, DELETE"},
 		{"forensic_events", "SELECT, INSERT, DELETE"},
 		{"binary_exec_events", "SELECT, INSERT, DELETE"},
 		{"forensic_watches", "SELECT, INSERT, UPDATE, DELETE"},

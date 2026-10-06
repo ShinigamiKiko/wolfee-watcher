@@ -241,13 +241,36 @@ API: `GET/POST /api/audit/rules`, `PUT/PATCH/DELETE /api/audit/rules/{id}`,
 
 ## The page
 
-Audit logs has three tabs.
+Audit logs has four tabs.
 
 - **Monitoring** shows a bounded window of the newest events (100, 200 or 500), updated live while the
   page is open. Dangerous actions are highlighted. Search works inside the window.
 - **Investigation** searches stored events by time range, user, namespace, action, resource, source
-  IP and result, with a histogram and grouping by user or by object.
+  IP and result, with a histogram and grouping by user or by object. Results show 50 or 100 rows per
+  page in a fixed-height window. The browser holds at most 1000 rows at a time and fetches the next
+  thousand when you page past them; the current thousand, the page and the query are kept in
+  localStorage, so switching tabs or reloading returns to the same place. A new search, Clear or a
+  different grouping discards them.
 - **Rules** lists, adds, edits and deletes rules.
+- **Silent** lists silences with the number of events each one hid.
+
+## Silences
+
+A silence hides noisy events from Monitoring and Investigation. It matches on any combination of
+action, object (`resource/namespace/name`), user and source IP; Object and User accept `*`, Source IP
+takes an address or a CIDR range. It lasts 1 hour, 8 hours, 24 hours, 7 days or until removed. Create
+one in the Silent tab, or select an event and choose "Silence events like this".
+
+A matching event is still stored in `audit_events`, and rules, violations and alerts work for it as
+before. A copy goes to `audit_silenced_events`, and Monitoring, Investigation and their counts leave
+it out; the Silent tab shows only how many events each silence hid and when the last one arrived. An event that matches only once the API log adds its source IP is silenced at that moment and
+leaves the live window. Ending a silence stops it for new events and keeps what it hid; deleting it
+returns those events to Monitoring and Investigation. Silences belong to the selected cluster; hidden
+events follow audit retention.
+
+API: `GET/POST /api/audit/silences`, `POST /api/audit/silences/{id}/end`,
+`DELETE /api/audit/silences/{id}`, `GET /v1/audit/silenced?silence=&before=&limit=`. Changes need the
+admin role. Schema `0017-audit-silences`.
 
 ## Retention
 

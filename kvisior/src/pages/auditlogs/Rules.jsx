@@ -249,7 +249,7 @@ export function Rules({ rules, stats, builtinMissing, canEdit, draft, onDraftUse
       </p>
       {loadError && <p className="al-err">Could not load the rules: {loadError}</p>}
       {form && <RuleForm initial={form.rule} editing={form.editing} onSave={save} onCancel={() => setForm(null)} />}
-      <div className="al-scrollx">
+      <div className="al-win al-results" tabIndex={0} aria-label="Audit rules">
         <table className="data-table al-rules">
           <thead><tr><th>Enabled</th><th>Alert</th><th>Rule</th><th>Severity</th><th>Violations</th><th>Last seen</th><th /></tr></thead>
           <tbody>

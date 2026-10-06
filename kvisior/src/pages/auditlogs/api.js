@@ -39,3 +39,8 @@ export const updateRule   = (id, rule)  => send('PUT', `/api/audit/rules/${encod
 export const patchRule    = (id, flags) => send('PATCH', `/api/audit/rules/${encodeURIComponent(id)}`, flags);
 export const deleteRule   = id          => send('DELETE', `/api/audit/rules/${encodeURIComponent(id)}`);
 export const restoreRules = ()          => send('POST', '/api/audit/rules/restore');
+
+export const fetchSilences = ()        => apiFetch('/api/audit/silences').then(parse);
+export const createSilence = silence   => send('POST', '/api/audit/silences', silence);
+export const endSilence    = id        => send('POST', `/api/audit/silences/${encodeURIComponent(id)}/end`);
+export const deleteSilence = id        => send('DELETE', `/api/audit/silences/${encodeURIComponent(id)}`);

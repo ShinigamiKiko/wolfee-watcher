@@ -108,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0016-audit-spool-status"
+  schemaVersion: "0017-audit-silences"
   adminBootstrapPassword: ""
   resources:
     requests:
