@@ -149,7 +149,7 @@ function objectLines(ev) {
   return lines.join('\n');
 }
 
-export function EventDetail({ ev, ruleNames, apiLogConnected, onInvestigate, onCreateRule, canEdit }) {
+export function EventDetail({ ev, ruleNames, apiLogConnected, onInvestigate, onCreateRule, onSilence, canEdit }) {
   const [sub, setSub] = useState('summary');
   if (!ev) {
     return <aside className="al-pane"><div className="al-blank">Select an event to see who did it, from where, and what changed.</div></aside>;
@@ -195,6 +195,7 @@ export function EventDetail({ ev, ruleNames, apiLogConnected, onInvestigate, onC
             <div className="al-pane-actions">
               <button className="btn btn-outline al-btn-sm" onClick={() => onInvestigate(ev)}>Investigate this user</button>
               {canEdit && <button className="btn btn-outline al-btn-sm" onClick={() => onCreateRule(ev)}>Create rule from event</button>}
+              {canEdit && onSilence && <button className="btn btn-outline al-btn-sm" onClick={() => onSilence(ev)}>Silence events like this</button>}
             </div>
           </>
         )}

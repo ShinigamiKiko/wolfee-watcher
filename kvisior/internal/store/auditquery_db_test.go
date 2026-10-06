@@ -41,7 +41,7 @@ func TestAuditUIQueriesNeverCacheAGenericPlan(t *testing.T) {
 		if _, _, err := scope.AuditEventHistogram(ctx, q, 24); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := scope.AuditEventGroups(ctx, q, "user", 10); err != nil {
+		if _, err := scope.AuditEventGroups(ctx, q, "user", 10, 0); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := scope.AuditSources(ctx); err != nil {

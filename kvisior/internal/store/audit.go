@@ -219,11 +219,12 @@ func (c *Scoped) WriteAuditViolation(ctx context.Context, v AuditViolationWrite)
 }
 
 type AuditEventInsert struct {
-	Raw    json.RawMessage
-	Event  *auditrules.Event
-	Origin string
-	RuleID string
-	Sev    string
+	Raw      json.RawMessage
+	Event    *auditrules.Event
+	Origin   string
+	RuleID   string
+	Sev      string
+	Silenced bool
 }
 
 func nullable(s string) interface{} {
@@ -235,7 +236,9 @@ func nullable(s string) interface{} {
 
 func (c *Scoped) InsertAuditEvents(ctx context.Context, items []AuditEventInsert) error {
 	rows := make([][]interface{}, 0, len(items))
-	for _, it := range items {
+	stored := make([]int, 0, len(items))
+	stamps := make([]time.Time, 0, len(items))
+	for i, it := range items {
 		ev := it.Event
 		ts := ev.Timestamp
 		if ts.IsZero() {
@@ -245,6 +248,8 @@ func (c *Scoped) InsertAuditEvents(ctx context.Context, items []AuditEventInsert
 		if !keep {
 			continue
 		}
+		stored = append(stored, i)
+		stamps = append(stamps, ts)
 		rows = append(rows, []interface{}{
 			c.id, ts, ev.User, ev.Kind, ev.Namespace, ev.Resource, it.Raw,
 			nullable(ev.ID), ev.Name, nullable(ev.SourceIP()), ev.Allowed, it.Origin,
@@ -254,11 +259,29 @@ func (c *Scoped) InsertAuditEvents(ctx context.Context, items []AuditEventInsert
 	if len(rows) == 0 {
 		return nil
 	}
-	_, err := c.db().CopyFrom(ctx, pgx.Identifier{"audit_events"},
+	if _, err := c.db().CopyFrom(ctx, pgx.Identifier{"audit_events"},
 		[]string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data",
 			"event_uid", "name", "source_ip", "allowed", "origin", "rule_id", "sev"},
-		pgx.CopyFromRows(rows))
-	return err
+		pgx.CopyFromRows(rows)); err != nil {
+		return err
+	}
+	silences, err := c.activeAuditSilences(ctx)
+	if err != nil {
+		return fmt.Errorf("audit silences: %w", err)
+	}
+	for n, i := range stored {
+		it := &items[i]
+		id := firstSilence(silences, it.Event)
+		if id == 0 || it.Event.ID == "" {
+			continue
+		}
+		if err := c.storeSilencedEvent(ctx, id, silencedRow{uid: it.Event.ID, origin: it.Origin, ruleID: it.RuleID, sev: it.Sev,
+			ts: stamps[n], ev: it.Event, data: it.Raw}); err != nil {
+			return fmt.Errorf("silenced audit event: %w", err)
+		}
+		it.Silenced = true
+	}
+	return nil
 }
 
 type AuditEnrichment struct {
@@ -306,6 +329,7 @@ func (s *Store) StaleAuditPending(ctx context.Context, cluster string, grace tim
 }
 
 func (c *Scoped) MergeAdmissionDetails(ctx context.Context, eventUID string, around time.Time, details map[string]interface{}) (AuditEventRow, bool, error) {
+	uid := eventUID
 	patch, err := json.Marshal(details)
 	if err != nil {
 		return AuditEventRow{}, false, err
@@ -334,19 +358,25 @@ func (c *Scoped) MergeAdmissionDetails(ctx context.Context, eventUID string, aro
 	if sev != nil {
 		row.Sev = *sev
 	}
+	if err := c.silenceStoredEvent(ctx, &row, uid); err != nil {
+		return row, true, fmt.Errorf("silenced audit event: %w", err)
+	}
 	return row, true, nil
 }
 
 type AuditEventRow struct {
-	ID     int64           `json:"id"`
-	Ts     time.Time       `json:"ts"`
-	RuleID string          `json:"ruleId,omitempty"`
-	Sev    string          `json:"sev,omitempty"`
-	Origin string          `json:"origin,omitempty"`
-	Data   json.RawMessage `json:"data"`
+	ID            int64           `json:"id"`
+	Ts            time.Time       `json:"ts"`
+	RuleID        string          `json:"ruleId,omitempty"`
+	Sev           string          `json:"sev,omitempty"`
+	Origin        string          `json:"origin,omitempty"`
+	Data          json.RawMessage `json:"data"`
+	Silenced      bool            `json:"-"`
+	NewlySilenced bool            `json:"-"`
 }
 
 func (c *Scoped) EnrichAuditEvent(ctx context.Context, en AuditEnrichment) (AuditEventRow, bool, error) {
+	uid := en.EventUID
 	ip := en.ClientIP
 	if ip == "" {
 		ip = auditrules.ClientIP(en.SourceIPs, nil)
@@ -401,13 +431,24 @@ func (c *Scoped) EnrichAuditEvent(ctx context.Context, en AuditEnrichment) (Audi
 	if sev != nil {
 		row.Sev = *sev
 	}
+	if err := c.silenceStoredEvent(ctx, &row, uid); err != nil {
+		return row, true, fmt.Errorf("silenced audit event: %w", err)
+	}
 	return row, true, nil
 }
 
-func (c *Scoped) MarkAuditEventRule(ctx context.Context, id int64, ts time.Time, ruleID, sev string) error {
-	_, err := c.db().Exec(ctx,
+func (c *Scoped) MarkAuditEventRule(ctx context.Context, row AuditEventRow, uid, ruleID, sev string) error {
+	if _, err := c.db().Exec(ctx,
 		`UPDATE audit_events SET rule_id = $4, sev = $5 WHERE cluster_id = $1 AND id = $2 AND ts = $3`,
-		pgx.QueryExecModeExec, c.id, id, ts, ruleID, sev)
+		pgx.QueryExecModeExec, c.id, row.ID, row.Ts, ruleID, sev); err != nil {
+		return err
+	}
+	if !row.Silenced {
+		return nil
+	}
+	_, err := c.db().Exec(ctx,
+		`UPDATE audit_silenced_events SET rule_id = $3, sev = $4 WHERE cluster_id = $1 AND event_uid = $2`,
+		c.id, uid, ruleID, sev)
 	return err
 }
 
@@ -440,7 +481,7 @@ func likeEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-func (c *Scoped) auditWhere(q AuditEventQuery) (string, []interface{}) {
+func (c *Scoped) auditWhere(ctx context.Context, q AuditEventQuery) (string, []interface{}) {
 	args := []interface{}{c.id}
 	where := []string{"cluster_id = $1"}
 	add := func(cond string, v interface{}) {
@@ -489,7 +530,7 @@ func (c *Scoped) auditWhere(q AuditEventQuery) (string, []interface{}) {
 	if q.DangerOnly {
 		where = append(where, auditDangerExpr)
 	}
-	return strings.Join(where, " AND "), args
+	return strings.Join(where, " AND ") + c.silencedFilter(ctx), args
 }
 
 func (c *Scoped) QueryAuditEvents(ctx context.Context, q AuditEventQuery) ([]AuditEventRow, error) {
@@ -497,7 +538,7 @@ func (c *Scoped) QueryAuditEvents(ctx context.Context, q AuditEventQuery) ([]Aud
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
-	where, args := c.auditWhere(q)
+	where, args := c.auditWhere(ctx, q)
 	if !q.BeforeTs.IsZero() {
 		args = append(args, q.BeforeTs, q.BeforeID)
 		where += fmt.Sprintf(" AND (ts, id) < ($%d, $%d)", len(args)-1, len(args))
@@ -537,7 +578,7 @@ func (c *Scoped) AuditEventHistogram(ctx context.Context, q AuditEventQuery, buc
 		return nil, 0, errors.New("store: histogram needs a time range")
 	}
 	step := span / time.Duration(buckets)
-	where, args := c.auditWhere(q)
+	where, args := c.auditWhere(ctx, q)
 	args = append(args, q.From, step.Seconds(), buckets)
 	n := len(args)
 	rows, err := c.db().Query(ctx, fmt.Sprintf(
@@ -578,9 +619,14 @@ type AuditGroup struct {
 	Object    *AuditObject `json:"object,omitempty"`
 }
 
-func (c *Scoped) AuditEventGroups(ctx context.Context, q AuditEventQuery, by string, limit int) ([]AuditGroup, error) {
-	if limit <= 0 || limit > 500 {
+const AuditGroupsPageMax = 1000
+
+func (c *Scoped) AuditEventGroups(ctx context.Context, q AuditEventQuery, by string, limit, offset int) ([]AuditGroup, error) {
+	if limit <= 0 || limit > AuditGroupsPageMax {
 		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	key, other, object := `"user"`, `source_ip`, `'', '', ''`
 	if by == "object" {
@@ -588,15 +634,15 @@ func (c *Scoped) AuditEventGroups(ctx context.Context, q AuditEventQuery, by str
 		other = `"user"`
 		object = `COALESCE(MIN(resource), ''), COALESCE(MIN(ns), ''), COALESCE(MIN(name), '')`
 	}
-	where, args := c.auditWhere(q)
-	args = append(args, limit)
+	where, args := c.auditWhere(ctx, q)
+	args = append(args, limit, offset)
 	rows, err := c.db().Query(ctx, fmt.Sprintf(
 		`SELECT %s AS k, COUNT(*), COUNT(*) FILTER (WHERE %s),
 		        COUNT(*) FILTER (WHERE COALESCE(allowed, TRUE) = FALSE),
 		        COALESCE((ARRAY_AGG(DISTINCT %s) FILTER (WHERE %s IS NOT NULL AND %s != ''))[1:6], '{}'),
 		        MAX(ts), %s
-		   FROM audit_events WHERE %s GROUP BY k ORDER BY 2 DESC LIMIT $%d`,
-		key, auditDangerExpr, other, other, other, object, where, len(args)), append([]interface{}{pgx.QueryExecModeExec}, args...)...)
+		   FROM audit_events WHERE %s GROUP BY k ORDER BY 2 DESC, k LIMIT $%d OFFSET $%d`,
+		key, auditDangerExpr, other, other, other, object, where, len(args)-1, len(args)), append([]interface{}{pgx.QueryExecModeExec}, args...)...)
 	if err != nil {
 		return nil, err
 	}

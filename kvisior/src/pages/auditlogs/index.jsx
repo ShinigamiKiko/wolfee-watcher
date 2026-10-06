@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
-import { fetchRules, fetchSources } from './api';
+import { fetchRules, fetchSilences, fetchSources } from './api';
 import { Monitoring } from './Monitoring';
 import { Investigation } from './Investigation';
 import { Rules } from './Rules';
+import { Silent, silenceObject } from './Silent';
 import { RESOURCES } from './shared';
 
-const TABS = [['monitoring', 'Monitoring'], ['investigation', 'Investigation'], ['rules', 'Rules']];
+const TABS = [['monitoring', 'Monitoring'], ['investigation', 'Investigation'], ['rules', 'Rules'], ['silent', 'Silent']];
 
 export function AuditLogs() {
   const { isAdmin } = usePerms();
@@ -19,6 +20,9 @@ export function AuditLogs() {
   const [danger, setDanger] = useState(0);
   const [preset, setPreset] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [silences, setSilences] = useState([]);
+  const [silencesError, setSilencesError] = useState('');
+  const [silenceDraft, setSilenceDraft] = useState(null);
 
   const reloadRules = useCallback(async () => {
     try {
@@ -33,6 +37,22 @@ export function AuditLogs() {
   }, []);
 
   useEffect(() => { reloadRules(); }, [reloadRules]);
+
+  const reloadSilences = useCallback(async () => {
+    try {
+      const data = await fetchSilences();
+      setSilences(data.silences || []);
+      setSilencesError('');
+    } catch (e) {
+      setSilencesError(e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadSilences();
+    const t = setInterval(reloadSilences, 30000);
+    return () => clearInterval(t);
+  }, [reloadSilences]);
 
   useEffect(() => {
     let alive = true;
@@ -61,6 +81,12 @@ export function AuditLogs() {
     setTab('rules');
   }, []);
   const clearDraft = useCallback(() => setDraft(null), []);
+  const silenceFromEvent = useCallback(ev => {
+    setSilenceDraft({ action: ev.kind, object: silenceObject(ev), user: ev.user, sourceIP: '' });
+    setTab('silent');
+  }, []);
+  const clearSilenceDraft = useCallback(() => setSilenceDraft(null), []);
+  const activeSilences = useMemo(() => silences.filter(s => s.active).length, [silences]);
 
   return (
     <div className="page active al-page">
@@ -92,22 +118,28 @@ export function AuditLogs() {
             {label}
             {id === 'monitoring' && danger > 0 && <span className="al-count hot">{danger}</span>}
             {id === 'rules' && rules.length > 0 && <span className="al-count">{rules.length}</span>}
+            {id === 'silent' && activeSilences > 0 && <span className="al-count">{activeSilences}</span>}
           </div>
         ))}
       </div>
 
       {tab === 'monitoring' && (
         <Monitoring ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={isAdmin}
-                    onInvestigate={investigate} onCreateRule={createFromEvent}
+                    onInvestigate={investigate} onCreateRule={createFromEvent} onSilence={silenceFromEvent}
                     onOlder={() => setTab('investigation')} onDangerCount={setDanger} />
       )}
       {tab === 'investigation' && (
         <Investigation ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={isAdmin}
-                       retentionHours={sources?.retentionHours} preset={preset} onCreateRule={createFromEvent} />
+                       retentionHours={sources?.retentionHours} preset={preset} onCreateRule={createFromEvent}
+                       onSilence={silenceFromEvent} />
       )}
       {tab === 'rules' && (
         <Rules rules={rules} stats={stats} builtinMissing={builtinMissing} canEdit={isAdmin}
                draft={draft} onDraftUsed={clearDraft} reload={reloadRules} loadError={rulesError} />
+      )}
+      {tab === 'silent' && (
+        <Silent silences={silences} loadError={silencesError} canEdit={isAdmin} reload={reloadSilences}
+                draft={silenceDraft} onDraftUsed={clearSilenceDraft} />
       )}
     </div>
   );

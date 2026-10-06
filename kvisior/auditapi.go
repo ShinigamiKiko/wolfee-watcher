@@ -291,7 +291,8 @@ func auditGroupsHandler(st *store.Store) http.HandlerFunc {
 			by = "user"
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		rows, err := st.Cluster(clusterctx.ForRead(r)).AuditEventGroups(r.Context(), auditQueryFromRequest(r), by, limit)
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		rows, err := st.Cluster(clusterctx.ForRead(r)).AuditEventGroups(r.Context(), auditQueryFromRequest(r), by, limit, offset)
 		if err != nil {
 			slog.Error("audit_groups_failed", "component", "kvisior/audit-api", "error", err)
 			writeAPIError(w, http.StatusInternalServerError, "query failed")

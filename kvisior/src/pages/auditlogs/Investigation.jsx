@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getCluster } from '../../data/cluster';
 import { fetchEvents, fetchGroups, fetchSummary } from './api';
+import { PAGE_SIZES, clearResults, loadPageSize, loadResults, savePageSize, saveResults } from './resultStore';
+import { useFitToPage } from './useFitToPage';
 import { EventDetail, EventTable, Empty, KINDS, fmtDate, normalizeEvent, num } from './shared';
 
-const PAGE = 50;
 const BLANK = { hours: 24, user: '', ns: '', kind: '', resource: '', ip: '', result: '', danger: false, obj: null };
 
 const objLabel = o => [o.resource, o.ns, o.name || '*'].filter(Boolean).join('/');
@@ -59,78 +61,166 @@ function Histogram({ buckets, hours }) {
   );
 }
 
-export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHours, preset, onCreateRule }) {
-  const [filters, setFilters] = useState({ ...BLANK, ...(preset || {}) });
-  const [applied, setApplied] = useState({ ...BLANK, ...(preset || {}) });
-  const [view, setView] = useState('events');
-  const [events, setEvents] = useState([]);
-  const [groups, setGroups] = useState([]);
+
+const BLOCK = 1000;
+const SERVER_PAGE = 500;
+const VIEWS = [['events', 'Events'], ['users', 'By user'], ['objects', 'By object']];
+
+const queryParams = f => ({
+  hours: f.hours, user: f.user.trim(), ns: f.ns.trim(), kind: f.kind,
+  resource: f.resource.trim(), ip: f.ip.trim(), result: f.result, danger: f.danger,
+  objResource: f.obj?.resource, objNs: f.obj?.ns, objName: f.obj?.name,
+});
+
+async function fetchBlock(view, applied, start) {
+  const params = queryParams(applied);
+  if (view === 'events') {
+    const rows = [];
+    let cursor = start;
+    do {
+      const d = await fetchEvents({ ...params, limit: SERVER_PAGE, ...(cursor || {}) });
+      rows.push(...(d.events || []));
+      cursor = d.next || null;
+    } while (cursor && rows.length < BLOCK);
+    return { rows, hasMore: !!cursor, nextStart: cursor };
+  }
+  const offset = start || 0;
+  const d = await fetchGroups({ ...params, by: view === 'users' ? 'user' : 'object', limit: BLOCK, offset });
+  const rows = d.groups || [];
+  return { rows, hasMore: rows.length === BLOCK, nextStart: offset + BLOCK };
+}
+
+export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHours, preset, onCreateRule, onSilence }) {
+  const cluster = getCluster();
+  const restored = useRef(preset ? null : loadResults(cluster));
+  const initial = restored.current?.applied || { ...BLANK, ...(preset || {}) };
+  const [filters, setFilters] = useState(initial);
+  const [run, setRun] = useState(() => ({ applied: initial, view: restored.current?.view || 'events', id: restored.current?.id || Date.now() }));
   const [summary, setSummary] = useState({ buckets: [], total: 0 });
-  const [cursors, setCursors] = useState([null]);
-  const [next, setNext] = useState(null);
+  const [block, setBlock] = useState(() => restored.current?.block || null);
+  const [starts, setStarts] = useState(() => restored.current?.starts || [null]);
+  const [page, setPage] = useState(() => restored.current?.page || 0);
+  const [pageSize, setPageSize] = useState(loadPageSize);
   const [selected, setSelected] = useState(null);
-  const [state, setState] = useState({ loading: true, error: '' });
+  const [state, setState] = useState({ loading: !restored.current, error: '' });
+  const loadSeq = useRef(0);
+  const winRef = useRef(null);
+  const pagerRef = useRef(null);
+  const { applied, view } = run;
+
+  const loadBlock = useCallback(async (index, startList, landOnLast) => {
+    const seq = ++loadSeq.current;
+    setState({ loading: true, error: '' });
+    try {
+      const got = await fetchBlock(view, applied, startList[index] ?? null);
+      if (seq !== loadSeq.current) return;
+      const nextStarts = startList.slice(0, index + 1);
+      if (got.hasMore) nextStarts[index + 1] = got.nextStart;
+      const pages = Math.max(1, Math.ceil(got.rows.length / pageSize));
+      setBlock({ index, rows: got.rows, hasMore: got.hasMore });
+      setStarts(nextStarts);
+      setPage(landOnLast ? pages - 1 : 0);
+      setState({ loading: false, error: '' });
+    } catch (e) {
+      if (seq === loadSeq.current) setState({ loading: false, error: e.message });
+    }
+  }, [view, applied, pageSize]);
 
   useEffect(() => {
     if (!preset) return;
     const merged = { ...BLANK, ...preset };
-    setFilters(merged); setApplied(merged); setView('events'); setCursors([null]);
+    setFilters(merged);
+    setRun({ applied: merged, view: 'events', id: Date.now() });
   }, [preset]);
-
-  const params = useCallback(f => ({
-    hours: f.hours, user: f.user.trim(), ns: f.ns.trim(), kind: f.kind,
-    resource: f.resource.trim(), ip: f.ip.trim(), result: f.result, danger: f.danger,
-    objResource: f.obj?.resource, objNs: f.obj?.ns, objName: f.obj?.name,
-  }), []);
 
   useEffect(() => {
     let alive = true;
-    fetchSummary({ ...params(applied), buckets: applied.hours <= 6 ? 12 : 24 })
+    fetchSummary({ ...queryParams(applied), buckets: applied.hours <= 6 ? 12 : 24 })
       .then(d => alive && setSummary({ buckets: d.buckets || [], total: d.total || 0 }))
       .catch(() => alive && setSummary({ buckets: [], total: 0 }));
     return () => { alive = false; };
-  }, [applied, params]);
+  }, [applied]);
 
-  const cursor = cursors[cursors.length - 1];
   useEffect(() => {
-    let alive = true;
-    setState({ loading: true, error: '' });
-    const done = () => alive && setState({ loading: false, error: '' });
-    const fail = e => alive && setState({ loading: false, error: e.message });
-    if (view === 'events') {
-      fetchEvents({ ...params(applied), limit: PAGE, ...(cursor || {}) })
-        .then(d => {
-          if (!alive) return;
-          setEvents((d.events || []).map(r => normalizeEvent(r.data, r)));
-          setNext(d.next || null);
-        }).then(done).catch(fail);
-    } else {
-      fetchGroups({ ...params(applied), by: view === 'users' ? 'user' : 'object', limit: 200 })
-        .then(d => alive && setGroups(d.groups || [])).then(done).catch(fail);
+    if (restored.current && restored.current.id === run.id) {
+      restored.current = null;
+      return;
     }
-    return () => { alive = false; };
-  }, [applied, view, cursor, params]);
+    restored.current = null;
+    clearResults();
+    setBlock(null);
+    setSelected(null);
+    loadBlock(0, [null], false);
+  }, [run]);
 
-  const apply = f => { setApplied(f); setCursors([null]); setSelected(null); };
-  const submit = e => { e.preventDefault(); apply(filters); };
+  useEffect(() => {
+    if (block) saveResults(cluster, { applied, view, id: run.id, block, starts, page });
+  }, [cluster, applied, view, run.id, block, starts, page]);
+
+  const rows = block?.rows || [];
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const visibleRaw = useMemo(() => rows.slice(page * pageSize, (page + 1) * pageSize), [rows, page, pageSize]);
+  const events = useMemo(() => (view === 'events' ? visibleRaw.map(r => normalizeEvent(r.data, r)) : []), [view, visibleRaw]);
+  const offset = (block?.index || 0) * BLOCK + page * pageSize;
+  const totalKnown = view === 'events' ? summary.total : (block && !block.hasMore ? block.index * BLOCK + rows.length : null);
+  const canPrev = page > 0 || (block?.index || 0) > 0;
+  const canNext = page < pages - 1 || !!block?.hasMore;
+
+  const goNext = () => {
+    if (page < pages - 1) setPage(page + 1);
+    else if (block?.hasMore) loadBlock(block.index + 1, starts, false);
+  };
+  const goPrev = () => {
+    if (page > 0) setPage(page - 1);
+    else if (block?.index > 0) loadBlock(block.index - 1, starts, true);
+  };
+  const changeSize = size => {
+    const first = page * pageSize;
+    setPageSize(size);
+    savePageSize(size);
+    setPage(Math.floor(first / size));
+  };
+
+  const search = f => setRun(r => ({ applied: f, view: r.view, id: Date.now() }));
+  const submit = e => { e.preventDefault(); search(filters); };
   const set = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
-  const clear = () => { setFilters(BLANK); apply(BLANK); };
-  const switchView = v => { setView(v); setCursors([null]); setSelected(null); };
+  const clear = () => { setFilters(BLANK); search(BLANK); };
+  const switchView = v => { if (v !== view) setRun(r => ({ ...r, view: v, id: Date.now() })); };
   const drill = g => {
     const f = view === 'users' ? { ...applied, user: g.key }
       : g.object ? { ...applied, obj: g.object }
       : { ...applied, resource: g.key.split('/')[0] };
-    setFilters(f); apply(f); setView('events');
+    setFilters(f);
+    setRun({ applied: f, view: 'events', id: Date.now() });
   };
-  const clearObject = () => { const f = { ...applied, obj: null }; setFilters(f); apply(f); };
+  const clearObject = () => { const f = { ...applied, obj: null }; setFilters(f); search(f); };
+  const drillUser = user => { const f = { ...filters, user }; setFilters(f); search(f); };
   const copy = () => navigator.clipboard?.writeText(JSON.stringify(events.map(e => e.raw), null, 2)).catch(() => {});
 
   const ranges = [[1, 'Last hour'], [6, 'Last 6 hours'], [24, 'Last 24 hours'], [72, 'Last 3 days'], [168, 'Last 7 days'], [336, 'Last 14 days']]
     .filter(([h]) => h <= Math.max(24, retentionHours || 24));
-  const page = cursors.length;
   const emptyText = state.loading ? 'Searching…'
     : state.error ? `The search failed: ${state.error}. Try a shorter time range.`
     : 'No events match. Widen the time range or clear a filter.';
+  const noun = view === 'events' ? 'events' : view === 'users' ? 'users' : 'objects';
+  const range = rows.length
+    ? `${num(offset + 1)}–${num(offset + visibleRaw.length)} of ${totalKnown != null ? num(totalKnown) : `${num((block?.index || 0) * BLOCK + rows.length)}+`} ${noun}`
+    : `0 ${noun}`;
+
+  const fitStyle = useFitToPage(winRef, pagerRef, [view, !!applied.obj]);
+
+  const pager = (
+    <div className="al-pager" ref={pagerRef}>
+      <span>{range}{state.loading && rows.length ? ' · loading…' : ''}</span>
+      <div>
+        <div className="al-seg" role="group" aria-label="Rows per page">
+          {PAGE_SIZES.map(n => <button key={n} type="button" aria-pressed={pageSize === n} onClick={() => changeSize(n)}>{n} rows</button>)}
+        </div>
+        <button className="btn btn-outline al-btn-sm" disabled={!canPrev || state.loading} onClick={goPrev}>Previous</button>
+        <button className="btn btn-outline al-btn-sm" disabled={!canNext || state.loading} onClick={goNext}>Next</button>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -160,9 +250,9 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
         <button className="btn btn-primary al-btn" type="submit" form="al-query">Search</button>
         <button className="btn btn-outline al-btn" type="button" onClick={clear}>Clear</button>
         <label className="al-check"><input type="checkbox" checked={filters.danger}
-          onChange={e => { const f = { ...filters, danger: e.target.checked }; setFilters(f); apply(f); }} />Dangerous only</label>
+          onChange={e => { const f = { ...filters, danger: e.target.checked }; setFilters(f); search(f); }} />Dangerous only</label>
         <div className="al-seg" role="group" aria-label="Group results">
-          {[['events', 'Events'], ['users', 'By user'], ['objects', 'By object']].map(([id, label]) => (
+          {VIEWS.map(([id, label]) => (
             <button key={id} aria-pressed={view === id} onClick={() => switchView(id)}>{label}</button>
           ))}
         </div>
@@ -171,7 +261,7 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
             Object: {objLabel(applied.obj)} ✕
           </button>
         )}
-        {view === 'events' && <button className="btn btn-outline al-btn" type="button" onClick={copy}>Copy page as JSON</button>}
+        {view === 'events' && <button className="btn btn-outline al-btn" type="button" onClick={copy} disabled={!events.length}>Copy page as JSON</button>}
       </div>
 
       <div className="al-chart">
@@ -186,52 +276,47 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
       {view === 'events' ? (
         <div className="al-mon">
           <div className="al-winwrap">
-            <div className="al-scrollx">
+            <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Search results">
               <EventTable events={events} selectedKey={selected?.key} onSelect={setSelected} withDate
                           ruleNames={ruleNames} emptyText={emptyText} />
             </div>
-            <div className="al-pager">
-              <span>Page {page}{events.length ? `, ${num(events.length)} events shown` : ''}</span>
-              <div>
-                <button className="btn btn-outline al-btn-sm" disabled={page === 1} onClick={() => setCursors(c => c.slice(0, -1))}>Previous</button>
-                <button className="btn btn-outline al-btn-sm" disabled={!next} onClick={() => setCursors(c => [...c, next])}>Next</button>
-              </div>
-            </div>
+            {pager}
           </div>
           <EventDetail ev={selected} ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={canEdit}
-                       onInvestigate={ev => drillUser(ev.user, setFilters, apply, filters)} onCreateRule={onCreateRule} />
+                       onInvestigate={ev => drillUser(ev.user)} onCreateRule={onCreateRule}
+                       onSilence={onSilence} />
         </div>
       ) : (
-        <div className="al-scrollx">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{view === 'users' ? 'User' : 'Object'}</th><th>Events</th><th>Dangerous</th><th>Denied</th>
-                <th>{view === 'users' ? 'Source IPs' : 'Users'}</th><th>Last seen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.length === 0 && <tr className="al-norow"><td colSpan={6}><div className="al-blank">{emptyText}</div></td></tr>}
-              {groups.map(g => (
-                <tr key={g.key} tabIndex={0} onClick={() => drill(g)} onKeyDown={e => { if (e.key === 'Enter') drill(g); }}>
-                  <td className={view === 'users' ? '' : 'al-mono'}>{g.key || <Empty>unknown</Empty>}</td>
-                  <td className="al-mono">{num(g.events)}</td>
-                  <td className="al-mono">{g.dangerous ? <span className="al-tag al-tag-high">{num(g.dangerous)}</span> : '0'}</td>
-                  <td className="al-mono">{num(g.denied)}</td>
-                  <td className="al-mono">{g.others?.length ? g.others.slice(0, 3).join(', ') + (g.others.length > 3 ? ` +${g.others.length - 3}` : '') : <Empty />}</td>
-                  <td className="al-mono">{fmtDate(g.lastSeen)}</td>
+        <>
+          <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Grouped results">
+            <table className="data-table al-groups">
+              <thead>
+                <tr>
+                  <th>{view === 'users' ? 'User' : 'Object'}</th><th>Events</th><th>Dangerous</th><th>Denied</th>
+                  <th>{view === 'users' ? 'Source IPs' : 'Users'}</th><th>Last seen</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visibleRaw.length === 0 && <tr className="al-norow"><td colSpan={6}><div className="al-blank">{emptyText}</div></td></tr>}
+                {visibleRaw.map(g => {
+                  const others = g.others?.length ? g.others.slice(0, 3).join(', ') + (g.others.length > 3 ? ` +${g.others.length - 3}` : '') : '';
+                  return (
+                    <tr key={g.key} tabIndex={0} onClick={() => drill(g)} onKeyDown={e => { if (e.key === 'Enter') drill(g); }}>
+                      <td className={`al-clip al-groupkey${view === 'users' ? '' : ' al-mono'}`} title={g.key}>{g.key || <Empty>unknown</Empty>}</td>
+                      <td className="al-mono">{num(g.events)}</td>
+                      <td className="al-mono">{g.dangerous ? <span className="al-tag al-tag-high">{num(g.dangerous)}</span> : '0'}</td>
+                      <td className="al-mono">{num(g.denied)}</td>
+                      <td className="al-mono al-clip al-others" title={(g.others || []).join(', ')}>{others || <Empty />}</td>
+                      <td className="al-mono">{fmtDate(g.lastSeen)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {pager}
+        </>
       )}
     </div>
   );
-}
-
-function drillUser(user, setFilters, apply, filters) {
-  const f = { ...filters, user };
-  setFilters(f);
-  apply(f);
 }

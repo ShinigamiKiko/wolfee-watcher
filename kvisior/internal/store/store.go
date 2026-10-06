@@ -34,8 +34,8 @@ const (
 )
 
 type Store struct {
-	pool         *pgxpool.Pool
-	clusterNames alertspkg.ClusterNameCache
+	pool     *pgxpool.Pool
+	silences silenceTableState
 }
 
 type execer interface {
@@ -326,6 +326,9 @@ func (s *Store) sweepOnce(ctx context.Context) {
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM audit_thresholds WHERE updated_at < NOW() - INTERVAL '2 days'`); err != nil {
 			return err
+		}
+		if err := sweepAuditSilences(ctx, tx); err != nil {
+			return fmt.Errorf("audit silences: %w", err)
 		}
 		return sweepIngested(ctx, tx)
 	})

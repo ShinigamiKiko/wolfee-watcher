@@ -6,7 +6,7 @@ import { EventDetail, EventTable, isDanger, normalizeEvent, num, objText } from 
 const WINDOW_SIZES = [100, 200, 500];
 const SCROLL_HOLD = 60;
 
-export function Monitoring({ ruleNames, apiLogConnected, canEdit, onInvestigate, onCreateRule, onOlder, onDangerCount }) {
+export function Monitoring({ ruleNames, apiLogConnected, canEdit, onInvestigate, onCreateRule, onSilence, onOlder, onDangerCount }) {
   const [events, setEvents] = useState([]);
   const [pending, setPending] = useState(0);
   const [windowSize, setWindowSize] = useState(200);
@@ -81,6 +81,11 @@ export function Monitoring({ ruleNames, apiLogConnected, canEdit, onInvestigate,
           return;
         }
         flush();
+      } else if (type === 'audit_event_silenced') {
+        bufferRef.current = bufferRef.current.filter(ev => ev.uid !== data.id);
+        setPending(p => Math.min(p, bufferRef.current.length));
+        setEvents(prev => prev.filter(ev => ev.uid !== data.id));
+        setSelected(prev => (prev && prev.uid === data.id ? null : prev));
       } else if (type === 'audit_event_update') {
         const patch = ev => {
           if (ev.uid !== data.id) return ev;
@@ -173,7 +178,7 @@ export function Monitoring({ ruleNames, apiLogConnected, canEdit, onInvestigate,
           </div>
         </div>
         <EventDetail ev={selected} ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={canEdit}
-                     onInvestigate={onInvestigate} onCreateRule={onCreateRule} />
+                     onInvestigate={onInvestigate} onCreateRule={onCreateRule} onSilence={onSilence} />
       </div>
     </div>
   );

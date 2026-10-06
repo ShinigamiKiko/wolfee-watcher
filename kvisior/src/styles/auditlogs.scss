@@ -30,6 +30,9 @@
   code { font-family: var(--al-mono); font-size: 12px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
 }
 
+.al-page .tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
+.al-page .tab { flex: none; }
+
 .al-count { margin-left: 6px; font-family: var(--al-mono); font-size: 11px; color: var(--al-dim); &.hot { color: var(--al-danger-text); } }
 
 .al-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -72,7 +75,12 @@
 .al-win { height: clamp(340px, 58vh, 600px); overflow: auto; scrollbar-width: thin; scrollbar-color: #2a3350 transparent; }
 .al-scrollx { overflow-x: auto; }
 .al-winfoot, .al-pager { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; align-items: center; padding-top: 8px; color: var(--al-dim); font-size: 12px; }
-.al-pager { color: var(--text-secondary); font-size: 13px; div { display: flex; gap: 8px; } }
+.al-pager { color: var(--text-secondary); font-size: 13px; > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } }
+.al-win.al-results { height: auto; max-height: clamp(340px, 62vh, 640px); }
+.al-win.al-results.al-fit { max-height: none; }
+.al-groups { min-width: 860px; }
+.al-page .data-table td.al-groupkey { max-width: 380px; }
+.al-page .data-table td.al-others { max-width: 360px; color: var(--text-secondary); }
 .al-newpill { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 5; height: 26px; padding: 0 10px; font-size: 12px; }
 
 .al-page .data-table {
@@ -83,6 +91,16 @@
 }
 .al-events { min-width: 720px; }
 .al-rules { min-width: 720px; tbody tr:hover td { cursor: default; } }
+.al-silences {
+  min-width: 820px;
+  tbody tr:hover td { cursor: default; }
+  td { vertical-align: top; }
+  .al-rulecell .al-mono { overflow-wrap: anywhere; }
+  .al-dim { margin-top: 2px; font-size: 12px; }
+}
+.al-page .data-table.al-silences td.al-reason { white-space: normal; min-width: 180px; max-width: 320px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.al-page .data-table tr.al-ended td { color: var(--al-dim); }
+.al-left { color: var(--al-warning-text); }
 .al-mono { font-family: var(--al-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
 .al-clip { overflow: hidden; text-overflow: ellipsis; }
 .al-obj { max-width: 200px; }
@@ -146,6 +164,7 @@
 .al-check { display: flex; align-items: center; gap: 8px; color: var(--text-primary); input { width: 15px; height: 15px; accent-color: var(--accent); background-color: var(--bg-elevated); } }
 .al-checks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; }
 .al-hint { color: var(--text-secondary); max-width: 82ch; margin: 0; }
+.al-hint.al-gap, .al-err.al-gap { margin-top: 12px; }
 .al-note { margin-bottom: 12px; }
 .al-err { color: var(--al-danger-text); font-size: 12px; }
 
