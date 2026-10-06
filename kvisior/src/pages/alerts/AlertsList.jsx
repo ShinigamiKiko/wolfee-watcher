@@ -4,7 +4,7 @@ import { fmtDateOnly, fmtClock } from '../../utils/format';
 
 export function AlertsList({ visible, status, groupFilter, selected, setSelected, ackEvent, fpEvent, deleteEvent }) {
   return (
-  <div className="al-list">
+  <div className="al-list dw dw-fill" tabIndex={0} role="region" aria-label="Anomaly events">
     {visible.length === 0 && (
       <div className="al-empty">
         {status === 'connecting'

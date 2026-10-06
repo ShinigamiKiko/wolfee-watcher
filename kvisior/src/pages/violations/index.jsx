@@ -15,6 +15,7 @@ import { evalBuildViolations, evalDeployViolations } from './evaluators';
 
 import { OUTER_TABS, RUNTIME_TABS, KIND_COLOR, ackKey, fpKey } from './violationsConstants';
 import { Pagination } from './Pagination';
+import { DataWindow } from '../../components/DataWindow';
 import { SilentFpButtons } from './SilentFpButtons';
 import { SilencedPanel } from './SilencedPanel';
 import { LSM_NAMES } from '../lsm/lsmCatalog';
@@ -369,8 +370,9 @@ export function Violations() {
       { key: 'rule',      label: 'Rule',      val: v => v._matchedRule?.name || v.syscall || '' },
     ];
     return (
-    <div className="card" style={{ marginRight: selected ? 0 : 24, display: 'flex', flexDirection: 'column' }}>
-      <div className="table-wrap" style={{ flex: 1 }}>
+    <div style={{ marginRight: selected ? 0 : 24 }}>
+      <DataWindow label="Runtime violations" deps={[outerTab, showSilenced, !!selected]}
+        footer={<Pagination total={rows.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
         <table className="data-table">
           <thead>
             <tr>
@@ -405,9 +407,7 @@ export function Violations() {
             }
           </tbody>
         </table>
-      </div>
-      <Pagination total={rows.length} pageSize={pageSize} page={page}
-        onPageChange={setPage2} onPageSizeChange={setPageSize} />
+      </DataWindow>
     </div>
     );
   };
@@ -501,8 +501,9 @@ export function Violations() {
 
           {}
           {!showSilenced && outerTab === 'Build' && (
-            <div className="card" style={{ marginRight: selected ? 0 : 24, display: 'flex', flexDirection: 'column' }}>
-              <div className="table-wrap" style={{ flex: 1 }}>
+            <div style={{ marginRight: selected ? 0 : 24 }}>
+              <DataWindow label="Build violations" deps={[outerTab, showSilenced, !!selected]}
+                footer={<Pagination total={filteredBuild.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
                 <table className="data-table">
                   <thead><tr>{buildCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>
@@ -524,16 +525,15 @@ export function Violations() {
                     }
                   </tbody>
                 </table>
-              </div>
-              <Pagination total={filteredBuild.length} pageSize={pageSize} page={page}
-                onPageChange={setPage2} onPageSizeChange={setPageSize} />
+              </DataWindow>
             </div>
           )}
 
           {}
           {!showSilenced && outerTab === 'Deploy' && (
-            <div className="card" style={{ marginRight: selected ? 0 : 24, display: 'flex', flexDirection: 'column' }}>
-              <div className="table-wrap" style={{ flex: 1 }}>
+            <div style={{ marginRight: selected ? 0 : 24 }}>
+              <DataWindow label="Deploy violations" deps={[outerTab, showSilenced, !!selected]}
+                footer={<Pagination total={filteredDeploy.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
                 <table className="data-table">
                   <thead><tr>{deployCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>
@@ -557,16 +557,15 @@ export function Violations() {
                     }
                   </tbody>
                 </table>
-              </div>
-              <Pagination total={filteredDeploy.length} pageSize={pageSize} page={page}
-                onPageChange={setPage2} onPageSizeChange={setPageSize} />
+              </DataWindow>
             </div>
           )}
 
           {}
           {!showSilenced && outerTab === 'Audit' && (
-            <div className="card" style={{ marginRight: selected ? 0 : 24, display: 'flex', flexDirection: 'column' }}>
-              <div className="table-wrap" style={{ flex: 1 }}>
+            <div style={{ marginRight: selected ? 0 : 24 }}>
+              <DataWindow label="Audit violations" deps={[outerTab, showSilenced, !!selected]}
+                footer={<Pagination total={filteredAudit.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
                 <table className="data-table">
                   <thead><tr>{auditCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>
@@ -607,9 +606,7 @@ export function Violations() {
                     }
                   </tbody>
                 </table>
-              </div>
-              <Pagination total={filteredAudit.length} pageSize={pageSize} page={page}
-                onPageChange={setPage2} onPageSizeChange={setPageSize} />
+              </DataWindow>
             </div>
           )}
         </div>

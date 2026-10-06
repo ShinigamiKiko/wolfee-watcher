@@ -134,6 +134,8 @@
 }
 .cpol-syscall-chip:hover { border-color:rgba(0,200,255,.3); color:var(--accent); background:rgba(0,200,255,.06); }
 .cpol-syscall-chip.sel { border-color:var(--accent); color:var(--accent); background:rgba(0,200,255,.1); }
+.cpol-syscall-chip:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cpol-syscall-grid--wide { grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); }
 .cpol-footer {
   display:flex; gap:10px; justify-content:flex-end;
   padding:16px 28px 24px; border-top:1px solid var(--border); flex-shrink:0;

@@ -32,7 +32,6 @@ export function Pagination({ total, pageSize, page, onPageChange, onPageSizeChan
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '9px 14px', borderTop: '1px solid var(--border)',
       flexWrap: 'wrap', gap: 8, flexShrink: 0,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>

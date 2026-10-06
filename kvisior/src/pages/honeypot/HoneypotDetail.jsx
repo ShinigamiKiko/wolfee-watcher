@@ -93,7 +93,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
             <div className="hp-events-wrap">
 
               {}
-              <div className={`hp-events-list${selectedEvent ? ' hp-events-list--narrow' : ''}`}>
+              <div className={`hp-events-list dw dw-fill${selectedEvent ? ' hp-events-list--narrow' : ''}`} tabIndex={0} role="region" aria-label="Honeypot events">
                 {loading && (
                   <div className="hp-events-loading">Loading events…</div>
                 )}
@@ -102,7 +102,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                 )}
                 {!loading && events.length > 0 && (
                   <>
-                    <div className="hp-events-header-row">
+                    <div className="hp-events-header-row dw-sticky">
                       <span>Time</span>
                       <span>Service</span>
                       <span>Src IP</span>

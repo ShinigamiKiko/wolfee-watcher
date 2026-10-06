@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCluster } from '../../data/cluster';
 import { fetchEvents, fetchGroups, fetchSummary } from './api';
 import { PAGE_SIZES, clearResults, loadPageSize, loadResults, savePageSize, saveResults } from './resultStore';
-import { useFitToPage } from './useFitToPage';
+import { DataWindow } from '../../components/DataWindow';
 import { EventDetail, EventTable, Empty, KINDS, fmtDate, normalizeEvent, num } from './shared';
 
 const BLANK = { hours: 24, user: '', ns: '', kind: '', resource: '', ip: '', result: '', danger: false, obj: null };
@@ -104,8 +104,6 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
   const [selected, setSelected] = useState(null);
   const [state, setState] = useState({ loading: !restored.current, error: '' });
   const loadSeq = useRef(0);
-  const winRef = useRef(null);
-  const pagerRef = useRef(null);
   const { applied, view } = run;
 
   const loadBlock = useCallback(async (index, startList, landOnLast) => {
@@ -207,10 +205,10 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
     ? `${num(offset + 1)}–${num(offset + visibleRaw.length)} of ${totalKnown != null ? num(totalKnown) : `${num((block?.index || 0) * BLOCK + rows.length)}+`} ${noun}`
     : `0 ${noun}`;
 
-  const fitStyle = useFitToPage(winRef, pagerRef, [view, !!applied.obj]);
+  const fitDeps = [view, !!applied.obj];
 
   const pager = (
-    <div className="al-pager" ref={pagerRef}>
+    <div className="al-pager">
       <span>{range}{state.loading && rows.length ? ' · loading…' : ''}</span>
       <div>
         <div className="al-seg" role="group" aria-label="Rows per page">
@@ -276,11 +274,10 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
       {view === 'events' ? (
         <div className="al-mon">
           <div className="al-winwrap">
-            <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Search results">
+            <DataWindow label="Search results" footer={pager} deps={fitDeps}>
               <EventTable events={events} selectedKey={selected?.key} onSelect={setSelected} withDate
                           ruleNames={ruleNames} emptyText={emptyText} />
-            </div>
-            {pager}
+            </DataWindow>
           </div>
           <EventDetail ev={selected} ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={canEdit}
                        onInvestigate={ev => drillUser(ev.user)} onCreateRule={onCreateRule}
@@ -288,7 +285,7 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
         </div>
       ) : (
         <>
-          <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Grouped results">
+          <DataWindow label="Grouped results" footer={pager} deps={fitDeps}>
             <table className="data-table al-groups">
               <thead>
                 <tr>
@@ -313,8 +310,7 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
                 })}
               </tbody>
             </table>
-          </div>
-          {pager}
+          </DataWindow>
         </>
       )}
     </div>

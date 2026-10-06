@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useScanner } from '../../context/ScannerContext';
 import { useSensor }  from '../../context/SensorContext';
 import { SevBadge }   from '../../components/ui';
+import { DataWindow } from '../../components/DataWindow';
 
 const RISK_COLOR = s => s>=8?'var(--danger)':s>=6?'var(--warning)':s>=4?'#a78bfa':'var(--accent-3)';
 const SEV_LABEL  = s => s>=8?'CRITICAL':s>=6?'HIGH':s>=4?'MEDIUM':'LOW';
@@ -165,8 +166,8 @@ export function Risk() {
             </div>
           )}
           {hasData && (
-            <div className="card" style={{marginRight:selected?0:24}}>
-              <div className="table-wrap">
+            <div style={{marginRight:selected?0:24}}>
+              <DataWindow label="Workloads by risk" deps={[!!selected]}>
                 <table className="data-table">
                   <thead><tr>
                     <th style={{width:36}}>#</th>
@@ -225,7 +226,7 @@ export function Risk() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </DataWindow>
             </div>
           )}
         </div>

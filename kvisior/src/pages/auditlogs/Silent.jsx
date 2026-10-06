@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { createSilence, deleteSilence, endSilence } from './api';
 import { KINDS, fmtDate, num } from './shared';
-import { useFitToPage } from './useFitToPage';
+import { DataWindow } from '../../components/DataWindow';
 
 const DURATIONS = [[60, '1 hour'], [8 * 60, '8 hours'], [24 * 60, '24 hours'], [7 * 24 * 60, '7 days'], [0, 'Until removed']];
 const BLANK = { action: '', object: '', user: '', sourceIP: '', reason: '', minutes: 8 * 60 };
@@ -123,8 +123,6 @@ export function Silent({ silences, loadError, canEdit, reload, draft, onDraftUse
   const { toast } = useApp();
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
-  const winRef = useRef(null);
-  const fitStyle = useFitToPage(winRef, null, [!!form, !!loadError]);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -169,7 +167,7 @@ export function Silent({ silences, loadError, canEdit, reload, draft, onDraftUse
       </p>
       {loadError && <p className="al-err">Could not load the silences: {loadError}</p>}
       {form && <SilenceForm initial={form} onSave={save} onCancel={() => setForm(null)} />}
-      <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Silences">
+      <DataWindow label="Silences" deps={[!!form, !!loadError]}>
         <table className="data-table al-silences">
           <thead><tr><th>Silences</th><th>Reason</th><th>Created</th><th>Expires</th><th>Hidden</th><th /></tr></thead>
           <tbody>
@@ -208,7 +206,7 @@ export function Silent({ silences, loadError, canEdit, reload, draft, onDraftUse
             ))}
           </tbody>
         </table>
-      </div>
+      </DataWindow>
     </div>
   );
 }

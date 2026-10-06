@@ -4,6 +4,7 @@ import { useBridge } from '../context/BridgeContext';
 import { SevBadge, Tabs } from '../components/ui';
 import { SYSCALLS, matchesRule, saveRuntimeRules, fetchRulesFromAPI } from '../data/syscalls';
 import { PolicyModal } from './policy/PolicyModal';
+import { DataWindow } from '../components/DataWindow';
 
 const TABS = [
   { id: 'policies', label: 'Policies'       },
@@ -131,8 +132,7 @@ export function PolicyMgmt() {
         <div className="page-search">
           <input type="text" placeholder="Search policies…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <div className="card">
-          <div className="table-wrap">
+        <DataWindow label="Policies" deps={[tab]}>
             <table className="data-table">
               <thead><tr><th>Policy</th><th>Status</th><th>Origin</th><th>Severity</th><th>Match</th><th>Hits</th><th>Alert</th><th></th></tr></thead>
               <tbody>
@@ -177,13 +177,11 @@ export function PolicyMgmt() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
+        </DataWindow>
       </>}
 
       {tab === 'catalog' && (
-        <div className="card">
-          <div className="table-wrap">
+        <DataWindow label="Syscall catalog" deps={[tab]}>
             <table className="data-table">
               <thead><tr><th>Syscall</th><th>Category</th><th>Severity</th><th>Description</th><th>Live Events</th></tr></thead>
               <tbody>
@@ -200,17 +198,16 @@ export function PolicyMgmt() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
+        </DataWindow>
       )}
 
       {tab === 'live' && (
-        <div className="card">
-          <div className="card-header">
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px 10px' }}>
             <div className="card-title">Live Rule Hits</div>
             <span className="live-dot">Live</span>
           </div>
-          <div className="table-wrap">
+          <DataWindow label="Live rule hits" deps={[tab]}>
             <table className="data-table">
               <thead><tr><th>Syscall</th><th>Severity</th><th>Process</th><th>Pod</th><th>Namespace</th><th>Time</th></tr></thead>
               <tbody>
@@ -229,8 +226,8 @@ export function PolicyMgmt() {
                 }
               </tbody>
             </table>
-          </div>
-        </div>
+          </DataWindow>
+        </>
       )}
     </div>
   );

@@ -11,7 +11,7 @@ function Pager({ total, page, setPage, pageSize, setPageSize }) {
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
   });
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-surface)', fontSize: 12, color: 'var(--text-muted)' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span>Rows per page:</span>
         <select

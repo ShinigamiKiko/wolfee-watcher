@@ -2,7 +2,7 @@ import { fmt } from './auditConstants';
 
 function RunList({ runs, onOpen, onNew, tool, busy }) {
   return (
-    <div className="au-run-list">
+    <div className="au-run-list dw dw-fill" tabIndex={0} role="region" aria-label="Audit runs">
       {runs.length === 0 && (
         <div className="au-empty-state">
           <div className="au-empty-state__icon">🔍</div>

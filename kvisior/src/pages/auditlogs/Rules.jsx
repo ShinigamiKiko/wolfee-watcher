@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { getCluster } from '../../data/cluster';
 import { createRule, deleteRule, patchRule, restoreRules, updateRule } from './api';
 import { KINDS, READ_KINDS, RESOURCES, SEVERITIES, fmtDate, num } from './shared';
+import { DataWindow } from '../../components/DataWindow';
 
 const BLANK_SPEC = {
   kinds: [], resources: [], ns: '', nsExclude: '', objName: '', subject: 'any', users: '', usersExclude: '',
@@ -249,7 +250,7 @@ export function Rules({ rules, stats, builtinMissing, canEdit, draft, onDraftUse
       </p>
       {loadError && <p className="al-err">Could not load the rules: {loadError}</p>}
       {form && <RuleForm initial={form.rule} editing={form.editing} onSave={save} onCancel={() => setForm(null)} />}
-      <div className="al-win al-results" tabIndex={0} aria-label="Audit rules">
+      <DataWindow label="Audit rules" deps={[!!form, !!loadError]}>
         <table className="data-table al-rules">
           <thead><tr><th>Enabled</th><th>Alert</th><th>Rule</th><th>Severity</th><th>Violations</th><th>Last seen</th><th /></tr></thead>
           <tbody>
@@ -291,7 +292,7 @@ export function Rules({ rules, stats, builtinMissing, canEdit, draft, onDraftUse
             })}
           </tbody>
         </table>
-      </div>
+      </DataWindow>
     </div>
   );
 }

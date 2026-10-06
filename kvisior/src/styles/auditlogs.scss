@@ -76,8 +76,6 @@
 .al-scrollx { overflow-x: auto; }
 .al-winfoot, .al-pager { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; align-items: center; padding-top: 8px; color: var(--al-dim); font-size: 12px; }
 .al-pager { color: var(--text-secondary); font-size: 13px; > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } }
-.al-win.al-results { height: auto; max-height: clamp(340px, 62vh, 640px); }
-.al-win.al-results.al-fit { max-height: none; }
 .al-groups { min-width: 860px; }
 .al-page .data-table td.al-groupkey { max-width: 380px; }
 .al-page .data-table td.al-others { max-width: 360px; color: var(--text-secondary); }

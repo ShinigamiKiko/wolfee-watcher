@@ -12,6 +12,7 @@ import { LSM_HOOKS, LSM_GROUPS, LSM_NAMES } from '../lsm/lsmCatalog';
 import { TRACEPOINTS, TRACEPOINT_GROUPS, TRACEPOINT_NAMES } from '../tracepoints/tracepointsCatalog';
 
 import { PAGE_SIZES, Pager } from './Pager';
+import { DataWindow } from '../../components/DataWindow';
 
 const groupCatalog = (items, groupNames) =>
   groupNames.map(g => ({
@@ -613,8 +614,10 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
             <span className="fns-section-title">Runtime events</span>
             <span className="fns-section-count">{visibleEvents.length} events{activeContainer ? ` · ${activeContainer}` : ''}</span>
           </div>
+          <DataWindow label="Runtime events" deps={[contentTab, windowH, activeContainer]}
+            footer={<Pager total={visibleEvents.length} page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} />}>
           <div className="fns-etable">
-            <div className="fns-etable-hdr">
+            <div className="fns-etable-hdr dw-sticky">
               {FNS_COLUMNS.map(c => (
                 <div key={c.key} className="fns-col-head" style={{ cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => toggleSort(c.key)}>
@@ -634,13 +637,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
               ))
             }
           </div>
-          <Pager
-            total={visibleEvents.length}
-            page={page}
-            setPage={setPage}
-            pageSize={pageSize}
-            setPageSize={setPageSize}
-          />
+          </DataWindow>
         </div>
         </>
         }

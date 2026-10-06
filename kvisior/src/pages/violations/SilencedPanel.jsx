@@ -1,4 +1,5 @@
 import { ackKey } from './violationsConstants';
+import { DataWindow } from '../../components/DataWindow';
 
 export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepointViolations = [], lsmViolations = [], buildViolations, deployViolations, auditViolations }) {
   const parseKey = key => {
@@ -49,15 +50,15 @@ export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepo
     return { key, kind: type === 'fp' ? 'FP' : 'Silent', tab, parts, expiresAt };
   });
   return (
-    <div className="card" style={{ marginRight: 24 }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ marginRight: 24 }}>
+      <div style={{ padding: '0 2px 10px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>Silenced</span>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>— hidden until manually removed</span>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>hidden until manually removed</span>
       </div>
+      <DataWindow label="Silenced violations" deps={[entries.length === 0]}>
       {entries.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>No silenced violations</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>No silenced violations</div>
       ) : (
-        <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Tab</th><th>Type</th><th>Parameters</th><th>Suppressed</th><th>Expires</th><th></th></tr></thead>
             <tbody>
@@ -120,8 +121,8 @@ export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepo
               })}
             </tbody>
           </table>
-        </div>
       )}
+      </DataWindow>
     </div>
   );
 }
