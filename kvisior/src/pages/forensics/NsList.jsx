@@ -1,4 +1,5 @@
 import { podNS } from '../../utils/format';
+import { Icon } from '../../components/Icon';
 
 export function NsList({ namespaces, pods, eventSummary = [], anomalyEvents = [], activeWatches, getSev, onSelect, onSeverityOpen }) {
   const SYSTEM_NS = new Set(['kube-system','kube-public','kube-node-lease','calico-system','cilium','cert-manager','monitoring','ingress-nginx']);
@@ -11,7 +12,7 @@ export function NsList({ namespaces, pods, eventSummary = [], anomalyEvents = []
           <div className="fns-page-sub">Select namespace to explore pod runtime-event history</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="fns-btn" onClick={onSeverityOpen}>⚙ Severity</button>
+          <button className="fns-btn" onClick={onSeverityOpen}><Icon name="gear" /> Severity</button>
         </div>
       </div>
       <div className="fns-ns-grid">
@@ -26,7 +27,7 @@ export function NsList({ namespaces, pods, eventSummary = [], anomalyEvents = []
           const anomalyWatching = activeWatches.some(w => w.namespace === nsName && w.source === 'anomaly');
           return (
             <div key={nsName} className="fns-ns-card" onClick={() => onSelect(nsName)}>
-              <div className="fns-ns-icon">⬡</div>
+              <div className="fns-ns-icon"><Icon name="hexagon" /></div>
               <div className="fns-ns-info">
                 <div className="fns-ns-name">
                   <span>{nsName}</span>

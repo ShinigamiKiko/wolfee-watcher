@@ -5,6 +5,8 @@ import {
   scannerHealth, sortByRisk, getSchedule, saveSchedule,
 } from '../data/scanner';
 
+const line = (kind, text) => ({ kind, text });
+
 const ScannerCtx = createContext(null);
 export const useScanner = () => useContext(ScannerCtx);
 
@@ -116,7 +118,7 @@ export function ScannerProvider({ children }) {
       switch (ev.type) {
         case 'start':
         case 'progress':
-          setProgress(prev => [...prev.slice(-99), ev.message]);
+          setProgress(prev => [...prev.slice(-99), line('info', ev.message)]);
           break;
         case 'result':
           if (ev.result) {
@@ -131,21 +133,21 @@ export function ScannerProvider({ children }) {
             });
             setProgress(prev => [
               ...prev.slice(-99),
-              `✓ ${ev.result.image}: ${ev.result.summary?.total ?? 0} CVEs (${ev.result.summary?.critical ?? 0} critical)`,
+              line('ok', `${ev.result.image}: ${ev.result.summary?.total ?? 0} CVEs (${ev.result.summary?.critical ?? 0} critical)`),
             ]);
           }
           break;
         case 'done':
-          setProgress(prev => [...prev.slice(-99), `✓ ${ev.message}`]);
+          setProgress(prev => [...prev.slice(-99), line('ok', ev.message)]);
           finalizeScan();
           break;
         case 'error':
-          setProgress(prev => [...prev.slice(-99), `✗ ${ev.image}: ${ev.message}`]);
+          setProgress(prev => [...prev.slice(-99), line('fail', `${ev.image}: ${ev.message}`)]);
           setScanErrors(prev => [...prev.slice(-99), { image: ev.image, message: ev.message }]);
           break;
       }
     }, (error) => {
-      setProgress(prev => [...prev.slice(-99), `✗ ${error.message}`]);
+      setProgress(prev => [...prev.slice(-99), line('fail', error.message)]);
       setScanErrors(prev => [...prev.slice(-99), { image: 'scanner', message: error.message }]);
     });
   }, [finalizeScan]);
@@ -156,7 +158,7 @@ export function ScannerProvider({ children }) {
     sawBackendScanRef.current = true;
     setScanning(true);
     setScanErrors([]);
-    setProgress(prev => (prev.length ? prev : ['Scan already running — attaching to progress stream…']));
+    setProgress(prev => (prev.length ? prev : [line('info', 'Scan already running — attaching to progress stream…')]));
     subscribe();
   }, [subscribe]);
   adoptScanRef.current = adoptScan;
@@ -164,7 +166,7 @@ export function ScannerProvider({ children }) {
   const startScan = useCallback(async (images = []) => {
     if (scanningRef.current) return { ok: false, reason: 'busy', message: 'A scan is already running' };
 
-    setProgress(['Connecting to scanner…']);
+    setProgress([line('info', 'Connecting to scanner…')]);
     setScanErrors([]);
 
     let resp;
@@ -172,13 +174,13 @@ export function ScannerProvider({ children }) {
       resp = await triggerScan(images);
     } catch (e) {
       const message = e?.message || 'Scanner request failed';
-      setProgress([`✗ ${message}`]);
+      setProgress([line('fail', message)]);
       return { ok: false, reason: 'error', message };
     }
 
     if (!resp || (!resp.queued && !resp.scanning)) {
       const message = resp?.message || 'No images found in cluster';
-      setProgress([`⚠ ${message}`]);
+      setProgress([line('warn', message)]);
       return { ok: false, reason: 'empty', message };
     }
 
@@ -186,9 +188,9 @@ export function ScannerProvider({ children }) {
     scanStartedAtRef.current = Date.now();
     sawBackendScanRef.current = !!resp.scanning;
     setScanning(true);
-    setProgress([resp.queued
+    setProgress([line('info', resp.queued
       ? `Queued ${resp.queued} images for scanning…`
-      : 'Attaching to a scan already in progress…']);
+      : 'Attaching to a scan already in progress…')]);
     subscribe();
     return { ok: true, queued: resp.queued || 0 };
   }, [subscribe]);
@@ -197,15 +199,15 @@ export function ScannerProvider({ children }) {
     if (!scanningRef.current) return { ok: false, message: 'No scan is running' };
     try {
       const resp = await apiStopScan();
-      setProgress(prev => [...prev.slice(-99), '⏹ Stop requested…']);
+      setProgress(prev => [...prev.slice(-99), line('info', 'Stop requested…')]);
       if (resp && resp.stopped === false) {
-        setProgress(prev => [...prev.slice(-99), 'Backend was already idle — clearing UI state.']);
+        setProgress(prev => [...prev.slice(-99), line('info', 'Backend was already idle — clearing UI state.')]);
         finalizeScan();
       }
       return { ok: true };
     } catch (e) {
       const message = e?.message || 'Stop request failed';
-      setProgress(prev => [...prev.slice(-99), `✗ Error stopping: ${message}`]);
+      setProgress(prev => [...prev.slice(-99), line('fail', `Error stopping: ${message}`)]);
       const h = await scannerHealth().catch(() => null);
       if (h && h.scanning === false) finalizeScan();
       return { ok: false, message };

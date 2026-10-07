@@ -1,4 +1,5 @@
 import { SEV, sev, STATUS_COLOR } from './auditConstants';
+import { Icon } from '../../components/Icon';
 
 function DetailModal({ item, type, onClose }) {
   if (!item) return null;
@@ -20,7 +21,7 @@ function DetailModal({ item, type, onClose }) {
               )}
             </>}
           </div>
-          <button className="au-modal__x" onClick={onClose}>✕</button>
+          <button className="au-modal__x" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         <div className="au-modal__title">
@@ -32,7 +33,7 @@ function DetailModal({ item, type, onClose }) {
             {item.actual       && <F label="Actual value"><pre>{item.actual}</pre></F>}
             {item.expected     && <F label="Expected"><pre>{item.expected}</pre></F>}
             {item.reason       && <F label="Reason"><p>{item.reason}</p></F>}
-            {item.remediation  && <F label="🔧 Remediation" hl><p>{item.remediation}</p></F>}
+            {item.remediation  && <F label={<><Icon name="wrench" /> Remediation</>} hl><p>{item.remediation}</p></F>}
           </>}
           {type==='hunter' && <>
             {item.category     && <F label="Category"><code>{item.category}</code></F>}
@@ -40,13 +41,13 @@ function DetailModal({ item, type, onClose }) {
             {item.location     && <F label="Location"><code>{item.location}</code></F>}
             {item.mitre        && <F label="MITRE ATT&CK"><code>{item.mitre}</code></F>}
             {(item.avd_description||item.description) && (
-              <F label={item.avd_description?'📖 Description (AVD)':'📖 Description'}>
+              <F label={<><Icon name="book" /> {item.avd_description?'Description (AVD)':'Description'}</>}>
                 <p>{item.avd_description||item.description}</p>
               </F>
             )}
-            {item.avd_impact   && <F label="⚡ Impact"><p>{item.avd_impact}</p></F>}
+            {item.avd_impact   && <F label={<><Icon name="zap" /> Impact</>}><p>{item.avd_impact}</p></F>}
             {item.evidence     && <F label="Evidence"><pre>{item.evidence}</pre></F>}
-            {item.avd_remediation && <F label="🔧 Remediation (AVD)" hl><p>{item.avd_remediation}</p></F>}
+            {item.avd_remediation && <F label={<><Icon name="wrench" /> Remediation (AVD)</>} hl><p>{item.avd_remediation}</p></F>}
             {item.avd_link     && <F label="AVD Reference"><a href={item.avd_link} target="_blank" rel="noreferrer">{item.avd_link}</a></F>}
           </>}
         </div>

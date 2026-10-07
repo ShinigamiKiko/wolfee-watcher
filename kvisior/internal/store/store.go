@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -33,8 +34,9 @@ const (
 )
 
 type Store struct {
-	pool     *pgxpool.Pool
-	silences silenceTableState
+	pool      *pgxpool.Pool
+	tables    sync.Map
+	userCache sync.Map
 }
 
 type execer interface {
@@ -77,9 +79,7 @@ func Fingerprint(cluster, ruleID, ns, pod string) string {
 	return fmt.Sprintf("%x", h[:12])
 }
 
-func (c *Scoped) WriteViolation(ctx context.Context, vtype, ruleID, ruleName, sev, ns, pod, fingerprint string, data json.RawMessage) {
-	_, err := c.s.pool.Exec(ctx,
-		`INSERT INTO kvisior_violations(cluster_id,vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,data,last_seen)
+const writeViolationSQL = `INSERT INTO kvisior_violations(cluster_id,vtype,rule_id,rule_name,sev,namespace,pod,fingerprint,data,last_seen)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
 		 ON CONFLICT (cluster_id,fingerprint) WHERE fingerprint != '' DO UPDATE SET
 		    data      = EXCLUDED.data,
@@ -97,12 +97,28 @@ func (c *Scoped) WriteViolation(ctx context.Context, vtype, ruleID, ruleName, se
 		                   AND kvisior_violations.state_expires_at < NOW()
 		              THEN NULL
 		              ELSE kvisior_violations.state_expires_at
-		            END`,
-		c.id, vtype, ruleID, ruleName, sev, ns, pod, fingerprint, data,
-	)
-	if err != nil {
+		            END`
+
+func (c *Scoped) WriteViolation(ctx context.Context, vtype, ruleID, ruleName, sev, ns, pod, fingerprint string, data json.RawMessage) {
+	if _, err := c.s.pool.Exec(ctx, writeViolationSQL, c.id, vtype, ruleID, ruleName, sev, ns, pod, fingerprint, data); err != nil {
 		log.Printf("[store] write violation (cluster=%s): %v", c.id, err)
 	}
+}
+
+type ViolationWrite struct {
+	VType, RuleID, RuleName, Sev, NS, Pod, Fingerprint string
+	Data                                               json.RawMessage
+}
+
+func (c *Scoped) WriteViolations(ctx context.Context, writes []ViolationWrite) error {
+	if len(writes) == 0 {
+		return nil
+	}
+	batch := &pgx.Batch{}
+	for _, w := range writes {
+		batch.Queue(writeViolationSQL, c.id, w.VType, w.RuleID, w.RuleName, w.Sev, w.NS, w.Pod, w.Fingerprint, w.Data)
+	}
+	return c.s.pool.SendBatch(ctx, batch).Close()
 }
 
 func (c *Scoped) SetViolationState(ctx context.Context, fingerprint, state string, ttl time.Duration) error {
@@ -320,14 +336,19 @@ func (s *Store) sweepOnce(ctx context.Context) {
 		} else if n > 0 {
 			log.Printf("[store] honeypot-event retention sweep: %d expired rows dropped", n)
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM audit_ingest_state WHERE created_at < NOW() - $1::interval`, fmt.Sprintf("%d seconds", int64(AuditRetention.Seconds()))); err != nil {
-			return err
+		if retention, known := auditRetentionInterval(); known {
+			if _, err := tx.Exec(ctx, `DELETE FROM audit_ingest_state WHERE created_at < NOW() - $1::interval`, retention); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM audit_thresholds WHERE updated_at < NOW() - INTERVAL '2 days'`); err != nil {
 			return err
 		}
-		if err := sweepAuditSilences(ctx, tx); err != nil {
+		if err := s.sweepAuditSilences(ctx, tx); err != nil {
 			return fmt.Errorf("audit silences: %w", err)
+		}
+		if err := s.sweepAuditRollups(ctx, tx); err != nil {
+			return fmt.Errorf("audit rollups: %w", err)
 		}
 		return sweepIngested(ctx, tx)
 	})

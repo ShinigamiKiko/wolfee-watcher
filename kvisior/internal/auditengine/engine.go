@@ -157,6 +157,7 @@ func (e *Engine) Run(ctx context.Context) {
 	defer t.Stop()
 	sweep := time.NewTicker(pendingSweep)
 	defer sweep.Stop()
+	go e.runRollups(ctx)
 	failures := 0
 	for {
 		select {
@@ -611,7 +612,7 @@ func (e *Engine) IngestEvents(ctx context.Context, cluster string, raws []json.R
 		ev.Allowed = nil
 		ev.StatusCode = 0
 		p := e.prepare(cluster, ev, raw)
-		if ev.Timestamp.Before(time.Now().Add(-store.AuditRetention)) {
+		if ev.Timestamp.Before(time.Now().Add(-store.AuditRetention())) {
 			continue
 		}
 		key := "admission:" + ev.ID
@@ -785,7 +786,7 @@ func (e *Engine) IngestLog(ctx context.Context, cluster string, records []LogRec
 		record := records[i]
 		rec := &record
 		ev := &rec.Event
-		if !ev.Timestamp.IsZero() && ev.Timestamp.Before(time.Now().Add(-store.AuditRetention)) {
+		if !ev.Timestamp.IsZero() && ev.Timestamp.Before(time.Now().Add(-store.AuditRetention())) {
 			continue
 		}
 		sanitize(ev)

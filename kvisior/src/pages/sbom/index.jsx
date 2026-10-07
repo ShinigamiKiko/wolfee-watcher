@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useScanner } from '../../context/ScannerContext';
 import '../../styles/sbom.scss';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 function licClass(lic = '') {
   const l = lic.toLowerCase();
@@ -91,6 +94,7 @@ export function SBOM() {
     if (filter === 'multi' && p.images.length < 2)  return false;
     return true;
   }), [packages, search, filter]);
+  const { pageItems: pagePackages, pager } = usePaged(visible, 'sbom.packages', [search, filter]);
 
   const selected = selectedIdx !== null ? packages[selectedIdx] : null;
 
@@ -109,7 +113,7 @@ export function SBOM() {
     return (
       <div className="sbom-page">
         <div className="sbom-empty">
-          <div style={{ fontSize: 32 }}>📦</div>
+          <Icon name="package" size={32} />
           <div style={{ fontSize: 15, fontWeight: 600 }}>No scan results</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Run a scan first — SBOM is built from scanner results.</div>
         </div>
@@ -128,8 +132,8 @@ export function SBOM() {
             <div className="sbom-img-digest">{imageDigest}</div>
           </div>
           <div className="sbom-export-btns">
-            <button className="sbom-export-btn">↓ CycloneDX JSON</button>
-            <button className="sbom-export-btn">↓ SPDX</button>
+            <button className="sbom-export-btn"><Icon name="download" /> CycloneDX JSON</button>
+            <button className="sbom-export-btn"><Icon name="download" /> SPDX</button>
           </div>
         </div>
         <div className="sbom-tabs">
@@ -186,7 +190,7 @@ export function SBOM() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map(p => {
+                {pagePackages.map(p => {
                   const i = packages.indexOf(p);
                   const { dot, label } = vulnInfo(p.cves);
                   return (
@@ -222,7 +226,7 @@ export function SBOM() {
                 )}
               </tbody>
             </table>
-            <div className="sbom-tbl-footer">Showing {visible.length} of {packages.length} packages</div>
+            <div className="sbom-tbl-footer"><Pager {...pager} noun="packages" /></div>
           </div>
         </div>
 
@@ -234,7 +238,7 @@ export function SBOM() {
                 <div className="dp-pkg-name">{selected.name}</div>
                 <div className="dp-pkg-sub">{selected.version} · {selected.type}{selected.license ? ` · ${selected.license}` : ''}</div>
               </div>
-              <button className="dp-close" onClick={() => setSelectedIdx(null)}>✕</button>
+              <button className="dp-close" onClick={() => setSelectedIdx(null)}><Icon name="x" /></button>
             </div>
 
             <div className="dp-body">

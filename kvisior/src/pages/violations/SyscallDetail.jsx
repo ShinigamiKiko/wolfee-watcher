@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { SevBadge } from '../../components/ui';
 import { SYSCALL_BY_NAME, matchesRule } from '../../data/syscalls';
+import { Icon } from '../../components/Icon';
 
 export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, rulesVersion }) {
   const [tab, setTab] = useState('violation');
@@ -41,17 +42,17 @@ export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, ru
             <div className="dp-title" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }}>{v.syscall}</div>
             <div className="dp-meta">{v.namespace} · {v.node}</div>
           </div>
-          <button className="dp-close" onClick={onClose}>✕</button>
+          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <SevBadge sev={v.sev} />
           <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono,monospace' }}>{v.category}</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <button className="btn btn-outline" style={{ fontSize: 11, padding: '3px 9px', color: 'var(--text-muted)', borderColor: 'rgba(100,116,139,.35)' }}
-              onClick={() => onFp?.()}>🚩 FalsePos</button>
-            <button className="btn btn-outline" style={{ fontSize: 11, padding: '3px 9px', color: 'var(--danger)', borderColor: 'rgba(239,68,68,.35)' }}
-              onClick={() => onResolve?.()}>✓ Resolve</button>
+            <button className="btn btn-outline btn-sm btn-tone-muted"
+              onClick={() => onFp?.()}><Icon name="flag" /> FalsePos</button>
+            <button className="btn btn-outline btn-sm btn-tone-danger"
+              onClick={() => onResolve?.()}><Icon name="check" /> Resolve</button>
           </div>
         </div>
 
@@ -104,7 +105,7 @@ export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, ru
             </div>
           ))}
           {block('Container', <>{kv('Image', v.image)}{kv('Container', v.container)}{kv('Process', v.process !== '—' ? v.process : (v._raw?.process || '—'))}{kv('Cmdline', v.cmdline !== '—' ? v.cmdline : (v._raw?.cmdline || '—'))}</>)}
-          {block('Security Context', <>{kv('Running as root', isRoot ? '⚠ Yes' : 'No')}{kv('Syscall risk', syscallMeta?.sev || v.severity || '—')}{kv('UID', v.uid)}{kv('PID', v.pid)}</>)}
+          {block('Security Context', <>{kv('Running as root', isRoot ? <><Icon name="alert" /> Yes</> : 'No')}{kv('Syscall risk', syscallMeta?.sev || v.severity || '—')}{kv('UID', v.uid)}{kv('PID', v.pid)}</>)}
         </>}
 
         {tab === 'policy' && <>

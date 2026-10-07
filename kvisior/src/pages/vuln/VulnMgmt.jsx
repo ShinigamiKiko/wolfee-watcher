@@ -11,8 +11,11 @@ import { SbomDetail }    from './SbomDetail';
 import { ScheduleModal } from './vulnWidgets';
 import { TABS } from './vulnUtils';
 import { Pager } from './VulnPager';
+import { usePageSize } from '../../hooks/usePaged';
 import { VulnLibsTab } from './VulnLibsTab';
 import { VulnImagesTab } from './VulnImagesTab';
+import { Icon } from '../../components/Icon';
+import { ProgressLine } from '../../components/ProgressLine';
 
 export function VulnMgmt() {
   const { toast } = useApp();
@@ -32,7 +35,7 @@ export function VulnMgmt() {
   });
   const [sortCol,       setSortCol]       = useState('cvss');
   const [sortDir,       setSortDir]       = useState('desc');
-  const [pageSize,      setPageSize]      = useState(20);
+  const [pageSize,      setPageSize]      = usePageSize('vuln');
   const [page,          setPage]          = useState(1);
   const [nodeDrill,     setNodeDrill]     = useState(null);
   const [deployDrill,   setDeployDrill]   = useState(null);
@@ -169,7 +172,7 @@ export function VulnMgmt() {
 
   const q = search.toLowerCase();
   const toggleSort = col => { if (sortCol === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc'); else { setSortCol(col); setSortDir('desc'); } };
-  const SortTh = ({ col, label }) => <th style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} onClick={() => toggleSort(col)}>{label} {sortCol === col ? (sortDir === 'desc' ? '↓' : '↑') : <span style={{ opacity: .3 }}>↕</span>}</th>;
+  const SortTh = ({ col, label }) => <th style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} onClick={() => toggleSort(col)}>{label} <Icon name={sortCol === col ? (sortDir === 'desc' ? 'chevron-down' : 'chevron-up') : 'sort'} style={sortCol === col ? undefined : { opacity: .3 }} /></th>;
 
   const sortedFiltered = useMemo(() => {
     const filtered = allCVEs.filter(c => !q || c.id?.toLowerCase().includes(q) || c.bduId?.toLowerCase().includes(q) || c.pkgName?.toLowerCase().includes(q) || c._imageName?.toLowerCase().includes(q));
@@ -229,12 +232,12 @@ export function VulnMgmt() {
                                ● scanner online · {okResults} images scanned
                                {failedResults.length > 0 && <span style={{ color: 'var(--danger)' }}> · {failedResults.length} failed</span>}
                              </span>
-                           : <span style={{ color: 'var(--warning)', marginLeft: 8, fontSize: 11 }}>⚠ scanner offline</span>}
+                           : <span style={{ color: 'var(--warning)', marginLeft: 8, fontSize: 11 }}><Icon name="alert" /> scanner offline</span>}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-outline" onClick={() => setScheduleOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              ⏱ Schedule
+              <Icon name="clock" /> Schedule
               {schedule?.enabled && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#000', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>ON</span>}
             </button>
             {!scanning && (
@@ -246,13 +249,13 @@ export function VulnMgmt() {
               >
                 {starting
                   ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>&nbsp;Starting…</>
-                  : '🔍 Scan All Images'}
+                  : <><Icon name="scan" /> Scan All Images</>}
               </button>
             )}
             {scanning && <button className="btn btn-danger" onClick={handleStop} title="Cancel running Trivy processes and clear the queue">
               <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>&nbsp;Stop Scan
             </button>}
-            {allCVEs.length > 0 && <button className="btn btn-outline" onClick={exportCSV}>📥 CSV</button>}
+            {allCVEs.length > 0 && <button className="btn btn-outline" onClick={exportCSV}><Icon name="download" /> CSV</button>}
           </div>
         </div>
 
@@ -261,14 +264,14 @@ export function VulnMgmt() {
           <div className="card" style={{ padding: '12px 14px', marginBottom: 14, borderLeft: '3px solid var(--danger)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)' }}>
-                ✗ {failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan
+                <Icon name="circle-x" /> {failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan
               </div>
               <button
                 type="button"
                 aria-label="Close scan errors"
                 onClick={() => setErrorsDismissed(true)}
                 style={{ background: 'none', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}
-              >✕</button>
+              ><Icon name="x" /></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 132, overflowY: 'auto' }}>
               {failedResults.slice(0, 6).map(r => (
@@ -308,18 +311,16 @@ export function VulnMgmt() {
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: logCollapsed ? 'none' : '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 10, display: 'inline-block' }}>{logCollapsed ? '▶' : '▼'}</span>
-                {scanning ? <span style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 600 }}><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', marginRight: 6 }}>⟳</span>Scanning images…</span>
-                           : <span style={{ color: 'var(--accent-3)', fontSize: 12, fontWeight: 600 }}>✓ Scan complete</span>}
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{progress.filter(p => p.startsWith('✓')).length} done{progress.filter(p => p.startsWith('✗')).length > 0 && ` · ${progress.filter(p => p.startsWith('✗')).length} errors`}</span>
+                <Icon name={logCollapsed ? 'chevron-right' : 'chevron-down'} style={{ color: 'var(--text-muted)' }} />
+                {scanning ? <span style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 600 }}><Icon name="loader" style={{ marginRight: 6 }} />Scanning images…</span>
+                           : <span style={{ color: 'var(--accent-3)', fontSize: 12, fontWeight: 600 }}><Icon name="check" /> Scan complete</span>}
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{progress.filter(p => p.kind === 'ok').length} done{progress.filter(p => p.kind === 'fail').length > 0 && ` · ${progress.filter(p => p.kind === 'fail').length} errors`}</span>
               </div>
-              <button onClick={e => { e.stopPropagation(); setShowProgress(false); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, padding: '2px 6px' }}>✕</button>
+              <button onClick={e => { e.stopPropagation(); setShowProgress(false); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, padding: '2px 6px' }}><Icon name="x" /></button>
             </div>
             {!logCollapsed && (
               <div style={{ maxHeight: 120, overflowY: 'auto', padding: '6px 14px 8px', fontFamily: 'JetBrains Mono,monospace', fontSize: 11 }}>
-                {progress.slice(-30).map((line, i) => (
-                  <div key={i} style={{ color: line.startsWith('✓') ? 'var(--accent-3)' : line.startsWith('✗') ? 'var(--danger)' : 'var(--text-muted)', lineHeight: 1.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{line}</div>
-                ))}
+                {progress.slice(-30).map((line, i) => <ProgressLine key={i} line={line} compact />)}
               </div>
             )}
           </div>
@@ -350,17 +351,17 @@ export function VulnMgmt() {
               </div>
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th>CVE ID</th><th title="ФСТЭК БДУ — идентификатор российского банка данных угроз">БДУ</th><th>Severity</th><SortTh col="cvss" label="CVSS" /><SortTh col="epss" label="EPSS" /><SortTh col="risk" label="Risk" /><th>Package</th><th>Version</th><th>Image</th><th>KEV</th><th>PoC</th><th>Fix</th></tr></thead>
+                  <thead><tr><th>CVE ID</th><th title="FSTEC BDU — Russian national vulnerability database identifier">BDU</th><th>Severity</th><SortTh col="cvss" label="CVSS" /><SortTh col="epss" label="EPSS" /><SortTh col="risk" label="Risk" /><th>Package</th><th>Version</th><th>Image</th><th>KEV</th><th>PoC</th><th>Fix</th></tr></thead>
                   <tbody>
                     {allCVEs.length === 0
-                      ? <tr><td colSpan={12}><EmptyState icon={agentOnline ? '🔍' : '📡'} title={agentOnline ? 'No scan results yet' : 'Scanner agent offline'} sub={agentOnline ? 'Run a scan to detect CVEs in your cluster images.' : 'Deploy scanner-agent to start vulnerability detection.'} action={agentOnline && <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={handleScanAll}>Start Scan</button>} /></td></tr>
+                      ? <tr><td colSpan={12}><EmptyState icon={agentOnline ? 'search' : 'wifi-off'} title={agentOnline ? 'No scan results yet' : 'Scanner agent offline'} sub={agentOnline ? 'Run a scan to detect CVEs in your cluster images.' : 'Deploy scanner-agent to start vulnerability detection.'} action={agentOnline && <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={handleScanAll}>Start Scan</button>} /></td></tr>
                       : paginate(sortedFiltered).map((c, i) => {
                           const epss = c.epssScore > 0 ? epssLabel(c.epssScore) : null;
                           const riskCol = { CRITICAL: 'var(--danger)', HIGH: 'var(--warning)', MEDIUM: '#a78bfa', LOW: 'var(--accent-3)' }[c.riskLabel] || 'var(--text-muted)';
                           return (
                             <tr key={i} className={selected === c ? 'selected' : ''} style={{ cursor: 'pointer' }} onClick={() => setSelected(selected === c ? null : c)}>
                               <td className="td-primary mono" style={{ fontSize: 12 }}>{c.id}</td>
-                              <td className="mono" style={{ fontSize: 11 }} title={c.bduId ? `${c.bduId}${c.bduSeverity ? ` · ${c.bduSeverity}` : ''}` : 'Не найдено в БДУ ФСТЭК'}>
+                              <td className="mono" style={{ fontSize: 11 }} title={c.bduId ? `${c.bduId}${c.bduSeverity ? ` · ${c.bduSeverity}` : ''}` : 'Not found in the FSTEC BDU'}>
                                 {c.bduId
                                   ? <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'rgba(239,68,68,.12)', color: 'var(--danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>{c.bduId}</span>
                                   : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}
@@ -372,8 +373,8 @@ export function VulnMgmt() {
                               <td style={{ fontSize: 12 }}>{c.pkgName}</td>
                               <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.pkgVersion}</td>
                               <td className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c._imageName}>{c._imageName || '—'}</td>
-                              <td style={{ fontSize: 12 }}>{c.inKev ? <span title="CISA KEV — actively exploited">🔥</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                              <td style={{ fontSize: 12 }}>{c.pocs?.length > 0 ? <span title={`${c.pocs.length} PoC(s)`}>💣{c.pocs.length}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                              <td style={{ fontSize: 12 }}>{c.inKev ? <span title="CISA KEV — actively exploited" style={{ color: 'var(--danger)' }}><Icon name="flame" /></span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                              <td style={{ fontSize: 12 }}>{c.pocs?.length > 0 ? <span className="ic-label" title={`${c.pocs.length} PoC(s)`}><Icon name="code" />{c.pocs.length}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                               <td><StatusDot type={c.hasFix ? 'active' : 'error'} label={c.hasFix ? 'Yes' : 'No'} /></td>
                             </tr>
                           );
@@ -405,7 +406,7 @@ export function VulnMgmt() {
                   {deployDrill ? <><span style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setDeployDrill(null)}>Workloads</span><span style={{ color: 'var(--text-muted)' }}>›</span><span>{deployDrill.name}</span><span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({deployDrill.images.length} images)</span></>
                     : <>Workloads ({deployRows.length})</>}
                 </div>
-                {deployDrill ? <button onClick={() => setDeployDrill(null)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button> : filterInput}
+                {deployDrill ? <button onClick={() => setDeployDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button> : filterInput}
               </div>
               {!deployDrill ? (() => {
                 const filtered = deployRows.filter(r => !q || r.name.toLowerCase().includes(q) || r.ns.includes(q) || r.kind.toLowerCase().includes(q));
@@ -415,7 +416,7 @@ export function VulnMgmt() {
                       <table className="data-table">
                         <thead><tr><th>Name</th><th>Controller</th><th>Namespace</th><th>Images</th><th>Total CVEs</th><th style={{ width: 24 }}></th></tr></thead>
                         <tbody>
-                          {deployRows.length === 0 ? <tr><td colSpan={6}><EmptyState icon="🚀" title="No workload data" sub="Sensor must be online to load real workloads from the cluster." /></td></tr>
+                          {deployRows.length === 0 ? <tr><td colSpan={6}><EmptyState icon="layers" title="No workload data" sub="Sensor must be online to load real workloads from the cluster." /></td></tr>
                             : paginate(filtered).map((r, i) => {
                                 const [bg, col] = kindColors[r.kind] || kindColors.Deployment;
                                 return (
@@ -476,7 +477,7 @@ export function VulnMgmt() {
                   {nodeDrill ? <><span style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setNodeDrill(null)}>Nodes</span><span style={{ color: 'var(--text-muted)' }}>›</span><span>{nodeDrill.name}</span><span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({nodeDrill.imageResults.length} images)</span></>
                     : <>Nodes — Image CVE Exposure ({nodeRows.length})</>}
                 </div>
-                {nodeDrill ? <button onClick={() => setNodeDrill(null)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button> : filterInput}
+                {nodeDrill ? <button onClick={() => setNodeDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button> : filterInput}
               </div>
               {!nodeDrill ? (() => {
                 const filtered = nodeRows.filter(n => !q || n.name.includes(q));
@@ -486,7 +487,7 @@ export function VulnMgmt() {
                       <table className="data-table">
                         <thead><tr><th>Node</th><th>Images</th><th>Total CVEs</th><th>Live Events</th></tr></thead>
                         <tbody>
-                          {nodeRows.length === 0 ? <tr><td colSpan={4}><EmptyState icon="🖥" title="No node data" sub="Nodes are loaded from the sensor. Make sure sensor is deployed." /></td></tr>
+                          {nodeRows.length === 0 ? <tr><td colSpan={4}><EmptyState icon="server" title="No node data" sub="Nodes are loaded from the sensor. Make sure sensor is deployed." /></td></tr>
                             : paginate(filtered).map((n, i) => (
                                 <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setNodeDrill(n)}>
                                   <td className="td-primary mono" style={{ fontSize: 12 }}>{n.name}</td>

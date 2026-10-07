@@ -14,12 +14,16 @@ import { AuditDetail }   from './AuditDetail';
 import { evalBuildViolations, evalDeployViolations } from './evaluators';
 
 import { OUTER_TABS, RUNTIME_TABS, KIND_COLOR, ackKey, fpKey } from './violationsConstants';
-import { Pagination } from './Pagination';
+import { Pager } from '../../components/Pager';
+import { usePageSize } from '../../hooks/usePaged';
 import { DataWindow } from '../../components/DataWindow';
 import { SilentFpButtons } from './SilentFpButtons';
 import { SilencedPanel } from './SilencedPanel';
 import { LSM_NAMES } from '../lsm/lsmCatalog';
 import { TRACEPOINT_NAMES } from '../tracepoints/tracepointsCatalog';
+import { Icon } from '../../components/Icon';
+
+const POSTURE_REFRESH_MS = 60_000;
 
 const LSM_SET = new Set(LSM_NAMES);
 const TP_SET  = new Set(TRACEPOINT_NAMES);
@@ -38,7 +42,7 @@ export function Violations() {
   const [sortDir,      setSortDir]      = useState('desc');
   const [sortCol,      setSortCol]      = useState('time');
   const [showSilenced, setShowSilenced] = useState(false);
-  const [pageSize,     setPageSize]     = useState(40);
+  const [pageSize,     setPageSize]     = usePageSize('violations');
   const [page,         setPage2]        = useState(1);
 
   const [silenced, setSilenced] = useState(new Map());
@@ -221,13 +225,46 @@ export function Violations() {
     }
     return m;
   }, [violations, ruleDetType]);
-  const buildViolations   = useMemo(() => evalBuildViolations(buildRules, clusterImages, histories),  [buildRules, clusterImages, histories]);
-  const deployViolations  = useMemo(() => evalDeployViolations(deployRules, workloads, snapshot), [deployRules, workloads, snapshot]);
+  const [posture, setPosture] = useState({ build: null, deploy: null, unavailable: false });
+  const postureSeen = useRef({ build: undefined, deploy: undefined });
+  useEffect(() => {
+    let alive = true;
+    postureSeen.current = { build: undefined, deploy: undefined };
+    const load = () => Promise.all(['build', 'deploy'].map(type =>
+      apiFetch(`/v1/posture?type=${type}`, { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).catch(() => null)))
+      .then(([build, deploy]) => {
+        if (!alive) return;
+        if (build?.unavailable || deploy?.unavailable) {
+          setPosture(prev => prev.unavailable ? prev : { build: null, deploy: null, unavailable: true });
+          return;
+        }
+        const fresh = (type, res) => Array.isArray(res?.findings) && res.evaluatedAt !== postureSeen.current[type];
+        const nextBuild = fresh('build', build), nextDeploy = fresh('deploy', deploy);
+        if (!nextBuild && !nextDeploy) return;
+        if (nextBuild) postureSeen.current.build = build.evaluatedAt;
+        if (nextDeploy) postureSeen.current.deploy = deploy.evaluatedAt;
+        setPosture(prev => ({
+          build:  nextBuild  ? build.findings  : prev.build,
+          deploy: nextDeploy ? deploy.findings : prev.deploy,
+          unavailable: false,
+        }));
+      });
+    load();
+    const t = setInterval(load, POSTURE_REFRESH_MS);
+    return () => { alive = false; clearInterval(t); };
+  }, [rulesVersion]);
+
+  const localPosture = posture.unavailable;
+  const buildViolations   = useMemo(() => localPosture ? evalBuildViolations(buildRules, clusterImages, histories) : (posture.build || []),
+    [localPosture, posture.build, buildRules, clusterImages, histories]);
+  const deployViolations  = useMemo(() => localPosture ? evalDeployViolations(deployRules, workloads, snapshot) : (posture.deploy || []),
+    [localPosture, posture.deploy, deployRules, workloads, snapshot]);
 
   useEffect(() => {
+    if (!localPosture) return;
     for (const v of buildViolations)  recordBuildDeploy(v, 'Build');
     for (const v of deployViolations) recordBuildDeploy(v, 'Deploy');
-  }, [buildViolations, deployViolations]);
+  }, [localPosture, buildViolations, deployViolations]);
 
   const q = search.toLowerCase();
   const bySev = v => sevChecked.includes(v.sev);
@@ -249,7 +286,7 @@ export function Violations() {
   const sortTh = (col) => (
     <th key={col.key} onClick={() => toggleSort(col.key)}
       style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-      {col.label}{sortCol === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+      {col.label}{sortCol === col.key ? <> <Icon name={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} /></> : ''}
     </th>
   );
   const buildDeployTimeOf = v => v._detectedAt || 0;
@@ -327,7 +364,6 @@ export function Violations() {
   ), [auditViolations, sevChecked, q, sortDir, silenced]);
 
   const paginate = arr => {
-    if (pageSize === 0) return arr;
     const start = (page - 1) * pageSize;
     return arr.slice(start, start + pageSize);
   };
@@ -338,7 +374,7 @@ export function Violations() {
   const silencedCount = silenced.size + suppressedRows.size;
 
   const runtimeEmptyText = (tab) => {
-    if (!connected)   return '⚠ Bridge disconnected';
+    if (!connected)   return 'Bridge disconnected';
     if (!rulesLoaded) return 'Loading policies…';
     const enabled = apiRules.filter(r => r.enabled !== false);
     if (tab === 'Tracepoints') {
@@ -372,7 +408,7 @@ export function Violations() {
     return (
     <div style={{ marginRight: selected ? 0 : 24 }}>
       <DataWindow label="Runtime violations" deps={[outerTab, showSilenced, !!selected]}
-        footer={<Pagination total={rows.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
+        footer={<Pager total={rows.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
         <table className="data-table">
           <thead>
             <tr>
@@ -462,7 +498,7 @@ export function Violations() {
               color: 'var(--color-text-secondary)',
               display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
             }}>
-            {sortDir === 'desc' ? '↓ Newest' : '↑ Oldest'}
+            <Icon name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} /> {sortDir === 'desc' ? 'Newest' : 'Oldest'}
           </button>
           <button onClick={() => setShowSilenced(s => !s)} style={{
             padding: '4px 10px', fontSize: 11, cursor: 'pointer',
@@ -503,7 +539,7 @@ export function Violations() {
           {!showSilenced && outerTab === 'Build' && (
             <div style={{ marginRight: selected ? 0 : 24 }}>
               <DataWindow label="Build violations" deps={[outerTab, showSilenced, !!selected]}
-                footer={<Pagination total={filteredBuild.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
+                footer={<Pager total={filteredBuild.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
                 <table className="data-table">
                   <thead><tr>{buildCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>
@@ -533,7 +569,7 @@ export function Violations() {
           {!showSilenced && outerTab === 'Deploy' && (
             <div style={{ marginRight: selected ? 0 : 24 }}>
               <DataWindow label="Deploy violations" deps={[outerTab, showSilenced, !!selected]}
-                footer={<Pagination total={filteredDeploy.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
+                footer={<Pager total={filteredDeploy.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
                 <table className="data-table">
                   <thead><tr>{deployCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>
@@ -565,7 +601,7 @@ export function Violations() {
           {!showSilenced && outerTab === 'Audit' && (
             <div style={{ marginRight: selected ? 0 : 24 }}>
               <DataWindow label="Audit violations" deps={[outerTab, showSilenced, !!selected]}
-                footer={<Pagination total={filteredAudit.length} pageSize={pageSize} page={page} onPageChange={setPage2} onPageSizeChange={setPageSize} />}>
+                footer={<Pager total={filteredAudit.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
                 <table className="data-table">
                   <thead><tr>{auditCols.map(sortTh)}<th></th></tr></thead>
                   <tbody>

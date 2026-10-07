@@ -7,13 +7,16 @@ import { CIS }   from './complianceCIS';
 import { NIST }  from './complianceNIST';
 import { PCI }   from './compliancePCI';
 import { HIPAA } from './complianceHIPAA';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 const STANDARDS = [
   { id:'CIS',   label:'CIS Kubernetes 1.5', checks: CIS,   color:'var(--accent)' },
   { id:'NIST',  label:'NIST 800-190',       checks: NIST,  color:'var(--accent-2)' },
   { id:'PCI',   label:'PCI DSS',            checks: PCI,   color:'var(--warning)' },
   { id:'HIPAA', label:'HIPAA',              checks: HIPAA, color:'var(--accent-3)' },
-  { id:'FSTEC', label:'ФСТЭК 118',          checks: FSTEC, color:'var(--danger)' },
+  { id:'FSTEC', label:'FSTEC 118',          checks: FSTEC, color:'var(--danger)' },
 ];
 
 function runStandard(std, data) {
@@ -100,6 +103,7 @@ export function Compliance() {
     ? current.results.filter(r => catFilter==='all'||r.cat===catFilter)
         .slice().sort((a,b) => a.score-b.score)
     : [];
+  const { pageItems: pageControls, pager } = usePaged(visible, 'compliance.controls', [activeStd, catFilter]);
 
   return (
     <div className="co-page">
@@ -107,11 +111,11 @@ export function Compliance() {
         <div>
           <span className="co-header-title">Compliance</span>
           <span className="co-header-sep">·</span>
-          <span className="co-header-sub">CIS Kubernetes · NIST 800-190 · PCI DSS · HIPAA · ФСТЭК 118</span>
+          <span className="co-header-sub">CIS Kubernetes · NIST 800-190 · PCI DSS · HIPAA · FSTEC 118</span>
         </div>
         <div className="co-header-right">
           {lastScan && !loading && (
-            <span className="co-next-scan">↺ in {fmtCountdown(nextIn)}</span>
+            <span className="co-next-scan"><Icon name="clock" /> in {fmtCountdown(nextIn)}</span>
           )}
           {lastScan && (
             <span className="co-last-scan">
@@ -119,12 +123,12 @@ export function Compliance() {
             </span>
           )}
           <button className="co-btn" onClick={scan} disabled={loading}>
-            {loading ? '…' : '↺'} Scan now
+            <Icon name={loading ? 'loader' : 'refresh'} /> Scan now
           </button>
         </div>
       </div>
 
-      {error && <div className="co-banner">⚠ {error}</div>}
+      {error && <div className="co-banner"><Icon name="alert" /> {error}</div>}
       {loading && <div className="co-splash"><div className="np-spinner"/><span>Running compliance scan…</span></div>}
 
       {!loading && !error && (
@@ -180,7 +184,7 @@ export function Compliance() {
                 </div>
 
                 <div className="co-controls">
-                  {visible.map(r => (
+                  {pageControls.map(r => (
                     <div key={r.id}
                       className={`co-ctrl${expanded===r.id?' co-ctrl--open':''}`}
                       onClick={()=>setExpanded(expanded===r.id?null:r.id)}>
@@ -194,7 +198,7 @@ export function Compliance() {
                           <span className="co-ctrl-sub">{r.passing}/{r.total} {r.total===1?'check':'entities'} passing</span>
                         </div>
                         <span className="co-ctrl-cat">{r.cat}</span>
-                        <span className="co-ctrl-chev">{expanded===r.id?'▾':'▸'}</span>
+                        <span className="co-ctrl-chev"><Icon name={expanded===r.id ? 'chevron-down' : 'chevron-right'} /></span>
                       </div>
 
                       {expanded===r.id&&(
@@ -227,6 +231,7 @@ export function Compliance() {
                     </div>
                   ))}
                 </div>
+                {visible.length > 0 && <div className="dw-foot"><Pager {...pager} noun="controls" /></div>}
               </div>
             </div>
           )}

@@ -198,7 +198,7 @@ func auditRuleItemHandler(st *store.Store, eng *auditengine.Engine) http.Handler
 
 func auditQueryFromRequest(r *http.Request) store.AuditEventQuery {
 	v := r.URL.Query()
-	maxHours := int(store.AuditRetention.Hours())
+	maxHours := int(store.AuditRetention().Hours())
 	hours, _ := strconv.Atoi(v.Get("hours"))
 	if hours <= 0 {
 		hours = 24
@@ -314,7 +314,7 @@ func auditSourcesHandler(st *store.Store) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"sources": src, "retentionHours": int(store.AuditRetention.Hours()),
+			"sources": src, "retentionHours": int(store.AuditRetention().Hours()),
 		})
 	}
 }

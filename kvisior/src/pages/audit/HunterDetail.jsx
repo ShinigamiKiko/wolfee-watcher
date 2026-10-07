@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { fmt, SEV, sev, SEV_ORDER } from './auditConstants';
+import { Icon } from '../../components/Icon';
 
 function HunterDetail({ run, onBack, onSelect }) {
   const [sevFilter, setSevFilter] = useState('all');
@@ -14,7 +15,7 @@ function HunterDetail({ run, onBack, onSelect }) {
   return (
     <div className="au-detail">
       <div className="au-detail__header">
-        <button className="au-back" onClick={onBack}>← Back</button>
+        <button className="au-back" onClick={onBack}><Icon name="arrow-left" /> Back</button>
         <div className="au-detail__info">
           <span className="au-detail__name">{run.name}</span>
           <span className="au-detail__meta">kube-hunter · {fmt(run.startedAt)}</span>
@@ -65,11 +66,11 @@ function HunterDetail({ run, onBack, onSelect }) {
                 <b>{n}</b> {s}
               </button>
             ))}
-          {sevFilter!=='all' && <button className="au-pill-clear" onClick={()=>setSevFilter('all')}>✕</button>}
+          {sevFilter!=='all' && <button className="au-pill-clear" onClick={()=>setSevFilter('all')}><Icon name="x" /></button>}
         </div>
       </div>
 
-      {vulns.length===0 && <div className="au-empty">✓ No vulnerabilities found</div>}
+      {vulns.length===0 && <div className="au-empty"><Icon name="check" /> No vulnerabilities found</div>}
 
       <div className="au-scroll-area">
         {visible.map((v,i)=>{
@@ -86,10 +87,10 @@ function HunterDetail({ run, onBack, onSelect }) {
                 <span className="au-row-arrow">›</span>
               </div>
               {v?.category && <div className="au-vuln-card__cat">{v.category}</div>}
-              {v?.location  && <div className="au-vuln-card__loc">📍 {v.location}</div>}
+              {v?.location  && <div className="au-vuln-card__loc"><Icon name="map-pin" /> {v.location}</div>}
               {v?.avd_remediation && (
                 <div className="au-vuln-card__remedy">
-                  <b>🔧 Fix:</b> {v.avd_remediation.slice(0,180)}{v.avd_remediation.length>180?'…':''}
+                  <b><Icon name="wrench" /> Fix:</b> {v.avd_remediation.slice(0,180)}{v.avd_remediation.length>180?'…':''}
                 </div>
               )}
             </div>

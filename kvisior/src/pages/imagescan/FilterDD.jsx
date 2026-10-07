@@ -3,6 +3,7 @@ import { useScanner } from '../../context/ScannerContext';
 import { SevBadge, StatusDot } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { epssLabel, sevColor, fmtDuration } from '../../data/scanner';
+import { Icon } from '../../components/Icon';
 
 const SCAN_TABS = [
   { id: 'results',    label: 'Scan Results' },
@@ -37,7 +38,7 @@ function FilterDD({ label, options, checked, onChange }) {
   }, []);
   return (
     <div className="filter-dd" ref={ref}>
-      <button className="btn btn-outline" style={{fontSize:12,whiteSpace:'nowrap'}} onClick={()=>setOpen(v=>!v)}>{label} ▾</button>
+      <button className="btn btn-outline btn-dd" onClick={()=>setOpen(v=>!v)}>{label} <Icon name="chevron-down" /></button>
       <div className={`filter-dd-menu${open?' open':''}`}>
         {options.map(opt=>(
           <label key={opt} className="filter-dd-item">

@@ -1,7 +1,8 @@
+import { Icon } from '../../components/Icon';
 export function EvDetail({ ev }) {
   if (!ev) return (
     <div className="rn-ev-detail-empty">
-      <div style={{ opacity:.3, fontSize:24 }}>⬡</div>
+      <div style={{ opacity:.3, fontSize:24 }}><Icon name="hexagon" /></div>
       <span>Click an event to inspect</span>
     </div>
   );
@@ -34,7 +35,7 @@ export function EvDetail({ ev }) {
         <div className="rn-ev-detail-sec-title">Status</div>
         <div className="rn-kv">
           <span>Type</span>
-          <span className={`rn-ev-pill ${isBlocked?'rn-ev-pill--blocked':'rn-ev-pill--anomaly'}`}>{isBlocked?'✕ blocked':'⚡ anomaly'}</span>
+          <span className={`rn-ev-pill ${isBlocked?'rn-ev-pill--blocked':'rn-ev-pill--anomaly'}`}>{isBlocked?<><Icon name="ban" /> blocked</>:<><Icon name="zap" /> anomaly</>}</span>
         </div>
       </div>
     </div>

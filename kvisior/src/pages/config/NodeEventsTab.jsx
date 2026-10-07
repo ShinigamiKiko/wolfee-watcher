@@ -1,6 +1,7 @@
 import { apiFetch } from '../../data/cluster';
 import { useState, useEffect } from 'react';
 import { ST } from './yamlPanelHelpers';
+import { Icon } from '../../components/Icon';
 
 async function safeFetch(url) {
   const res = await apiFetch(url, { credentials: 'same-origin' });
@@ -37,15 +38,15 @@ function NodeEventsTab({ item }) {
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div style={{ padding: '10px 0', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={load} disabled={loading} style={ST.btnLoad}>
-          {loading ? '⟳ Loading…' : events ? '↺ Refresh' : '▶ Load Events'}
+          {loading ? <><Icon name="loader" /> Loading…</> : events ? <><Icon name="refresh" /> Refresh</> : <><Icon name="play" /> Load Events</>}
         </button>
         {events && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{events.length} events</span>}
       </div>
-      {error && <div style={ST.errBox}>✕ {error}</div>}
+      {error && <div style={ST.errBox}><Icon name="circle-x" /> {error}</div>}
       {!events && !error && !loading && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--text-muted)', fontSize: 13, flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontSize: 32 }}>📅</span>
+          <Icon name="calendar" size={32} />
           <span>Click <strong style={{ color: 'var(--accent)' }}>Load Events</strong> to fetch</span>
         </div>
       )}

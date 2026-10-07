@@ -1,5 +1,7 @@
 import { StatusDot } from '../../components/ui';
 import { KindBadge, FilterInput, EmptyRow } from './cfgHelpers';
+import { Icon } from '../../components/Icon';
+import { PagedWindow } from '../../components/PagedWindow';
 
 export function ClustersTab({ nodeRows, nsRows, workloadRows, clusterImages, agentInfo, sensorOnline, connected, selected, setSelected }) {
   const clusterName = agentInfo?.clusterName || 'wolfee-watcher';
@@ -47,14 +49,14 @@ export function NamespacesTab({ nsRows, q, search, setSearch, sensorOnline, sele
           }
         </div>
         {!nsDrill && <FilterInput value={search} onChange={setSearch} />}
-        {nsDrill  && <button onClick={() => setNsDrill(null)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button>}
+        {nsDrill  && <button onClick={() => setNsDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button>}
       </div>
-      <div className="table-wrap">
+      <PagedWindow items={nsDrill ? nsDrill.pods : nsRows.filter(r => !q || r.name.includes(q))} storageKey="config.namespaces" label="Namespaces" noun="rows" resetKey={`${nsDrill?.name || ''}|${q}`}>{rows => (<>
         {!nsDrill ? (
           <table className="data-table">
             <thead><tr><th>Namespace</th><th>Status</th><th>Pods</th><th>Live Events</th><th></th></tr></thead>
             <tbody>
-              {nsRows.filter(r => !q || r.name.includes(q)).map(r => (
+              {rows.map(r => (
                 <tr key={r.name} style={{ cursor: 'pointer' }} onClick={() => setNsDrill(r)}>
                   <td className="td-primary">{r.name}</td>
                   <td><StatusDot type="active" label="Active" /></td>
@@ -72,7 +74,7 @@ export function NamespacesTab({ nsRows, q, search, setSearch, sensorOnline, sele
             <tbody>
               {nsDrill.pods.length === 0
                 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32, fontSize: 13 }}>No pods in this namespace</td></tr>
-                : nsDrill.pods.map((p, i) => {
+                : rows.map((p, i) => {
                     const phase  = p.status?.phase || 'Unknown';
                     const stType = phase === 'Running' ? 'active' : phase === 'Pending' ? 'warn' : 'error';
                     const images = (p.spec?.containers || []).map(c => c.image).filter(Boolean);
@@ -91,7 +93,8 @@ export function NamespacesTab({ nsRows, q, search, setSearch, sensorOnline, sele
             </tbody>
           </table>
         )}
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -101,11 +104,11 @@ export function NodesTab({ nodeRows, pods, q, search, setSearch, sensorOnline, s
   return (
     <div className="card" style={{ marginTop: 16, marginRight: selected ? 0 : 24 }}>
       <div className="card-header"><div className="card-title">Nodes ({nodeRows.length})</div><FilterInput value={search} onChange={setSearch} /></div>
-      <div className="table-wrap">
+      <PagedWindow items={nodeRows.filter(n => !q || n.name.includes(q))} storageKey="config.nodes" label="Nodes" noun="nodes" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Node</th><th>Role</th><th>OS</th><th>Kernel</th><th>CPU</th><th>Memory</th><th>Pods</th><th>Live Events</th><th>Status</th></tr></thead>
           <tbody>
-            {nodeRows.filter(n => !q || n.name.includes(q)).map(n => (
+            {rows.map(n => (
               <tr key={n.name} style={{ cursor: 'pointer' }} className={selected?.title === n.name ? 'selected' : ''}
                 onClick={() => setSelected({ title: n.name, sub: `Node · ${n.info.operatingSystem || 'linux'}`, raw: Object.assign({ apiVersion: 'v1', kind: 'Node' }, n.raw) })}>
                 <td className="td-primary">{n.name}</td>
@@ -122,7 +125,8 @@ export function NodesTab({ nodeRows, pods, q, search, setSearch, sensorOnline, s
             {!nodeRows.length && <EmptyRow cols={9} msg="No nodes found" sensorOnline={sensorOnline} />}
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -131,11 +135,11 @@ export function WorkloadsTab({ workloadRows, q, search, setSearch, sensorOnline,
   return (
     <div className="card" style={{ marginTop: 16, marginRight: selected ? 0 : 24 }}>
       <div className="card-header"><div className="card-title">Workloads ({workloadRows.length})</div><FilterInput value={search} onChange={setSearch} /></div>
-      <div className="table-wrap">
+      <PagedWindow items={workloadRows.filter(w => !q || w.name.includes(q) || w.ns.includes(q) || w.kind.toLowerCase().includes(q))} storageKey="config.workloads" label="Workloads" noun="workloads" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Name</th><th>Kind</th><th>Namespace</th><th>Images</th><th>Ready</th><th></th></tr></thead>
           <tbody>
-            {workloadRows.filter(w => !q || w.name.includes(q) || w.ns.includes(q) || w.kind.toLowerCase().includes(q)).map((w, i) => (
+            {rows.map((w, i) => (
               <tr key={i} style={{ cursor: 'pointer' }} className={selected?.title === w.name ? 'selected' : ''}
                 onClick={() => setSelected({ title: w.name, sub: `${w.kind} · ${w.ns}`, raw: Object.assign({ apiVersion: 'apps/v1', kind: w.kind }, w.raw) })}>
                 <td className="td-primary">{w.name}</td>
@@ -149,7 +153,8 @@ export function WorkloadsTab({ workloadRows, q, search, setSearch, sensorOnline,
             {!workloadRows.length && <EmptyRow cols={6} msg="No workloads found" sensorOnline={sensorOnline} />}
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }

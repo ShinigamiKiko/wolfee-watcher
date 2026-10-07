@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { STATUS_COLOR, fmt } from './auditConstants';
+import { Icon } from '../../components/Icon';
 
 function BenchDetail({ run, onBack, onSelect }) {
   const [filter, setFilter] = useState('all');
@@ -13,7 +14,7 @@ function BenchDetail({ run, onBack, onSelect }) {
   return (
     <div className="au-detail">
       <div className="au-detail__header">
-        <button className="au-back" onClick={onBack}>← Back</button>
+        <button className="au-back" onClick={onBack}><Icon name="arrow-left" /> Back</button>
         <div className="au-detail__info">
           <span className="au-detail__name">{run.name}</span>
           <span className="au-detail__meta">kube-bench · {fmt(run.startedAt)}</span>
@@ -32,7 +33,7 @@ function BenchDetail({ run, onBack, onSelect }) {
               <b>{n}</b> {s}
             </button>
           ))}
-          {filter!=='all' && <button className="au-pill-clear" onClick={()=>setFilter('all')}>✕</button>}
+          {filter!=='all' && <button className="au-pill-clear" onClick={()=>setFilter('all')}><Icon name="x" /></button>}
         </div>
       </div>
       <div className="au-scroll-area">
@@ -47,22 +48,22 @@ function BenchDetail({ run, onBack, onSelect }) {
                 {ctrl.node_type && <span className="au-ctrl__node">{ctrl.node_type}</span>}
                 <span className="au-ctrl__text">{ctrl.text}</span>
                 <div className="au-ctrl__counts">
-                  {ctrl.fail>0 && <span style={{color:'var(--danger)'}}>✕{ctrl.fail}</span>}
-                  {ctrl.warn>0 && <span style={{color:'var(--warning)'}}>⚠{ctrl.warn}</span>}
-                  {ctrl.pass>0 && <span style={{color:'var(--accent-3)'}}>✓{ctrl.pass}</span>}
+                  {ctrl.fail>0 && <span className="ic-label" style={{color:'var(--danger)'}}><Icon name="x" />{ctrl.fail}</span>}
+                  {ctrl.warn>0 && <span className="ic-label" style={{color:'var(--warning)'}}><Icon name="alert" />{ctrl.warn}</span>}
+                  {ctrl.pass>0 && <span className="ic-label" style={{color:'var(--accent-3)'}}><Icon name="check" />{ctrl.pass}</span>}
                 </div>
-                <span className="au-chev">{isOpen?'▾':'▸'}</span>
+                <span className="au-chev"><Icon name={isOpen ? 'chevron-down' : 'chevron-right'} /></span>
               </div>
               {isOpen && (
                 <div className="au-ctrl__body">
                   {(ctrl.tests||[]).filter(t=>filter==='all'||t.status===filter).map(t=>(
                     <div key={t.number} className="au-test" onClick={()=>onSelect(t,'bench')}>
                       <span className="au-test__icon" style={{color:STATUS_COLOR[t.status]||'var(--text-muted)'}}>
-                        {t.status==='PASS'?'✓':t.status==='FAIL'?'✕':t.status==='WARN'?'⚠':'ℹ'}
+                        <Icon name={t.status==='PASS'?'check':t.status==='FAIL'?'x':t.status==='WARN'?'alert':'info'} />
                       </span>
                       <span className="au-test__num">{t.number}</span>
                       <span className="au-test__desc">{t.desc}</span>
-                      {t.remediation && <span title="Has remediation" style={{opacity:.6}}>🔧</span>}
+                      {t.remediation && <span title="Has remediation" style={{opacity:.6}}><Icon name="wrench" /></span>}
                       <span className="au-row-arrow">›</span>
                     </div>
                   ))}

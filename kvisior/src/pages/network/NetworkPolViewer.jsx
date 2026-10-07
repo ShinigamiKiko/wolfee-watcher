@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { toYaml, cleanObj } from './networkPolicyUtils';
+import { Icon } from '../../components/Icon';
 
 export function PolViewer({ pol }) {
   const [yamlOpen, setYamlOpen] = useState(false);
 
   if (!pol) return (
     <div className="rn-netpol-empty">
-      <div style={{opacity:.3,fontSize:28}}>⬡</div>
+      <div style={{opacity:.3,fontSize:28}}><Icon name="hexagon" /></div>
       <span>Select a policy to inspect</span>
     </div>
   );
@@ -49,7 +50,7 @@ export function PolViewer({ pol }) {
         <div className="rn-pol-section">
           <div className="rn-pol-section-title">Pod Selector</div>
           <div className="rn-ep-card">
-            <div className="rn-ep-icon rn-ep-icon--src">⬡</div>
+            <div className="rn-ep-icon rn-ep-icon--src"><Icon name="hexagon" /></div>
             <div style={{flex:1,minWidth:0}}>
               <div className="rn-kv"><span>Namespace</span><span>{meta.namespace}</span></div>
               {Object.entries(sel).length>0
@@ -96,7 +97,7 @@ export function PolViewer({ pol }) {
 
       <div className="rn-policy-actions">
         <button className="rn-btn"
-          onClick={()=>alert(`kubectl apply --dry-run=server\n\n✓ networkpolicy.networking.k8s.io "${meta.name}" configured (dry run)`)}>
+          onClick={()=>alert(`kubectl apply --dry-run=server\n\nnetworkpolicy.networking.k8s.io "${meta.name}" configured (dry run)`)}>
           Dry run
         </button>
         <button className="rn-btn rn-btn--copy" onClick={()=>navigator.clipboard?.writeText(yaml)}>

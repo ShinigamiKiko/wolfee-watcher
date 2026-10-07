@@ -1,13 +1,14 @@
 import { SevBadge } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 const KIND_ICON = {
-  exec:        '🖥️',
-  attach:      '🔌',
-  portforward: '🔗',
-  create:      '➕',
-  update:      '✏️',
-  delete:      '🗑️',
-  unknown:     '❓',
+  exec:        'terminal',
+  attach:      'plug',
+  portforward: 'link',
+  create:      'plus',
+  update:      'edit',
+  delete:      'trash',
+  unknown:     'help',
 };
 
 const KIND_COLOR = {
@@ -43,7 +44,7 @@ export function AuditDetail({ v, onClose }) {
             </div>
             <div className="dp-meta">{v.kind} · {v.webhookType || v.resource} · {v.ns}</div>
           </div>
-          <button className="dp-close" onClick={onClose}>✕</button>
+          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         {}

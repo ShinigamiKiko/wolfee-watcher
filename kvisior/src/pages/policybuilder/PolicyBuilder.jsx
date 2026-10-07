@@ -7,6 +7,7 @@ import { aggregateProbes, fmtNum, riskColor } from './probesData';
 import { CONTAINER_PATH_PRESETS, SCOPE_FIELDS, genPolicyYaml } from './policyFilters';
 import '../../styles/probes.scss';
 import '../../styles/policybuilder.scss';
+import { Icon } from '../../components/Icon';
 
 function loadState(key, fallback) {
   try {
@@ -25,7 +26,7 @@ function FilterRow({ row, onChange, onRemove }) {
         placeholder={`args.${row.key}=…`}
         onChange={e => onChange(e.target.value)}
       />
-      <button className="pb-frow-btn danger" title="Remove" onClick={onRemove}>✕</button>
+      <button className="pb-frow-btn danger" title="Remove" onClick={onRemove}><Icon name="x" /></button>
     </div>
   );
 }
@@ -141,7 +142,7 @@ function EventCard({
   return (
     <div className={`pb-card${expanded ? ' open' : ''}`}>
       <div className="pb-card-head" onClick={onToggle}>
-        <span className="pb-card-caret">{expanded ? '▾' : '▸'}</span>
+        <span className="pb-card-caret"><Icon name={expanded ? 'chevron-down' : 'chevron-right'} /></span>
         <span className={`status-dot ${statusCls}`} />
         <span className="pb-card-name">{event.name}</span>
         <span className={`sev sev-${event.risk || 'low'}`}>{event.group}</span>
@@ -152,7 +153,7 @@ function EventCard({
             : null}
         </span>
         <button className="pb-card-remove" title="Remove from policy"
-          onClick={e => { e.stopPropagation(); onRemove(); }}>✕</button>
+          onClick={e => { e.stopPropagation(); onRemove(); }}><Icon name="x" /></button>
       </div>
 
       {expanded && (
@@ -190,7 +191,7 @@ function EventCard({
                           <span className="pb-path-chip" key={i} title={`args.${arg.key}=${r.value}`}>
                             {r.value}
                             <button type="button" className="pb-chip-x" title="Remove"
-                              onClick={() => removeRowAt(event.name, i)}>✕</button>
+                              onClick={() => removeRowAt(event.name, i)}><Icon name="x" /></button>
                           </span>
                         ))}
                       </div>}
@@ -357,7 +358,7 @@ export function PolicyBuilder({ title, catalog, storageKey, renderExtra }) {
 
           <div className="pb-cards-wrap">
             {includedList.length === 0 ? (
-              <EmptyState icon="➕"
+              <EmptyState icon="plus"
                 title="No hooks in this policy yet"
                 sub="Press “+ Add hook” (top right) to add the hooks you want to watch, then restrict each one to the file paths that matter. Nothing is collected until you add it." />
             ) : (
@@ -390,8 +391,8 @@ export function PolicyBuilder({ title, catalog, storageKey, renderExtra }) {
             <div className="pb-yaml-head">
               <span>{title} — Tracee policy ({included.size} events)</span>
               <div className="pb-yaml-actions">
-                <button className="pb-export-btn" onClick={copyYaml}>{copied ? 'Copied ✓' : 'Copy'}</button>
-                <button className="probes-dp-close" onClick={() => setShowYaml(false)}>✕</button>
+                <button className="pb-export-btn" onClick={copyYaml}>{copied ? <><Icon name="check" /> Copied</> : 'Copy'}</button>
+                <button className="probes-dp-close" onClick={() => setShowYaml(false)}><Icon name="x" /></button>
               </div>
             </div>
             <div className="pb-scope pb-yaml-scope">

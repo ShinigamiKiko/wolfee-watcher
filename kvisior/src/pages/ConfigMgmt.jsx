@@ -6,6 +6,7 @@ import { YamlPanel }  from './config/YamlPanel';
 import { nodeRole, nodeReady, workloadReady, workloadImages, bindingsFor, SYS_NS, SYS_NAMES } from './config/cfgHelpers';
 import { ClustersTab, NamespacesTab, NodesTab, WorkloadsTab } from './config/tabs1';
 import { ServiceAccountsTab, RolesTab, SecretsTab, CrdsTab, StaticPodsTab, WebhooksTab } from './config/tabs2';
+import { Icon } from '../components/Icon';
 
 const TABS = ['Clusters','Namespaces','Nodes','Deployments','Service Accounts','Roles','Secrets','CRDs','Static Pods','MWH','VWH'];
 const CONTROLLER_KINDS = new Set(['ReplicaSet','StatefulSet','DaemonSet','Job','CronJob','ReplicationController']);
@@ -91,7 +92,7 @@ export function ConfigMgmt() {
               color: showSystem ? 'var(--accent)' : 'var(--text-muted)',
               transition: 'all .15s',
             }}>
-              {showSystem ? '⊙ System NS: on' : '⊙ System NS: off'}
+              <Icon name={showSystem ? 'eye' : 'eye-off'} /> System NS: {showSystem ? 'on' : 'off'}
             </button>
           </div>
         </div>

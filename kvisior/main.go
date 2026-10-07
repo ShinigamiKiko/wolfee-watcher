@@ -219,6 +219,7 @@ func main() {
 	if h, err := strconv.Atoi(os.Getenv("KVISIOR_AUDIT_RETENTION_HOURS")); err == nil && h > 0 {
 		store.SetAuditRetention(time.Duration(h) * time.Hour)
 	}
+	store.ConfigureAuditRetentionWriter(clusterctx.Mode() == "hub")
 	if pgDSN := os.Getenv("POSTGRES_DSN"); pgDSN != "" {
 		var err error
 		pgPool, err = pgxpool.New(ctx, pgDSN)
@@ -248,6 +249,9 @@ func main() {
 	auditEng := auditengine.New(st, uiBus)
 	if st != nil {
 		go auditEng.Run(ctx)
+		if !clusterctx.Hub() {
+			go runPosture(ctx, st, evHub)
+		}
 		if os.Getenv("KVISIOR_AUDIT_INGEST_URL") == "" {
 			go auditdelivery.Run(ctx, st, auditEng, auditWorkersForPool(pgPool))
 		}
@@ -768,6 +772,8 @@ func main() {
 		mux.Handle("/v1/audit/groups", authed(auditGroupsHandler(st)))
 		mux.Handle("/v1/audit/sources", authed(auditSourcesHandler(st)))
 		mux.Handle("/api/audit/log-source", adminMut(auditLogSourceHandler(st)))
+		mux.Handle("/api/audit/retention", adminMut(auditRetentionHandler(st)))
+		mux.Handle("/v1/posture", authed(postureHandler(st)))
 		mux.Handle("/api/audit/log-source/test", adminMut(auditLogTestHandler(st)))
 		mux.Handle("/api/audit/log-source/proxies", adminMut(auditTrustedProxiesHandler(st)))
 		mux.Handle("/sensor/api/forensic/diff/", authed(forensicDiffHandler(st)))

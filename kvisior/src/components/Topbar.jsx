@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePerms } from '../context/PermissionsContext';
 import { ClusterPicker } from './ClusterPicker';
 import '../assets/logo/logo.scss';
+import { Icon } from './Icon';
 
 export function Topbar() {
   const navigate = useNavigate();
@@ -55,7 +56,7 @@ export function Topbar() {
           <div className="user-btn" onClick={() => setMenuOpen(v => !v)}>
             <div className="user-avatar">{initials}</div>
             <span className="user-name">{username}@cluster</span>
-            <span style={{fontSize:10,color:'var(--text-muted)'}}>▾</span>
+            <Icon name="chevron-down" style={{ color: 'var(--text-muted)' }} />
           </div>
           <div className={`dropdown-menu ${menuOpen ? 'open' : ''}`}>
             <div className="dropdown-user-info">
@@ -64,9 +65,9 @@ export function Topbar() {
               <div className="dropdown-role">{role === 'admin' ? 'Admin' : 'Read-Only'}{me?.group_name ? ` · ${me.group_name}` : ''}</div>
             </div>
             <div className="dropdown-divider" />
-            <div className="dropdown-item" onClick={() => { navigate('/profile'); setMenuOpen(false); }}>👤 My profile</div>
+            <div className="dropdown-item" onClick={() => { navigate('/profile'); setMenuOpen(false); }}><Icon name="user" /> My profile</div>
             <div className="dropdown-divider" />
-            <div className="dropdown-item" style={{color:'var(--danger)'}} onClick={handleLogout}>⏏ Log out</div>
+            <div className="dropdown-item" style={{color:'var(--danger)'}} onClick={handleLogout}><Icon name="escape" /> Log out</div>
           </div>
         </div>
       </div>

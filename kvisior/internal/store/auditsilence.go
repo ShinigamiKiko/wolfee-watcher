@@ -27,28 +27,42 @@ const (
 
 var ErrAuditSilenceInvalid = errors.New("invalid silence")
 
-type silenceTableState struct {
+type tableState struct {
 	ready     atomic.Bool
 	checkedAt atomic.Int64
 }
 
-func (s *Store) auditSilencesReady(ctx context.Context, db auditDB) (bool, error) {
-	if s.silences.ready.Load() {
+func (s *Store) table(name string) *tableState {
+	v, _ := s.tables.LoadOrStore(name, &tableState{})
+	return v.(*tableState)
+}
+
+func (s *Store) tableReady(ctx context.Context, db auditDB, name string) (bool, error) {
+	t := s.table(name)
+	if t.ready.Load() {
 		return true, nil
 	}
 	now := time.Now().UnixNano()
-	if last := s.silences.checkedAt.Load(); last != 0 && time.Duration(now-last) < silenceTableRecheck {
+	if last := t.checkedAt.Load(); last != 0 && time.Duration(now-last) < silenceTableRecheck {
 		return false, nil
 	}
 	var present bool
-	if err := db.QueryRow(ctx, `SELECT to_regclass('audit_silenced_events') IS NOT NULL`).Scan(&present); err != nil {
+	if err := db.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, name).Scan(&present); err != nil {
 		return false, err
 	}
-	s.silences.checkedAt.Store(now)
+	t.checkedAt.Store(now)
 	if present {
-		s.silences.ready.Store(true)
+		t.ready.Store(true)
 	}
 	return present, nil
+}
+
+func (s *Store) auditSilencesReady(ctx context.Context, db auditDB) (bool, error) {
+	return s.tableReady(ctx, db, "audit_silenced_events")
+}
+
+func (s *Store) auditRollupsReady(ctx context.Context, db auditDB) (bool, error) {
+	return s.tableReady(ctx, db, "audit_rollup_marks")
 }
 
 type AuditSilence struct {
@@ -261,12 +275,26 @@ func (c *Scoped) silenceStoredEvent(ctx context.Context, row *AuditEventRow, uid
 	if err := c.storeSilencedEvent(ctx, id, silencedRow{uid: uid, origin: row.Origin, ruleID: row.RuleID, sev: row.Sev, ts: row.Ts, ev: ev, data: row.Data}); err != nil {
 		return err
 	}
+	if ready, err := c.s.auditRollupsReady(ctx, c.db()); err != nil {
+		return err
+	} else if ready {
+		if _, err := c.db().Exec(ctx, `UPDATE audit_events SET silenced = TRUE WHERE cluster_id = $1 AND id = $2 AND ts = $3`,
+			pgx.QueryExecModeExec, c.id, row.ID, row.Ts); err != nil {
+			return err
+		}
+		if err := c.invalidateRollupHours(ctx, row.Ts); err != nil {
+			return err
+		}
+	}
 	row.Silenced, row.NewlySilenced = true, true
 	return nil
 }
 
 func (c *Scoped) silencedFilter(ctx context.Context) string {
-	if ready, err := c.s.auditSilencesReady(ctx, c.s.pool); err != nil || !ready {
+	if ready, err := c.s.auditRollupsReady(ctx, c.db()); err == nil && ready {
+		return ` AND NOT silenced`
+	}
+	if ready, err := c.s.auditSilencesReady(ctx, c.db()); err != nil || !ready {
 		return ""
 	}
 	return ` AND NOT EXISTS (SELECT 1 FROM audit_silenced_events se WHERE se.cluster_id = audit_events.cluster_id AND se.event_uid = audit_events.event_uid)`
@@ -323,7 +351,7 @@ func (c *Scoped) CreateAuditSilence(ctx context.Context, s AuditSilence, duratio
 		 RETURNING `+auditSilenceCols,
 		c.id, s.Action, s.Object, s.User, s.SourceIP, s.Reason, s.CreatedBy, expires), &out)
 	if err == nil {
-		c.s.silences.ready.Store(true)
+		c.s.table("audit_silenced_events").ready.Store(true)
 	}
 	return out, err
 }
@@ -344,8 +372,45 @@ func (c *Scoped) EndAuditSilence(ctx context.Context, id int64) (bool, error) {
 }
 
 func (c *Scoped) DeleteAuditSilence(ctx context.Context, id int64) (bool, error) {
-	tag, err := c.s.pool.Exec(ctx, `DELETE FROM audit_silences WHERE cluster_id = $1 AND id = $2`, c.id, id)
-	return tag.RowsAffected() > 0, err
+	ready, err := c.s.auditRollupsReady(ctx, c.s.pool)
+	if err != nil {
+		return false, err
+	}
+	if !ready {
+		tag, err := c.s.pool.Exec(ctx, `DELETE FROM audit_silences WHERE cluster_id = $1 AND id = $2`, c.id, id)
+		return tag.RowsAffected() > 0, err
+	}
+	tx, err := c.s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+	scoped := &Scoped{s: c.s, id: c.id, tx: tx}
+	if err := scoped.unsilenceEvents(ctx, id); err != nil {
+		return false, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM audit_silences WHERE cluster_id = $1 AND id = $2`, c.id, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, tx.Commit(ctx)
+}
+
+func (c *Scoped) unsilenceEvents(ctx context.Context, silence int64) error {
+	rows, err := c.db().Query(ctx,
+		`UPDATE audit_events e SET silenced = FALSE
+		   FROM audit_silenced_events se
+		  WHERE se.cluster_id = $1 AND se.silence_id = $2
+		    AND e.cluster_id = se.cluster_id AND e.event_uid = se.event_uid AND e.ts = se.ts AND e.silenced
+		 RETURNING e.ts`, c.id, silence)
+	if err != nil {
+		return err
+	}
+	stamps, err := pgx.CollectRows(rows, pgx.RowTo[time.Time])
+	if err != nil {
+		return err
+	}
+	return c.invalidateRollupHours(ctx, stamps...)
 }
 
 type SilencedEventRow struct {
@@ -378,12 +443,14 @@ func (c *Scoped) ListSilencedEvents(ctx context.Context, silence, before int64, 
 	return out, rows.Err()
 }
 
-func sweepAuditSilences(ctx context.Context, tx pgx.Tx) error {
-	var present bool
-	if err := tx.QueryRow(ctx, `SELECT to_regclass('audit_silenced_events') IS NOT NULL`).Scan(&present); err != nil || !present {
+func (s *Store) sweepAuditSilences(ctx context.Context, tx pgx.Tx) error {
+	if ready, err := s.auditSilencesReady(ctx, tx); err != nil || !ready {
 		return err
 	}
-	retention := fmt.Sprintf("%d seconds", int64(AuditRetention.Seconds()))
+	retention, known := auditRetentionInterval()
+	if !known {
+		return nil
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM audit_silenced_events WHERE ts < NOW() - $1::interval`, retention); err != nil {
 		return err
 	}

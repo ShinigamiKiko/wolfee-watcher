@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react';
 import { podName, podNS, podContainers, relTime } from '../../utils/format';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activeWatches = [], getSev, onSelect }) {
   const [search, setSearch] = useState('');
@@ -73,13 +76,14 @@ export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activ
         b.eventCount - a.eventCount);
   }, [ns, pods, eventSummary, anomalyEvents, activeWatches, search, getSev]);
 
+  const { pageItems: pageRows, pager } = usePaged(rows, 'forensics.pods', [ns, search]);
   return (
     <div className="fns-podlist">
       <div className="fns-podlist-hdr">
         <div className="fns-podlist-title">{ns}</div>
       <div className="fns-podlist-count">{rows.length} pods</div>
         <div className="fns-search">
-          <span className="fns-search-icon">⌕</span>
+          <span className="fns-search-icon"><Icon name="search" /></span>
           <input placeholder="Search pods…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
       </div>
@@ -88,7 +92,7 @@ export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activ
            <tr><th>Pod name</th><th>Pod IP</th><th>Containers</th><th>Events / 24h</th><th>Critical</th></tr>
         </thead>
         <tbody>
-          {rows.map(r => (
+          {pageRows.map(r => (
               <tr key={`${ns}/${r.podUID || r.containerID || r.name}`} className={`fns-prow${r.gone ? ' fns-prow--gone' : ''}`} onClick={() => onSelect(r.pod)}>
               <td>
                 <div className="fns-pname-wrap">
@@ -96,7 +100,7 @@ export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activ
                    <span className="fns-pname">{r.name}</span>
                    {r.anomalyWatching && <span className="fns-anomaly-dot" title="Anomaly watch active" aria-label="Anomaly watch active" />}
                   {r.gone && (
-                    <span className="fns-gone-badge" title={`Последнее событие: ${new Date(r.lastSeen).toLocaleString('ru-RU')}`}>
+                    <span className="fns-gone-badge" title={`Last event: ${new Date(r.lastSeen).toLocaleString()}`}>
                       terminated · {relTime(r.lastSeen)}
                     </span>
                   )}
@@ -118,7 +122,7 @@ export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activ
               </td>
               <td>
                 {r.critical > 0
-                  ? <span className="fns-crit-badge">⊗ {r.critical}</span>
+                  ? <span className="fns-crit-badge"><Icon name="alert" /> {r.critical}</span>
                   : <span className="fns-dim">—</span>
                 }
               </td>
@@ -127,6 +131,7 @@ export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activ
           {rows.length === 0 && <tr><td colSpan={5} className="fns-empty">No pods found</td></tr>}
         </tbody>
       </table>
+      {rows.length > 0 && <div className="dw-foot"><Pager {...pager} noun="pods" /></div>}
     </div>
   );
 }

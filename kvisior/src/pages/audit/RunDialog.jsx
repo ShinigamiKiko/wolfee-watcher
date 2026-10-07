@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from '../../components/Icon';
 
 function RunDialog({ tool, onConfirm, onCancel }) {
   const [name, setName] = useState('');
@@ -17,7 +18,7 @@ function RunDialog({ tool, onConfirm, onCancel }) {
         />
         <div className="au-dialog__actions">
           <button className="au-dialog__cancel" onClick={onCancel}>Cancel</button>
-          <button className="au-dialog__run" onClick={go} disabled={!name.trim()}>▶ Start</button>
+          <button className="au-dialog__run" onClick={go} disabled={!name.trim()}><Icon name="play" /> Start</button>
         </div>
       </div>
     </div>

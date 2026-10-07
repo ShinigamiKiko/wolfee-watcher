@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { apiJSON, formatDate } from './settingsApi';
-import { RoleBadge, Field, btnGhost, btnDanger } from './settingsUi';
+import { RoleBadge, Field } from './settingsUi';
 import { ROLE_OPTIONS, TOKEN_TTL_OPTIONS } from './settingsConstants';
 
 export function TokensSection({ toast }) {
@@ -78,7 +78,7 @@ export function TokensSection({ toast }) {
           </div>
           <div style={{display:'flex',gap:8,marginTop:12}}>
             <button className="btn btn-primary" onClick={save}>Generate</button>
-            <button onClick={() => setCreating(null)} style={btnGhost}>Cancel</button>
+            <button onClick={() => setCreating(null)} className="btn btn-ghost btn-sm">Cancel</button>
           </div>
         </div>
       )}
@@ -88,8 +88,8 @@ export function TokensSection({ toast }) {
           <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:'var(--accent-3)'}}>Token "{revealed.name}" generated</div>
           <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:8}}>Copy it now. The plaintext is not stored and will not be shown again.</div>
           <div className="mono" style={{fontSize:12,padding:'8px 10px',background:'var(--bg-base)',borderRadius:6,wordBreak:'break-all',color:'var(--text-primary)'}}>{revealed.plaintext}</div>
-          <button onClick={() => { navigator.clipboard.writeText(revealed.plaintext); }} style={{...btnGhost, marginTop:8}}>Copy to clipboard</button>
-          <button onClick={() => setRevealed(null)} style={{...btnGhost, marginTop:8, marginLeft:6}}>Dismiss</button>
+          <button onClick={() => { navigator.clipboard.writeText(revealed.plaintext); }} className="btn btn-ghost btn-sm" style={{marginTop:8}}>Copy to clipboard</button>
+          <button onClick={() => setRevealed(null)} className="btn btn-ghost btn-sm" style={{marginTop:8, marginLeft:6}}>Dismiss</button>
         </div>
       )}
 
@@ -115,7 +115,7 @@ export function TokensSection({ toast }) {
                   </td>
                   <td>
                     {can('tokens.delete') && (
-                      <button onClick={() => revoke(t)} style={btnDanger}>Revoke</button>
+                      <button onClick={() => revoke(t)} className="btn btn-ghost btn-sm btn-tone-danger">Revoke</button>
                     )}
                   </td>
                 </tr>

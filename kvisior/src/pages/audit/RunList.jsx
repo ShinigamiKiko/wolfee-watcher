@@ -1,16 +1,21 @@
 import { fmt } from './auditConstants';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 function RunList({ runs, onOpen, onNew, tool, busy }) {
+  const { pageItems, pager } = usePaged(runs, 'audit.runs', [tool]);
   return (
+    <>
     <div className="au-run-list dw dw-fill" tabIndex={0} role="region" aria-label="Audit runs">
       {runs.length === 0 && (
         <div className="au-empty-state">
-          <div className="au-empty-state__icon">🔍</div>
+          <div className="au-empty-state__icon"><Icon name="search" /></div>
           <div className="au-empty-state__text">No audits yet</div>
-          <div className="au-empty-state__sub">Click <b>▶ Run {tool}</b> to start</div>
+          <div className="au-empty-state__sub">Click <b>Run {tool}</b> to start</div>
         </div>
       )}
-      {runs.map(run => {
+      {pageItems.map(run => {
         const vulnCount = run.data?.vulnerabilities?.length ?? 0;
         const ctrlFail  = run.data?.controls ? run.data.controls.reduce((s,c)=>s+(c.fail||0),0) : 0;
         const isBench   = tool === 'kube-bench';
@@ -21,8 +26,8 @@ function RunList({ runs, onOpen, onNew, tool, busy }) {
             <div className="au-run-card__left">
               <div className="au-run-card__icon">
                 {run.status==='running' ? <div className="np-spinner"/> :
-                 run.status==='error'   ? '✕' :
-                 run.status==='done'    ? '✓' : '○'}
+                 run.status==='error'   ? <Icon name="x" /> :
+                 run.status==='done'    ? <Icon name="check" /> : <Icon name="circle-dot" />}
               </div>
             </div>
             <div className="au-run-card__body">
@@ -33,7 +38,7 @@ function RunList({ runs, onOpen, onNew, tool, busy }) {
             </div>
             <div className="au-run-card__right">
               {run.status === 'running' && <span className="au-run-card__status au-run-card__status--running">● Running…</span>}
-              {run.status === 'error'   && <span className="au-run-card__status au-run-card__status--error">✕ Failed</span>}
+              {run.status === 'error'   && <span className="au-run-card__status au-run-card__status--error"><Icon name="x" /> Failed</span>}
               {run.status === 'done' && isBench && ctrlFail > 0 && (
                 <span className="au-run-card__badge au-run-card__badge--fail">{ctrlFail} failed</span>
               )}
@@ -52,6 +57,8 @@ function RunList({ runs, onOpen, onNew, tool, busy }) {
         );
       })}
     </div>
+    <div className="dw-foot"><Pager {...pager} noun="runs" /></div>
+    </>
   );
 }
 

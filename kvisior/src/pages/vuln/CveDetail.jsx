@@ -2,13 +2,14 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { SevBadge }  from '../../components/ui';
 import { sevColor, epssLabel } from '../../data/scanner';
 import { TabButton, FstecPanel, CvssVectorValue, SoftwareRow, hasShouldFields, linkifyURLs } from './CveDetailHelpers';
+import { Icon } from '../../components/Icon';
 
 const VEX_LABEL = {
-  fixed:               { icon: '✅', text: 'Fixed',               color: 'var(--accent-3)' },
-  not_fixed:           { icon: '🔴', text: 'Not Fixed',            color: 'var(--danger)'   },
-  wont_fix:            { icon: '⚠️', text: "Won't Fix",            color: 'var(--warning)'  },
-  under_investigation: { icon: '🔍', text: 'Under Investigation',  color: '#a78bfa'         },
-  unknown:             { icon: '❓', text: 'Unknown',              color: 'var(--text-muted)'},
+  fixed:               { icon: 'circle-check', text: 'Fixed',               color: 'var(--accent-3)' },
+  not_fixed:           { icon: 'circle-x', text: 'Not Fixed',            color: 'var(--danger)'   },
+  wont_fix:            { icon: 'alert', text: "Won't Fix",            color: 'var(--warning)'  },
+  under_investigation: { icon: 'search', text: 'Under Investigation',  color: '#a78bfa'         },
+  unknown:             { icon: 'help', text: 'Unknown',              color: 'var(--text-muted)'},
 };
 
 const RISK_COLORS = {
@@ -155,7 +156,7 @@ export function CveDetail({ item, onClose }) {
           onClick={onClose}
           onMouseDown={e => e.stopPropagation()}
           style={{ background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'3px 8px', color:'var(--text-muted)', cursor:'pointer', fontSize:13, flexShrink:0 }}
-        >✕</button>
+        ><Icon name="x" /></button>
       </div>
 
       {}
@@ -172,7 +173,7 @@ export function CveDetail({ item, onClose }) {
       >
         <TabButton active={tab === 'nvd'}   onClick={() => setTab('nvd')}>NVD</TabButton>
         <TabButton active={tab === 'fstec'} onClick={() => setTab('fstec')} disabled={!hasFstec}>
-          ФСТЭК
+          FSTEC
         </TabButton>
       </div>
 
@@ -198,12 +199,12 @@ export function CveDetail({ item, onClose }) {
           )}
           {c.inKev && (
             <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(239,68,68,.15)', color:'var(--danger)', fontWeight:700 }}>
-              🔥 CISA KEV
+              <Icon name="flame" /> CISA KEV
             </span>
           )}
           {c.pocs?.length > 0 && (
             <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(245,158,11,.12)', color:'var(--warning)' }}>
-              💣 PoC ({c.pocs.length})
+              <Icon name="code" /> PoC ({c.pocs.length})
             </span>
           )}
         </div>
@@ -239,7 +240,7 @@ export function CveDetail({ item, onClose }) {
           {c._imageName && kv('Image',      <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11 }}>{c._imageName}:{c._imageTag||''}</span>)}
           {kv('VEX / Fix State',
             <span style={{ fontSize:11, color:vex.color }}>
-              {vex.icon} {vex.text}
+              <Icon name={vex.icon} /> {vex.text}
               {c.vexSource && <span style={{ color:'var(--text-muted)', marginLeft:4 }}>({c.vexSource})</span>}
             </span>
           )}
@@ -266,7 +267,7 @@ export function CveDetail({ item, onClose }) {
           )}
           {kv('CISA KEV',
             c.inKev
-              ? <span style={{ color:'var(--danger)', fontSize:11, fontWeight:700 }}>🔥 Actively exploited</span>
+              ? <span style={{ color:'var(--danger)', fontSize:11, fontWeight:700 }}><Icon name="flame" /> Actively exploited</span>
               : <span style={{ color:'var(--text-muted)', fontSize:11 }}>Not listed</span>
           )}
         </div>
@@ -274,7 +275,7 @@ export function CveDetail({ item, onClose }) {
         {}
         {c.hasFix && (
           <div style={{ margin:'12px 0', padding:'8px 12px', background:'rgba(16,185,129,.08)', border:'1px solid rgba(16,185,129,.2)', borderRadius:8, fontSize:12, color:'var(--accent-3)' }}>
-            ✓ Fix available — upgrade to <strong>{c.fixedIn}</strong>
+            <Icon name="check" /> Fix available — upgrade to <strong>{c.fixedIn}</strong>
           </div>
         )}
 
@@ -282,13 +283,13 @@ export function CveDetail({ item, onClose }) {
         {c.pocs?.length > 0 && (
           <div style={{ marginTop:14 }}>
             <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--warning)', marginBottom:8, fontWeight:600 }}>
-              💣 Public PoC Exploits ({c.pocs.length})
+              <Icon name="code" /> Public PoC Exploits ({c.pocs.length})
             </div>
             {c.pocs.map((p, i) => (
               <a key={i} href={p.url} target="_blank" rel="noreferrer"
                 style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'5px 8px', borderRadius:5, background:'rgba(245,158,11,.06)', border:'1px solid rgba(245,158,11,.15)', marginBottom:4, textDecoration:'none' }}>
                 <span style={{ fontSize:11, color:'var(--warning)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{p.name}</span>
-                {p.stars > 0 && <span style={{ fontSize:10, color:'var(--text-muted)', marginLeft:8, flexShrink:0 }}>⭐{p.stars}</span>}
+                {p.stars > 0 && <span style={{ fontSize:10, color:'var(--text-muted)', marginLeft:8, flexShrink:0 }}><Icon name="star" /> {p.stars}</span>}
               </a>
             ))}
           </div>

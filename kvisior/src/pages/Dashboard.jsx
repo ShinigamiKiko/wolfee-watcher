@@ -128,7 +128,7 @@ export function Dashboard() {
         <div className="card">
           <div className="card-header">
             <div className="card-title">Recent Violations</div>
-            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:11}} onClick={() => navigate('/violations')}>View all</button>
+            <button className="btn btn-outline btn-sm" onClick={() => navigate('/violations')}>View all</button>
           </div>
           <div className="table-wrap">
             <table className="data-table">

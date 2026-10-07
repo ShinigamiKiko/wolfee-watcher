@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ST } from './yamlPanelHelpers';
+import { Icon } from '../../components/Icon';
 
 function DateRangePicker({ fromVal, toVal, onFromChange, onToChange }) {
   return (
@@ -18,7 +19,7 @@ function DateRangePicker({ fromVal, toVal, onFromChange, onToChange }) {
       {(fromVal || toVal) && (
         <button onClick={() => { onFromChange(''); onToChange(''); }}
           style={{ ...ST.btnCopy, paddingBottom: 4, fontSize: 11, alignSelf: 'flex-end' }}
-          title="Clear range">✕</button>
+          title="Clear range"><Icon name="x" /></button>
       )}
     </div>
   );

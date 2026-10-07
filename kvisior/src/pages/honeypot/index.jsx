@@ -7,6 +7,7 @@ import { apiList, apiCreate, apiDelete, apiEvents, apiPersistedEvents, apiHideEv
 import { svcByName, fmtTime } from './honeypotUtils';
 import { HoneypotDetail } from './HoneypotDetail';
 import { CreateModal } from './CreateModal';
+import { Icon } from '../../components/Icon';
 
 export function Honeypot() {
   const { snapshot } = useSensor();
@@ -203,13 +204,13 @@ export function Honeypot() {
       {}
       {error && (
         <div className="hp-error-banner">
-          <span>⚠ {error}</span>
-          <button onClick={() => setError(null)}>✕</button>
+          <span><Icon name="alert" /> {error}</span>
+          <button onClick={() => setError(null)}><Icon name="x" /></button>
         </div>
       )}
       {honeypots.length === 0 && !error && (
         <div className="hp-empty">
-          <div className="hp-empty-icon">🍯</div>
+          <div className="hp-empty-icon"><Icon name="honeypot" size={28} /></div>
           <div className="hp-empty-title">No honeypots deployed</div>
           <div className="hp-empty-sub">
             Deploy fake services inside your cluster to detect lateral movement and unauthorized access.

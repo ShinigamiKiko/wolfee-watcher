@@ -1,6 +1,7 @@
 import { kindMeta } from './alertsUtils';
 import { fmtPorts } from './alertsUtils';
 import { DetailRow } from './AlertsUi';
+import { Icon } from '../../components/Icon';
 
 function shortHash(s) {
   let h = 0x811c9dc5;
@@ -31,7 +32,7 @@ export function AlertDetail({ selected, bucketsOpen, setSelected }) {
     <div className="al-detail">
       <div className="al-detail-head">
         <span className="al-detail-kind">{kindMeta(selected.kind).label}</span>
-        <button className="al-detail-close" onClick={() => setSelected(null)}>✕</button>
+        <button className="al-detail-close" onClick={() => setSelected(null)}><Icon name="x" /></button>
       </div>
 
       <div className="al-detail-body">

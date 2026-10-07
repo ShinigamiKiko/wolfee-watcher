@@ -2,9 +2,12 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp }    from '../context/AppContext';
 import { useBridge } from '../context/BridgeContext';
 import { SevBadge, Tabs } from '../components/ui';
-import { SYSCALLS, matchesRule, saveRuntimeRules, fetchRulesFromAPI } from '../data/syscalls';
+import { SYSCALLS, saveRuntimeRules, fetchRulesFromAPI } from '../data/syscalls';
 import { PolicyModal } from './policy/PolicyModal';
 import { DataWindow } from '../components/DataWindow';
+import { Icon } from '../components/Icon';
+import { Pager } from '../components/Pager';
+import { usePaged } from '../hooks/usePaged';
 
 const TABS = [
   { id: 'policies', label: 'Policies'       },
@@ -14,7 +17,7 @@ const TABS = [
 
 export function PolicyMgmt() {
   const { toast, showModal, closeModal } = useApp();
-  const { ruleHits, auditHits, events, rulesVersion } = useBridge();
+  const { ruleHits, auditHits, violations, rulesVersion } = useBridge();
 
   const [rules,   setRules]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,15 +85,17 @@ export function PolicyMgmt() {
   const openEdit   = (rule) => showModal(<PolicyModal initial={rule} onSave={addOrUpdate} onClose={closeModal} />);
 
   const liveHits = useMemo(() => {
-    if (!events.length) return [];
-    const syscallRules = rules.filter(r => r.enabled !== false &&
-      r.detType !== 'Audit' && r.detType !== 'Build' && r.detType !== 'Deploy');
-    return events.filter(e => syscallRules.some(r => matchesRule(e._raw || e, r))).slice(-100).reverse();
-  }, [events, rules]);
+    const runtime = new Set(rules.filter(r => r.enabled !== false &&
+      r.detType !== 'Audit' && r.detType !== 'Build' && r.detType !== 'Deploy').map(r => r.id));
+    return violations.filter(v => runtime.has(v._ruleId)).slice(-1000).reverse();
+  }, [violations, rules]);
 
   const filtered = rules.filter(p =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.syscall || '').toLowerCase().includes(search.toLowerCase())
   );
+  const policyPage = usePaged(filtered, 'policies', [search]);
+  const syscallPage = usePaged(SYSCALLS, 'policies.syscalls');
+  const hitsPage = usePaged(liveHits, 'policies.hits');
 
   if (loading) {
     return (
@@ -117,9 +122,9 @@ export function PolicyMgmt() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {rules.length > 0 && (
-            <button className="btn btn-outline" style={{ fontSize: 12, color: 'var(--danger)', borderColor: 'rgba(239,68,68,.3)' }}
+            <button className="btn btn-outline btn-tone-danger"
               onClick={() => { if (window.confirm('Delete all custom policies?')) deleteAll(); }}>
-              🗑 Delete all
+              <Icon name="trash" /> Delete all
             </button>
           )}
           <button className="btn btn-primary" onClick={openCreate}>+ Create policy</button>
@@ -132,17 +137,17 @@ export function PolicyMgmt() {
         <div className="page-search">
           <input type="text" placeholder="Search policies…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <DataWindow label="Policies" deps={[tab]}>
+        <DataWindow label="Policies" deps={[tab]} footer={<Pager {...policyPage.pager} noun="policies" />}>
             <table className="data-table">
               <thead><tr><th>Policy</th><th>Status</th><th>Origin</th><th>Severity</th><th>Match</th><th>Hits</th><th>Alert</th><th></th></tr></thead>
               <tbody>
-                {filtered.map(p => (
+                {policyPage.pageItems.map(p => (
                   <tr key={p.id} style={{ opacity: p.enabled === false ? .5 : 1 }}>
                     <td className="td-primary">{p.name}</td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12,
                         color: p.enabled !== false ? 'var(--accent-3)' : 'var(--text-muted)' }}>
-                        {p.enabled !== false ? '✓' : '—'}
+                        {p.enabled !== false ? <Icon name="check" /> : '—'}
                         <span style={{ fontSize: 11 }}>{p.enabled !== false ? 'Enabled' : 'Disabled'}</span>
                       </span>
                     </td>
@@ -156,21 +161,18 @@ export function PolicyMgmt() {
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       {p.alertOnly
-                        ? <span style={{ fontSize: 13, color: 'var(--accent)' }}>✓</span>
+                        ? <Icon name="check" style={{ color: 'var(--accent)' }} />
                         : <span style={{ fontSize: 13, color: 'var(--text-muted)', opacity: 0.3 }}>—</span>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-outline" style={{ padding: '3px 8px', fontSize: 11 }} onClick={e => { e.stopPropagation(); openEdit(p); }}>✏️</button>
-                        <button className="btn btn-outline"
-                          style={{ padding: '3px 10px', fontSize: 11,
-                            color: p.enabled !== false ? 'var(--warning)' : 'var(--accent-3)',
-                            borderColor: p.enabled !== false ? 'rgba(245,158,11,.35)' : 'rgba(52,211,153,.35)' }}
+                        <button className="btn btn-outline btn-sm" onClick={e => { e.stopPropagation(); openEdit(p); }} title="Edit"><Icon name="edit" /></button>
+                        <button className={`btn btn-outline btn-sm ${p.enabled !== false ? 'btn-tone-warning' : 'btn-tone-ok'}`}
                           onClick={e => { e.stopPropagation(); toggleRule(p.id); }}
                           title={p.enabled !== false ? 'Stop rule' : 'Run rule'}>
                           {p.enabled !== false ? 'Stop' : 'Run'}
                         </button>
-                        <button className="btn btn-outline" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--danger)', borderColor: 'rgba(239,68,68,.3)' }} onClick={e => { e.stopPropagation(); deleteRule(p.id); }}>🗑</button>
+                        <button className="btn btn-outline btn-sm btn-tone-danger" onClick={e => { e.stopPropagation(); deleteRule(p.id); }} title="Delete"><Icon name="trash" /></button>
                       </div>
                     </td>
                   </tr>
@@ -181,11 +183,11 @@ export function PolicyMgmt() {
       </>}
 
       {tab === 'catalog' && (
-        <DataWindow label="Syscall catalog" deps={[tab]}>
+        <DataWindow label="Syscall catalog" deps={[tab]} footer={<Pager {...syscallPage.pager} noun="syscalls" />}>
             <table className="data-table">
               <thead><tr><th>Syscall</th><th>Category</th><th>Severity</th><th>Description</th><th>Live Events</th></tr></thead>
               <tbody>
-                {SYSCALLS.map(s => (
+                {syscallPage.pageItems.map(s => (
                   <tr key={s.name}>
                     <td className="td-primary" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{s.name}</td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.cat}</td>
@@ -207,16 +209,17 @@ export function PolicyMgmt() {
             <div className="card-title">Live Rule Hits</div>
             <span className="live-dot">Live</span>
           </div>
-          <DataWindow label="Live rule hits" deps={[tab]}>
+          <DataWindow label="Live rule hits" deps={[tab]} footer={<Pager {...hitsPage.pager} noun="hits" />}>
             <table className="data-table">
-              <thead><tr><th>Syscall</th><th>Severity</th><th>Process</th><th>Pod</th><th>Namespace</th><th>Time</th></tr></thead>
+              <thead><tr><th>Syscall</th><th>Rule</th><th>Severity</th><th>Process</th><th>Pod</th><th>Namespace</th><th>Time</th></tr></thead>
               <tbody>
                 {liveHits.length === 0
-                  ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No rule hits yet — waiting for events</td></tr>
-                  : liveHits.map((e, i) => (
-                      <tr key={i}>
+                  ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No rule hits yet — waiting for events</td></tr>
+                  : hitsPage.pageItems.map((e, i) => (
+                      <tr key={e._fp || i}>
                         <td className="td-primary" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{e.syscall || e.name || '—'}</td>
-                        <td><SevBadge sev={(e.severity || '').toUpperCase()} /></td>
+                        <td style={{ fontSize: 12 }}>{e._ruleName || '—'}</td>
+                        <td><SevBadge sev={(e.sev || e.severity || '').toUpperCase()} /></td>
                         <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{e.process || e._raw?.process || '—'}</td>
                         <td style={{ fontSize: 12 }}>{e.pod || '—'}</td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.namespace || '—'}</td>

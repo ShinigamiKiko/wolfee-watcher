@@ -108,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0017-audit-silences"
+  schemaVersion: "0020-audit-rollup-marks"
   adminBootstrapPassword: ""
   resources:
     requests:
@@ -202,6 +202,7 @@ sentryAudit:
     enabled: false
     path: /var/log/kubernetes/audit/audit.log
     stateDir: /var/lib/wolfee-watcher/audit-tail
+    pollInterval: 5s
     nodeLabels:
       - node-role.kubernetes.io/control-plane
       - node-role.kubernetes.io/master
@@ -306,7 +307,6 @@ ui:
     tlsSecret: kvisior-federation-tls
     allowedSources: []
   advertiseURL: ""
-  auditRetentionHours: 336
   controlPlaneDSN: ""
   enabled: true
   replicaCount: 1

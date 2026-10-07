@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { SevBadge } from '../../components/ui';
 import { sevColor, epssLabel } from '../../data/scanner';
+import { Icon } from '../../components/Icon';
 
 const WIN_W = 480;
 const WIN_H = 580;
@@ -127,7 +128,7 @@ export function SbomDetail({ pkg, onClose }) {
           onClick={onClose}
           onMouseDown={e => e.stopPropagation()}
           style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, flexShrink: 0 }}
-        >✕</button>
+        ><Icon name="x" /></button>
       </div>
 
       {}
@@ -209,7 +210,7 @@ export function SbomDetail({ pkg, onClose }) {
                 {}
                 {c.hasFix && (
                   <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)', borderRadius: 6, fontSize: 11, color: 'var(--accent-3)' }}>
-                    ✓ Fix available — upgrade to <strong>{c.fixedIn}</strong>
+                    <Icon name="check" /> Fix available — upgrade to <strong>{c.fixedIn}</strong>
                   </div>
                 )}
 
@@ -219,8 +220,8 @@ export function SbomDetail({ pkg, onClose }) {
                     {c.pocs.map((p, i) => (
                       <a key={i} href={p.url} target="_blank" rel="noreferrer"
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 7px', borderRadius: 4, background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', marginBottom: 3, textDecoration: 'none' }}>
-                        <span style={{ fontSize: 10, color: 'var(--warning)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>💣 {p.name}</span>
-                        {p.stars > 0 && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 6, flexShrink: 0 }}>⭐{p.stars}</span>}
+                        <span style={{ fontSize: 10, color: 'var(--warning)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}><Icon name="code" /> {p.name}</span>
+                        {p.stars > 0 && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 6, flexShrink: 0 }}><Icon name="star" /> {p.stars}</span>}
                       </a>
                     ))}
                   </div>

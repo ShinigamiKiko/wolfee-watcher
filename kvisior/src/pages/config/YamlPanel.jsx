@@ -4,6 +4,7 @@ import { toYaml } from './yamlUtils';
 import { isPod, isNode } from './yamlPanelHelpers';
 import { PodLogsTab }   from './PodLogsTab';
 import { NodeEventsTab } from './NodeEventsTab';
+import { Icon } from '../../components/Icon';
 
 async function safeFetch(url) {
   const res = await apiFetch(url, { credentials: 'same-origin' });
@@ -32,7 +33,8 @@ export function YamlPanel({ item, onClose }) {
              : _isNode ? ['manifest', 'events']
              :           ['manifest'];
 
-  const tabLabel = t => ({ manifest: '📄 Manifest', logs: '📋 Logs', events: '📅 Events' }[t] || t);
+  const TAB_ICON = { manifest: 'file', logs: 'clipboard', events: 'calendar' };
+  const tabLabel = t => TAB_ICON[t] ? <><Icon name={TAB_ICON[t]} /> {t[0].toUpperCase() + t.slice(1)}</> : t;
 
   const copy = () => { navigator.clipboard?.writeText(yaml || ''); setCopied(true); setTimeout(() => setCopied(false), 1500); };
 
@@ -53,10 +55,10 @@ export function YamlPanel({ item, onClose }) {
               <button onClick={copy} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5,
                 cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)',
                 color: copied ? 'var(--accent-3)' : 'var(--text-muted)' }}>
-                {copied ? '✓ Copied' : 'Copy YAML'}
+                {copied ? <><Icon name="check" /> Copied</> : 'Copy YAML'}
               </button>
             )}
-            <button className="dp-close" onClick={onClose}>✕</button>
+            <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
           </div>
         </div>
 

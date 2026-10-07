@@ -237,6 +237,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: AUDIT_LOG_STATE_DIR
               value: /var/lib/sentry-audit
+            - name: AUDIT_LOG_POLL_INTERVAL
+              value: {{ .Values.sentryAudit.auditLog.pollInterval | default "5s" | quote }}
             {{- with .Values.sentryAudit.auditLog.dropResources }}
             - name: AUDIT_LOG_DROP_RESOURCES
               value: {{ join "," . | quote }}

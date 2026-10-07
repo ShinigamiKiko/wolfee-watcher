@@ -25,7 +25,7 @@ export const TRACEPOINTS = [
            { key: 'pid', kind: 'num', label: 'task pid' }] },
 
   { name: 'sched_switch', group: 'Scheduler', risk: 'low',
-    desc: 'CPU switched tasks (sched:sched_switch) — pure scheduler, no syscall involved. ⚠ Fires on EVERY context switch: extremely high volume, scope it tightly (comm/pid) before enabling. Not in the default deployed policy.',
+    desc: 'CPU switched tasks (sched:sched_switch) — pure scheduler, no syscall involved. Warning: fires on EVERY context switch: extremely high volume, scope it tightly (comm/pid) before enabling. Not in the default deployed policy.',
     args: [{ key: 'prev_comm', kind: 'string', label: 'prev comm' },
            { key: 'next_comm', kind: 'string', label: 'next comm' },
            { key: 'cpu',       kind: 'num',    label: 'cpu' }] },

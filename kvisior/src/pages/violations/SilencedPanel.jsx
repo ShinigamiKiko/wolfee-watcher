@@ -1,5 +1,7 @@
 import { ackKey } from './violationsConstants';
 import { DataWindow } from '../../components/DataWindow';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepointViolations = [], lsmViolations = [], buildViolations, deployViolations, auditViolations }) {
   const parseKey = key => {
@@ -49,20 +51,21 @@ export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepo
     const { tab, parts } = parseKey(key);
     return { key, kind: type === 'fp' ? 'FP' : 'Silent', tab, parts, expiresAt };
   });
+  const { pageItems: pageEntries, pager } = usePaged(entries, 'violations.silenced');
   return (
     <div style={{ marginRight: 24 }}>
       <div style={{ padding: '0 2px 10px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>Silenced</span>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>hidden until manually removed</span>
       </div>
-      <DataWindow label="Silenced violations" deps={[entries.length === 0]}>
+      <DataWindow label="Silenced violations" deps={[entries.length === 0]} footer={<Pager {...pager} noun="entries" />}>
       {entries.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>No silenced violations</div>
       ) : (
           <table className="data-table">
             <thead><tr><th>Tab</th><th>Type</th><th>Parameters</th><th>Suppressed</th><th>Expires</th><th></th></tr></thead>
             <tbody>
-              {entries.map(({ key, kind, tab, parts, expiresAt }) => {
+              {pageEntries.map(({ key, kind, tab, parts, expiresAt }) => {
                 const color   = tabColor[tab];
                 const labels  = colLabel[tab];
                 const expLabel = msToLabel(expiresAt);

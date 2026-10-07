@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { PolViewer } from './NetworkPolViewer';
+import { Icon } from '../../components/Icon';
 
 export function PolViewerPanel({ pol, onClose }) {
   const ref     = useRef(null);
@@ -58,7 +59,7 @@ export function PolViewerPanel({ pol, onClose }) {
           display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,
           flexShrink:0,
         }} onMouseEnter={e=>e.currentTarget.style.color='#e2e8f0'}
-           onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>✕</button>
+           onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}><Icon name="x" /></button>
       </div>
 
       {}

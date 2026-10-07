@@ -7,6 +7,7 @@ import { NetworkEventsTab } from './network/NetworkEventsTab';
 import { PolViewer } from './network/NetworkPolViewer';
 import { CreatePolicyModal } from './network/CreatePolicyModal';
 import '../styles/network.scss';
+import { Icon } from '../components/Icon';
 
 function Arrow({ src, dst, effect, ports, selected, onClick }) {
   if (!src||!dst) return null;
@@ -94,7 +95,7 @@ function PolViewerPanel({ pol, onClose }) {
           display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,
           flexShrink:0,
         }} onMouseEnter={e=>e.currentTarget.style.color='#e2e8f0'}
-           onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>✕</button>
+           onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}><Icon name="x" /></button>
       </div>
 
       {}
@@ -166,7 +167,7 @@ function NsDropdown({ nsFilter, setNsFilter, namespaces }) {
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.06)'; e.currentTarget.style.color = '#e2e8f0'; }}
               onMouseLeave={e => { e.currentTarget.style.background = nsFilter === ns ? 'rgba(99,179,237,.15)' : 'transparent'; e.currentTarget.style.color = nsFilter === ns ? '#63b3ed' : '#94a3b8'; }}>
               {ns === 'all' ? 'All namespaces' : ns}
-              {nsFilter === ns && <span style={{ fontSize: 11, color: '#63b3ed' }}>✓</span>}
+              {nsFilter === ns && <Icon name="check" style={{ color: 'var(--accent)' }} />}
             </button>
           ))}
         </div>
@@ -285,8 +286,8 @@ export function NetworkRuntime() {
           <div className="net-topbar-sep"/>
           <button className="net-icon-btn" onClick={()=>setScale(s=>Math.min(3,s*1.2))}>+</button>
           <button className="net-icon-btn" onClick={()=>setScale(s=>Math.max(0.15,s*0.83))}>−</button>
-          <button className="net-icon-btn" onClick={()=>{setPan({x:60,y:40});setScale(1);}}>⊡</button>
-          <button className="net-icon-btn" onClick={load}>↺</button>
+          <button className="net-icon-btn" onClick={()=>{setPan({x:60,y:40});setScale(1);}} title="Reset view"><Icon name="maximize" /></button>
+          <button className="net-icon-btn" onClick={load} title="Reload"><Icon name="refresh" /></button>
         </>}
       </div>
 
@@ -296,10 +297,10 @@ export function NetworkRuntime() {
             onMouseDown={onBgDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel}
             style={{cursor:dragRef.current?'grabbing':'grab'}}>
             {loading&&<div className="net-overlay">Loading…</div>}
-            {error  &&<div className="net-overlay net-overlay--error">⚠ {error}</div>}
+            {error  &&<div className="net-overlay net-overlay--error"><Icon name="alert" /> {error}</div>}
             {!loading&&!error&&policies.length===0&&(
               <div className="net-overlay">
-                <div className="net-empty-icon">⬡</div>
+                <div className="net-empty-icon"><Icon name="hexagon" /></div>
                 <div className="net-empty-title">No NetworkPolicy resources found</div>
                 <div className="net-empty-sub">Policies created in the cluster will appear here</div>
               </div>

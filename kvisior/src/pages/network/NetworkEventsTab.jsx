@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 
 import { EvDetail }  from './NetworkEvDetail';
 import { PolPicker } from './NetworkPolPicker';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 export function NetworkEventsTab({ anomalies }) {
   const [selectedEv,   setSelectedEv]   = useState(null);
@@ -16,6 +19,7 @@ export function NetworkEventsTab({ anomalies }) {
   const anomalyCount = networkOnly.filter(e=>e.kind!=='policy_blocked').length;
   const blockedCount = networkOnly.filter(e=>e.kind==='policy_blocked').length;
   const filtered = networkOnly;
+  const { pageItems: pageEvents, pager } = usePaged(filtered, 'network.events');
 
   return (
     <div className="rn-ev-layout">
@@ -25,7 +29,7 @@ export function NetworkEventsTab({ anomalies }) {
           <span>Time</span><span>Source</span><span>Destination</span><span>Port</span><span>Type</span><span>Action</span>
         </div>
         {filtered.length===0&&<div style={{padding:40,textAlign:'center',color:'var(--text-muted)',fontSize:12}}>No events</div>}
-        {filtered.map((ev,i)=>{
+        {pageEvents.map((ev,i)=>{
           const isBlocked = ev.kind==='blocked'||ev.kind==='policy_blocked'||ev.action==='deny';
           return (
             <div key={i} className={`rn-ev-row${selectedEv===ev?' selected':''}${isBlocked?' blocked':''}`} onClick={()=>setSelectedEv(ev)}>
@@ -37,12 +41,13 @@ export function NetworkEventsTab({ anomalies }) {
               <span>
                 <button className={`rn-create-btn ${isBlocked?'rn-create-btn--red':'rn-create-btn--yellow'}`}
                   onClick={e=>{e.stopPropagation();setPickerEv(ev);setPickerAnchor(e.currentTarget);}}>
-                  + Create Policy ▾
+                  <Icon name="plus" /> Create Policy <Icon name="chevron-down" />
                 </button>
               </span>
             </div>
           );
         })}
+        {filtered.length > 0 && <div className="dw-foot"><Pager {...pager} noun="events" /></div>}
       </div>
       <EvDetail ev={selectedEv}/>
       {pickerEv&&<PolPicker ev={pickerEv} anchor={pickerAnchor} onClose={()=>{setPickerEv(null);setPickerAnchor(null);}}/>}

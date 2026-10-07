@@ -1,5 +1,6 @@
 import { SevBadge } from '../../components/ui';
 import { sevColor, epssLabel } from '../../data/scanner';
+import { Icon } from '../../components/Icon';
 
 function TabButton({ active, disabled, onClick, children }) {
   return (
@@ -34,7 +35,7 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
           fontSize:11, padding:'2px 8px', borderRadius:4,
           background:'rgba(239,68,68,.15)', color:'var(--danger)',
           fontFamily:'JetBrains Mono,monospace', fontWeight:700,
-        }}>{item.bduId || 'БДУ'}</span>
+        }}>{item.bduId || 'BDU'}</span>
         {item.bduSeverity && /^(critical|high|medium|low)$/i.test(item.bduSeverity) && (
           <span style={{
             fontSize:11, padding:'2px 8px', borderRadius:4,
@@ -47,7 +48,7 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
           <span style={{
             fontSize:11, padding:'2px 8px', borderRadius:4,
             background:'rgba(239,68,68,.15)', color:'var(--danger)', fontWeight:600,
-          }}>💥 PoC</span>
+          }}><Icon name="code" /> PoC</span>
         )}
         {d?.fixStatus && (
           <span style={{
@@ -60,9 +61,9 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
 
       {!d && (
         <div style={{ fontSize:12, color:'var(--text-muted)', lineHeight:1.6, padding:'8px 12px', background:'var(--bg-elevated)', border:'1px solid var(--border)', borderRadius:8 }}>
-          CVE найден в БДУ ФСТЭК, но детальная карточка не собрана на бэкенде
-          (вероятно, выставлен <code style={{ color:'var(--text-secondary)' }}>BDU_NO_DETAIL</code>).
-          Полная информация доступна на bdu.fstec.ru.
+          The CVE is listed in the FSTEC BDU, but the backend did not collect its detail card
+          (most likely <code style={{ color:'var(--text-secondary)' }}>BDU_NO_DETAIL</code> is set).
+          Full details are available at bdu.fstec.ru.
         </div>
       )}
 
@@ -70,14 +71,14 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
         <>
           {}
           <div style={{ marginBottom:12 }}>
-            {kv('БДУ ID',
+            {kv('BDU ID',
               <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, color:'var(--danger)' }}>{d.identifier}</span>
             )}
-            {d.vulStatus && kv('Статус', <span style={{ fontSize:11 }}>{d.vulStatus}</span>)}
-            {d.exploitStatus && kv('Эксплуатация', <span style={{ fontSize:11 }}>{d.exploitStatus}</span>)}
-            {d.fixStatus && kv('Исправление', <span style={{ fontSize:11 }}>{d.fixStatus}</span>)}
-            {d.vulClass && kv('Класс', <span style={{ fontSize:11 }}>{d.vulClass}</span>)}
-            {d.vulElimination && kv('Способ устранения', <span style={{ fontSize:11 }}>{d.vulElimination}</span>)}
+            {d.vulStatus && kv('Status', <span style={{ fontSize:11 }}>{d.vulStatus}</span>)}
+            {d.exploitStatus && kv('Exploitation', <span style={{ fontSize:11 }}>{d.exploitStatus}</span>)}
+            {d.fixStatus && kv('Fix', <span style={{ fontSize:11 }}>{d.fixStatus}</span>)}
+            {d.vulClass && kv('Class', <span style={{ fontSize:11 }}>{d.vulClass}</span>)}
+            {d.vulElimination && kv('Remediation', <span style={{ fontSize:11 }}>{d.vulElimination}</span>)}
             {(d.cwes?.length > 0) && kv('CWE',
               <span style={{ fontSize:11, lineHeight:1.6 }}>
                 {d.cwes.map((cwe, i) => (
@@ -89,9 +90,9 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
                 ))}
               </span>
             )}
-            {d.identifyDate    && kv('Выявлена',     <span style={{ fontSize:11 }}>{d.identifyDate}</span>)}
-            {d.publicationDate && kv('Опубликована', <span style={{ fontSize:11 }}>{d.publicationDate}</span>)}
-            {d.lastUpdDate     && kv('Обновлена',    <span style={{ fontSize:11 }}>{d.lastUpdDate}</span>)}
+            {d.identifyDate    && kv('Identified',   <span style={{ fontSize:11 }}>{d.identifyDate}</span>)}
+            {d.publicationDate && kv('Published',    <span style={{ fontSize:11 }}>{d.publicationDate}</span>)}
+            {d.lastUpdDate     && kv('Updated',      <span style={{ fontSize:11 }}>{d.lastUpdDate}</span>)}
             {(d.cvss3Vector || d.cvss3Score > 0) && kv('CVSS 3 Vector',
               <CvssVectorValue vector={d.cvss3Vector} score={d.cvss3Score} />
             )}
@@ -107,7 +108,7 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
           {d.solution && (
             <div style={{ marginTop:8, marginBottom:12 }}>
               <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--accent-3)', marginBottom:6, fontWeight:600 }}>
-                Рекомендации ФСТЭК
+                FSTEC recommendations
               </div>
               <div style={{
                 fontSize:    12,
@@ -125,7 +126,7 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
           {}
           {d.software?.length > 0 && (
             <div style={{ marginTop:8, marginBottom:12 }}>
-              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text-muted)', marginBottom:6 }}>Уязвимое ПО</div>
+              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text-muted)', marginBottom:6 }}>Affected software</div>
               <div>
                 {d.software.map((s, i) => (
                   <SoftwareRow key={i} sw={s} />
@@ -137,7 +138,7 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
           {}
           {d.environments?.length > 0 && (
             <div style={{ marginTop:8, marginBottom:12 }}>
-              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text-muted)', marginBottom:6 }}>Среда функционирования</div>
+              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text-muted)', marginBottom:6 }}>Operating environment</div>
               <div>
                 {d.environments.map((e, i) => (
                   <SoftwareRow key={i} sw={e} />
@@ -149,7 +150,7 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
           {}
           {d.sources?.length > 0 && (
             <div style={{ marginTop:8, marginBottom:12 }}>
-              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text-muted)', marginBottom:6 }}>Источники</div>
+              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text-muted)', marginBottom:6 }}>Sources</div>
               {d.sources.map((s, i) => (
                 <a key={i} href={s} target="_blank" rel="noreferrer"
                   style={{ display:'block', fontSize:11, color:'var(--accent)', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -183,15 +184,15 @@ function FstecPanel({ item, kv, showMore, setShowMore }) {
                 color:        'var(--text-secondary)',
                 cursor:       'pointer',
               }}
-            >{showMore ? '▾ Скрыть' : '▸ Ещё…'}</button>
+            ><Icon name={showMore ? 'chevron-down' : 'chevron-right'} /> {showMore ? 'Show less' : 'More…'}</button>
           )}
 
           {showMore && (
             <div style={{ marginTop:10 }}>
-              {d.slOperProcs?.length > 0 && kv('Способ эксплуатации',
+              {d.slOperProcs?.length > 0 && kv('Exploitation method',
                 <span style={{ fontSize:11 }}>{d.slOperProcs.join(', ')}</span>
               )}
-              {d.otherIds?.length > 0 && kv('Другие ID',
+              {d.otherIds?.length > 0 && kv('Other IDs',
                 <span style={{ fontSize:11, lineHeight:1.6 }}>
                   {d.otherIds.map((o, i) => (
                     <span key={i}>

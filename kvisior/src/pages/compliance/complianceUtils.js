@@ -8,7 +8,7 @@ const STANDARDS = [
   { id:'NIST',  label:'NIST 800-190',       checks: NIST,  color:'var(--accent-2)' },
   { id:'PCI',   label:'PCI DSS',            checks: PCI,   color:'var(--warning)' },
   { id:'HIPAA', label:'HIPAA',              checks: HIPAA, color:'var(--accent-3)' },
-  { id:'FSTEC', label:'ФСТЭК 118',          checks: FSTEC, color:'var(--danger)' },
+  { id:'FSTEC', label:'FSTEC 118',          checks: FSTEC, color:'var(--danger)' },
 ];
 
 function runStandard(std, data) {

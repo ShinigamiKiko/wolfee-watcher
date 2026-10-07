@@ -101,8 +101,6 @@ spec:
             - name: KVISIOR_AUDIT_INGEST_URL
               value: {{ .Values.auditDelivery.receiverURL | default (printf "http://kvisior-audit-ingest.%s.svc.cluster.local:80" (include "kvisior.namespace" .)) | quote }}
             {{- end }}
-            - name: KVISIOR_AUDIT_RETENTION_HOURS
-              value: {{ .Values.ui.auditRetentionHours | quote }}
             {{- include "kvisior.clusterEnv" . | nindent 12 }}
             - name: CERT_SERVER_ADDR
               value: {{ .Values.global.certServerAddr | quote }}

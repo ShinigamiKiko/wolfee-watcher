@@ -1,27 +1,30 @@
 import { KindBadge, FilterInput, EmptyRow } from './cfgHelpers';
+import { Icon } from '../../components/Icon';
+import { PagedWindow } from '../../components/PagedWindow';
 
 export function ServiceAccountsTab({ saRows, q, search, setSearch, sensorOnline, selected, setSelected }) {
   return (
     <div className="card" style={{ marginTop: 16, marginRight: selected ? 0 : 24 }}>
       <div className="card-header"><div className="card-title">Service Accounts ({saRows.length})</div><FilterInput value={search} onChange={setSearch} /></div>
-      <div className="table-wrap">
+      <PagedWindow items={saRows.filter(s => !q || s.name.includes(q) || s.ns.includes(q))} storageKey="config.serviceaccounts" label="Service accounts" noun="accounts" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Name</th><th>Namespace</th><th>Bindings</th><th>Auto-mount Token</th><th></th></tr></thead>
           <tbody>
-            {saRows.filter(s => !q || s.name.includes(q) || s.ns.includes(q)).map((s, i) => (
+            {rows.map((s, i) => (
               <tr key={i} style={{ cursor: 'pointer' }} className={selected?.title === s.name + '@' + s.ns ? 'selected' : ''}
                 onClick={() => setSelected({ title: s.name, sub: `ServiceAccount · ${s.ns}`, raw: Object.assign({ apiVersion: 'v1', kind: 'ServiceAccount' }, s.raw) })}>
                 <td className="td-primary">{s.name}</td>
                 <td style={{ fontSize: 12 }}>{s.ns}</td>
                 <td style={{ fontSize: 12, color: s.bindings > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>{s.bindings}</td>
-                <td style={{ color: s.automount ? 'var(--danger)' : 'var(--accent-3)' }}>{s.automount ? '⚠ true' : '✓ false'}</td>
+                <td style={{ color: s.automount ? 'var(--danger)' : 'var(--accent-3)' }}>{s.automount ? <><Icon name="alert" /> true</> : <><Icon name="check" /> false</>}</td>
                 <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>→</td>
               </tr>
             ))}
             {!saRows.length && <EmptyRow cols={5} msg="No service accounts found" sensorOnline={sensorOnline} />}
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -31,11 +34,11 @@ export function RolesTab({ roleRows, q, search, setSearch, sensorOnline, selecte
   return (
     <div className="card" style={{ marginTop: 16, marginRight: selected ? 0 : 24 }}>
       <div className="card-header"><div className="card-title">RBAC Roles &amp; ClusterRoles ({roleRows.length})</div><FilterInput value={search} onChange={setSearch} /></div>
-      <div className="table-wrap">
+      <PagedWindow items={roleRows.filter(r => !q || r.name.includes(q) || r.ns.includes(q))} storageKey="config.roles" label="Roles" noun="roles" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Name</th><th>Kind</th><th>Namespace</th><th>Rules</th><th>Bindings</th><th>Bound To</th><th>Wildcard</th><th></th></tr></thead>
           <tbody>
-            {roleRows.filter(r => !q || r.name.includes(q) || r.ns.includes(q)).map((r, i) => (
+            {rows.map((r, i) => (
               <tr key={i} style={{ cursor: 'pointer' }} className={selected?.title === r.name ? 'selected' : ''}
                 onClick={() => setSelected({ title: r.name, sub: `${r.kind} · ${r.ns}`, raw: Object.assign({ apiVersion: 'rbac.authorization.k8s.io/v1', kind: r.kind }, r.raw) })}>
                 <td className="td-primary">{r.name}</td>
@@ -60,14 +63,15 @@ export function RolesTab({ roleRows, q, search, setSearch, sensorOnline, selecte
                       </div>
                   }
                 </td>
-                <td style={{ color: r.hasWildcard ? 'var(--danger)' : 'var(--accent-3)' }}>{r.hasWildcard ? '⚠ yes' : '—'}</td>
+                <td style={{ color: r.hasWildcard ? 'var(--danger)' : 'var(--accent-3)' }}>{r.hasWildcard ? <><Icon name="alert" /> yes</> : '—'}</td>
                 <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>→</td>
               </tr>
             ))}
             {!roleRows.length && <EmptyRow cols={8} msg="No roles found" sensorOnline={sensorOnline} />}
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -77,11 +81,11 @@ export function SecretsTab({ secrets, SYS_NS, q, search, setSearch, sensorOnline
   return (
     <div className="card" style={{ marginTop: 16, marginRight: selected ? 0 : 24 }}>
       <div className="card-header"><div className="card-title">Secrets ({visible.length})</div><FilterInput value={search} onChange={setSearch} /></div>
-      <div className="table-wrap">
+      <PagedWindow items={visible.filter(s => !q || s.name.includes(q) || s.namespace.includes(q))} storageKey="config.secrets" label="Secrets" noun="secrets" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Name</th><th>Namespace</th><th>Type</th><th>Age</th></tr></thead>
           <tbody>
-            {visible.filter(s => !q || s.name.includes(q) || s.namespace.includes(q)).map((s, i) => {
+            {rows.map((s, i) => {
               const ageDays = s.created_at ? Math.floor((Date.now() - new Date(s.created_at)) / 86400000) : null;
               const age     = ageDays === null ? '—' : ageDays < 1 ? 'today' : ageDays + 'd';
               return (
@@ -97,7 +101,8 @@ export function SecretsTab({ secrets, SYS_NS, q, search, setSearch, sensorOnline
             {!visible.length && <EmptyRow cols={4} msg="No secrets found" sensorOnline={sensorOnline} />}
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -106,14 +111,13 @@ export function CrdsTab({ crds, q, search, setSearch, sensorOnline, selected, se
   return (
     <div className="card" style={{ marginTop: 16, marginRight: selected ? 0 : 24 }}>
       <div className="card-header"><div className="card-title">Custom Resource Definitions ({crds.length})</div><FilterInput value={search} onChange={setSearch} /></div>
-      <div className="table-wrap">
+      <PagedWindow items={crds.filter(c => !q || c.name?.toLowerCase().includes(q) || c.group?.toLowerCase().includes(q) || c.kind?.toLowerCase().includes(q))
+                  .sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.kind || '').localeCompare(b.kind || ''))} storageKey="config.crds" label="CRDs" noun="CRDs" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Name</th><th>Group</th><th>Kind</th><th>Scope</th><th>Versions</th><th>Age</th></tr></thead>
           <tbody>
             {crds.length === 0 ? <EmptyRow cols={6} msg="No CRDs found — sensor may still be loading" sensorOnline={sensorOnline} />
-              : crds.filter(c => !q || c.name?.toLowerCase().includes(q) || c.group?.toLowerCase().includes(q) || c.kind?.toLowerCase().includes(q))
-                  .sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.kind || '').localeCompare(b.kind || ''))
-                  .map((crd, i) => {
+              : rows.map((crd, i) => {
                     const age      = crd.created_at ? Math.floor((Date.now() - new Date(crd.created_at)) / 86400000) : null;
                     const ageStr   = age === null ? '—' : age < 1 ? 'today' : age + 'd';
                     const scope    = crd.scope || '—';
@@ -133,7 +137,8 @@ export function CrdsTab({ crds, q, search, setSearch, sensorOnline, selected, se
             }
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -148,12 +153,12 @@ export function StaticPodsTab({ staticPods, q, search, setSearch, sensorOnline, 
         </div>
         <FilterInput value={search} onChange={setSearch} />
       </div>
-      <div className="table-wrap">
+      <PagedWindow items={staticPods.filter(p => !q || p.metadata?.name?.toLowerCase().includes(q) || p.metadata?.namespace?.toLowerCase().includes(q) || p.spec?.nodeName?.toLowerCase().includes(q))} storageKey="config.staticpods" label="Static pods" noun="pods" resetKey={q}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Name</th><th>Namespace</th><th>Node</th><th>Status</th><th>Age</th><th></th></tr></thead>
           <tbody>
             {staticPods.length === 0 ? <EmptyRow cols={6} msg="No static or unmanaged pods found" sensorOnline={sensorOnline} />
-              : staticPods.filter(p => !q || p.metadata?.name?.toLowerCase().includes(q) || p.metadata?.namespace?.toLowerCase().includes(q) || p.spec?.nodeName?.toLowerCase().includes(q)).map((p, i) => {
+              : rows.map((p, i) => {
                   const name  = p.metadata?.name || '';
                   const ns    = p.metadata?.namespace || '';
                   const node  = p.spec?.nodeName || '—';
@@ -175,7 +180,8 @@ export function StaticPodsTab({ staticPods, q, search, setSearch, sensorOnline, 
             }
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }
@@ -196,12 +202,12 @@ export function WebhooksTab({ isMut, items, q, search, setSearch, sensorOnline, 
         </div>
         <FilterInput value={search} onChange={setSearch} />
       </div>
-      <div className="table-wrap">
+      <PagedWindow items={rows.filter(({ cfg, wh }) => !q || cfg.metadata?.name?.toLowerCase().includes(q) || wh.name?.toLowerCase().includes(q))} storageKey="config.webhooks" label="Webhooks" noun="webhooks" resetKey={`${isMut}|${q}`}>{rows => (<>
         <table className="data-table">
           <thead><tr><th>Configuration</th><th>Webhook Name</th><th>Namespace Selector</th><th>Failure Policy</th><th>Rules</th><th></th></tr></thead>
           <tbody>
             {rows.length === 0 ? <EmptyRow cols={7} msg={`No ${isMut ? 'mutating' : 'validating'} webhooks found`} sensorOnline={sensorOnline} />
-              : rows.filter(({ cfg, wh }) => !q || cfg.metadata?.name?.toLowerCase().includes(q) || wh.name?.toLowerCase().includes(q)).map(({ cfg, wh }, i) => {
+              : rows.map(({ cfg, wh }, i) => {
                   const failPol   = wh.failurePolicy || '—';
                   const failColor = failPol === 'Fail' ? 'var(--danger)' : 'var(--accent-3)';
                   const nsSelector = wh.namespaceSelector?.matchLabels
@@ -222,7 +228,8 @@ export function WebhooksTab({ isMut, items, q, search, setSearch, sensorOnline, 
             }
           </tbody>
         </table>
-      </div>
+      </>
+      )}</PagedWindow>
     </div>
   );
 }

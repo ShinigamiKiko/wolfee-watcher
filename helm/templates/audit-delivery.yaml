@@ -76,8 +76,6 @@ spec:
               value: {{ $.Values.kafka.brokers | quote }}
             - name: KVISIOR_AUDIT_WORKERS
               value: {{ .cfg.workers | int64 | quote }}
-            - name: KVISIOR_AUDIT_RETENTION_HOURS
-              value: {{ $.Values.ui.auditRetentionHours | quote }}
             - name: KVISIOR_AUDIT_INBOX_MAX_PENDING
               value: {{ $.Values.auditDelivery.maxPendingPerCluster | int64 | quote }}
             - name: KVISIOR_AUDIT_CLUSTER_CONCURRENCY

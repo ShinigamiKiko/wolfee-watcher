@@ -11,6 +11,7 @@ import '../../styles/network.scss';
 import { Arrow }           from './NetworkArrow';
 import { PolViewerPanel }  from './NetworkPolViewerPanel';
 import { NsDropdown }      from './NetworkNsDropdown';
+import { Icon } from '../../components/Icon';
 
 export function NetworkRuntime() {
   const { snapshot } = useSensor();
@@ -181,8 +182,8 @@ export function NetworkRuntime() {
           <div className="net-topbar-sep"/>
           <button className="net-icon-btn" onClick={()=>setScale(s=>Math.min(3,s*1.2))}>+</button>
           <button className="net-icon-btn" onClick={()=>setScale(s=>Math.max(0.15,s*0.83))}>−</button>
-          <button className="net-icon-btn" onClick={()=>{setPan({x:60,y:40});setScale(1);}}>⊡</button>
-          <button className="net-icon-btn" onClick={load}>↺</button>
+          <button className="net-icon-btn" onClick={()=>{setPan({x:60,y:40});setScale(1);}} title="Reset view"><Icon name="maximize" /></button>
+          <button className="net-icon-btn" onClick={load} title="Reload"><Icon name="refresh" /></button>
         </>}
       </div>
 
@@ -192,10 +193,10 @@ export function NetworkRuntime() {
             onMouseDown={onBgDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel}
             style={{cursor:dragRef.current?'grabbing':'grab'}}>
             {loading&&<div className="net-overlay">Loading…</div>}
-            {error  &&<div className="net-overlay net-overlay--error">⚠ {error}</div>}
+            {error  &&<div className="net-overlay net-overlay--error"><Icon name="alert" /> {error}</div>}
             {!loading&&!error&&policies.length===0&&(
               <div className="net-overlay">
-                <div className="net-empty-icon">⬡</div>
+                <div className="net-empty-icon"><Icon name="hexagon" /></div>
                 <div className="net-empty-title">No NetworkPolicy resources found</div>
                 <div className="net-empty-sub">Policies created in the cluster will appear here</div>
               </div>

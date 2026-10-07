@@ -6,6 +6,7 @@ import { NetworkEventsTab } from './NetworkEventsTab';
 import { PolViewer } from './NetworkPolViewer';
 import { CreatePolicyModal } from './CreatePolicyModal';
 import '../../styles/network.scss';
+import { Icon } from '../../components/Icon';
 
 function NsDropdown({ nsFilter, setNsFilter, namespaces }) {
   const [open, setOpen] = useState(false);
@@ -56,7 +57,7 @@ function NsDropdown({ nsFilter, setNsFilter, namespaces }) {
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.06)'; e.currentTarget.style.color = '#e2e8f0'; }}
               onMouseLeave={e => { e.currentTarget.style.background = nsFilter === ns ? 'rgba(99,179,237,.15)' : 'transparent'; e.currentTarget.style.color = nsFilter === ns ? '#63b3ed' : '#94a3b8'; }}>
               {ns === 'all' ? 'All namespaces' : ns}
-              {nsFilter === ns && <span style={{ fontSize: 11, color: '#63b3ed' }}>✓</span>}
+              {nsFilter === ns && <Icon name="check" style={{ color: 'var(--accent)' }} />}
             </button>
           ))}
         </div>

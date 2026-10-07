@@ -1,4 +1,5 @@
 import { SERVICES } from './honeypotConstants';
+import { Icon } from '../../components/Icon';
 
 export function CreateModal({ showModal, setShowModal, formName, setFormName, formNs, setFormNs, formSvcs, toggleSvc, createErr, creating, handleCreate }) {
   if (!showModal) return null;
@@ -7,7 +8,7 @@ export function CreateModal({ showModal, setShowModal, formName, setFormName, fo
     <div className="hp-modal">
       <div className="hp-modal-header">
         <span className="hp-modal-title">Create Honeypot</span>
-        <button className="hp-modal-close" onClick={() => setShowModal(false)}>✕</button>
+        <button className="hp-modal-close" onClick={() => setShowModal(false)}><Icon name="x" /></button>
       </div>
       <div className="hp-modal-body">
         <div className="hp-form-row">
@@ -46,13 +47,13 @@ export function CreateModal({ showModal, setShowModal, formName, setFormName, fo
                 className={`hp-svc-option${formSvcs.includes(svc.name) ? ' hp-svc-option--selected' : ''}`}
                 onClick={() => toggleSvc(svc.name)}
               >
-                <span className="hp-svc-option-icon">{svc.icon}</span>
+                <span className="hp-svc-option-icon"><Icon name={svc.icon} /></span>
                 <div>
                   <div className="hp-svc-option-name">{svc.label}</div>
                   <div className="hp-svc-option-port">:{svc.port}</div>
                 </div>
                 <div className="hp-svc-check">
-                  {formSvcs.includes(svc.name) && '✓'}
+                  {formSvcs.includes(svc.name) && <Icon name="check" />}
                 </div>
               </div>
             ))}

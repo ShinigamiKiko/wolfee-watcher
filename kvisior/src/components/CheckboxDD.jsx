@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Icon } from './Icon';
 
 export function CheckboxDD({ label, options, checked, onChange }) {
   const [open, setOpen] = useState(false);
@@ -21,7 +22,7 @@ export function CheckboxDD({ label, options, checked, onChange }) {
           color: 'var(--text-secondary)',
         }}
       >
-        {label} ▾
+        {label} <Icon name="chevron-down" />
       </button>
 
       {open && (

@@ -270,9 +270,14 @@ func TestInboxSelectionKeepsOrderAndCleanupDrainsBacklog(t *testing.T) {
 	if len(seen) != 1 || seen[0] != other {
 		t.Fatalf("processed %v: a delayed head must hold back its own cluster only", seen)
 	}
+	store.ConfigureAuditRetentionWriter(true)
+	defer store.ConfigureAuditRetentionWriter(false)
+	if err := f.st.LoadAuditRetention(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.pool.Exec(ctx, `INSERT INTO audit_inbox(cluster_id,kind,batch_key,payload,processed_at)
 	    SELECT $1,'log','old-'||n,'[]',clock_timestamp()-$2::interval FROM generate_series(1,12000) n`,
-		f.cluster, fmt.Sprintf("%f seconds", (store.AuditRetention+time.Hour).Seconds())); err != nil {
+		f.cluster, fmt.Sprintf("%f seconds", (store.AuditRetention()+time.Hour).Seconds())); err != nil {
 		t.Fatal(err)
 	}
 	removed, err := f.st.CleanAuditInbox(ctx)

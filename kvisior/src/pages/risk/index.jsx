@@ -4,6 +4,9 @@ import { useScanner } from '../../context/ScannerContext';
 import { useSensor }  from '../../context/SensorContext';
 import { SevBadge }   from '../../components/ui';
 import { DataWindow } from '../../components/DataWindow';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 const RISK_COLOR = s => s>=8?'var(--danger)':s>=6?'var(--warning)':s>=4?'#a78bfa':'var(--accent-3)';
 const SEV_LABEL  = s => s>=8?'CRITICAL':s>=6?'HIGH':s>=4?'MEDIUM':'LOW';
@@ -27,7 +30,7 @@ function buildFactors(w, imageResults) {
     const s = Math.min(4.0, maxRisk * 0.4);
     score += s;
     factors.push({
-      icon:'🐛', label:'Vulnerabilities',
+      icon:'bug', label:'Vulnerabilities',
       detail:`${allCVEs.length} CVEs · ${critCount} critical · ${highCount} high`,
       score:s, color: critCount>0?'var(--danger)':highCount>0?'var(--warning)':'var(--text-muted)',
     });
@@ -36,7 +39,7 @@ function buildFactors(w, imageResults) {
   if (kevCount > 0) {
     const s = Math.min(2.0, kevCount * 0.8);
     score += s;
-    factors.push({ icon:'💀', label:'Known Exploited (CISA KEV)',
+    factors.push({ icon:'flame', label:'Known Exploited (CISA KEV)',
       detail:`${kevCount} CVE${kevCount>1?'s':''} actively exploited in the wild`,
       score:s, color:'var(--danger)' });
   }
@@ -44,7 +47,7 @@ function buildFactors(w, imageResults) {
   if (maxEPSS >= 0.5) {
     const s = Math.min(0.8, maxEPSS * 0.8);
     score += s;
-    factors.push({ icon:'🎯', label:'High Exploit Probability',
+    factors.push({ icon:'target', label:'High Exploit Probability',
       detail:`EPSS ${(maxEPSS*100).toFixed(1)}% — likely to be exploited`,
       score:s, color:'var(--warning)' });
   }
@@ -56,7 +59,7 @@ function buildFactors(w, imageResults) {
   const privC = containers.filter(c=>c.securityContext?.privileged===true);
   if (privC.length > 0) {
     score += 1.5;
-    factors.push({ icon:'🔓', label:'Privileged Containers',
+    factors.push({ icon:'unlock', label:'Privileged Containers',
       detail:`${privC.length} container${privC.length>1?'s':''}: ${privC.map(c=>c.name).join(', ')}`,
       score:1.5, color:'var(--danger)' });
   }
@@ -64,17 +67,17 @@ function buildFactors(w, imageResults) {
   const spec = w.raw?.spec?.template?.spec||{};
   if (spec.hostNetwork) {
     score += 1.0;
-    factors.push({ icon:'🌐', label:'Host Network Access', detail:'Pod uses host network namespace', score:1.0, color:'var(--warning)' });
+    factors.push({ icon:'globe', label:'Host Network Access', detail:'Pod uses host network namespace', score:1.0, color:'var(--warning)' });
   }
   if (spec.hostPID) {
     score += 0.8;
-    factors.push({ icon:'👁', label:'Host PID Access', detail:'Pod can see all host processes', score:0.8, color:'var(--warning)' });
+    factors.push({ icon:'eye', label:'Host PID Access', detail:'Pod can see all host processes', score:0.8, color:'var(--warning)' });
   }
 
   const noLimits = containers.filter(c=>!c.resources?.limits?.memory&&!c.resources?.limits?.cpu);
   if (noLimits.length > 0 && containers.length > 0) {
     score += 0.3;
-    factors.push({ icon:'📈', label:'No Resource Limits',
+    factors.push({ icon:'trending-up', label:'No Resource Limits',
       detail:`${noLimits.length}/${containers.length} containers without CPU/memory limits`,
       score:0.3, color:'var(--text-muted)' });
   }
@@ -136,6 +139,7 @@ export function Risk() {
     return r.name.toLowerCase().includes(q) || r.ns.toLowerCase().includes(q);
   });
 
+  const { pageItems: pageRisk, pager } = usePaged(filtered, 'risk', [search, showSys]);
   const hasData = workloads.length > 0;
 
   return (
@@ -167,7 +171,7 @@ export function Risk() {
           )}
           {hasData && (
             <div style={{marginRight:selected?0:24}}>
-              <DataWindow label="Workloads by risk" deps={[!!selected]}>
+              <DataWindow label="Workloads by risk" deps={[!!selected]} footer={<Pager {...pager} noun="workloads" />}>
                 <table className="data-table">
                   <thead><tr>
                     <th style={{width:36}}>#</th>
@@ -182,7 +186,7 @@ export function Risk() {
                     {filtered.length===0 && (
                       <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-muted)',padding:40}}>No workloads matching filter</td></tr>
                     )}
-                    {filtered.map(r => {
+                    {pageRisk.map(r => {
                       const color = RISK_COLOR(r.score);
                       return (
                         <tr key={r.name+r.ns}
@@ -217,7 +221,7 @@ export function Risk() {
                           <td>
                             {r.kevCount>0
                               ?<span style={{fontSize:11,padding:'1px 6px',borderRadius:3,
-                                background:'rgba(239,68,68,.15)',color:'var(--danger)',fontWeight:600}}>⚠ {r.kevCount}</span>
+                                background:'rgba(239,68,68,.15)',color:'var(--danger)',fontWeight:600}}><Icon name="alert" /> {r.kevCount}</span>
                               :<span style={{color:'var(--text-muted)',fontSize:12}}>—</span>}
                           </td>
                           <td style={{color:'var(--text-muted)',fontSize:12}}>{r.age}</td>
@@ -240,7 +244,7 @@ export function Risk() {
                   <div className="dp-title">{selected.name}</div>
                   <div className="dp-meta">{selected.kind} · {selected.ns}</div>
                 </div>
-                <button className="dp-close" onClick={()=>setSelected(null)}>✕</button>
+                <button className="dp-close" onClick={()=>setSelected(null)}><Icon name="x" /></button>
               </div>
 
               {}
@@ -281,7 +285,7 @@ export function Risk() {
                   {selected.factors.sort((a,b)=>b.score-a.score).map((f,i)=>(
                     <div key={i} style={{background:'var(--bg-card)',border:'1px solid var(--border)',
                       borderRadius:8,padding:'10px 12px',display:'flex',gap:10}}>
-                      <span style={{fontSize:16,lineHeight:1,marginTop:1,flexShrink:0}}>{f.icon}</span>
+                      <span style={{fontSize:16,lineHeight:1,marginTop:1,flexShrink:0,color:f.color}}><Icon name={f.icon} /></span>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                           <div style={{fontSize:12,fontWeight:600,color:f.color}}>{f.label}</div>

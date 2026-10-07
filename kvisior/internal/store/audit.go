@@ -23,17 +23,7 @@ const (
 	auditTwinSlack = 30 * time.Second
 )
 
-var (
-	AuditRetention = 14 * 24 * time.Hour
-
-	ErrAuditRuleExists = errors.New("store: audit rule already exists")
-)
-
-func SetAuditRetention(d time.Duration) {
-	if d >= time.Hour {
-		AuditRetention = d
-	}
-}
+var ErrAuditRuleExists = errors.New("store: audit rule already exists")
 
 func scanAuditRule(row pgx.Row) (auditrules.Rule, error) {
 	var r auditrules.Rule
@@ -235,44 +225,63 @@ func nullable(s string) interface{} {
 }
 
 func (c *Scoped) InsertAuditEvents(ctx context.Context, items []AuditEventInsert) error {
+	silences, err := c.activeAuditSilences(ctx)
+	if err != nil {
+		return fmt.Errorf("audit silences: %w", err)
+	}
+	flagged, err := c.s.auditRollupsReady(ctx, c.db())
+	if err != nil {
+		return err
+	}
 	rows := make([][]interface{}, 0, len(items))
 	stored := make([]int, 0, len(items))
 	stamps := make([]time.Time, 0, len(items))
+	matched := make([]int64, 0, len(items))
 	for i, it := range items {
 		ev := it.Event
 		ts := ev.Timestamp
 		if ts.IsZero() {
 			ts = time.Now()
 		}
-		ts, keep := partitionedTS(ts, AuditRetention)
+		ts, keep := partitionedTS(ts, AuditRetention())
 		if !keep {
 			continue
 		}
+		var silence int64
+		if ev.ID != "" {
+			silence = firstSilence(silences, ev)
+		}
 		stored = append(stored, i)
 		stamps = append(stamps, ts)
-		rows = append(rows, []interface{}{
+		matched = append(matched, silence)
+		row := []interface{}{
 			c.id, ts, ev.User, ev.Kind, ev.Namespace, ev.Resource, it.Raw,
 			nullable(ev.ID), ev.Name, nullable(ev.SourceIP()), ev.Allowed, it.Origin,
 			nullable(it.RuleID), nullable(it.Sev),
-		})
+		}
+		if flagged {
+			row = append(row, silence != 0)
+		}
+		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
 		return nil
 	}
-	if _, err := c.db().CopyFrom(ctx, pgx.Identifier{"audit_events"},
-		[]string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data",
-			"event_uid", "name", "source_ip", "allowed", "origin", "rule_id", "sev"},
-		pgx.CopyFromRows(rows)); err != nil {
+	cols := []string{"cluster_id", "ts", "user", "kind", "ns", "resource", "data",
+		"event_uid", "name", "source_ip", "allowed", "origin", "rule_id", "sev"}
+	if flagged {
+		cols = append(cols, "silenced")
+	}
+	if _, err := c.db().CopyFrom(ctx, pgx.Identifier{"audit_events"}, cols, pgx.CopyFromRows(rows)); err != nil {
 		return err
 	}
-	silences, err := c.activeAuditSilences(ctx)
-	if err != nil {
-		return fmt.Errorf("audit silences: %w", err)
+	if err := c.invalidateRollupHours(ctx, stamps...); err != nil {
+		return fmt.Errorf("audit rollups: %w", err)
 	}
 	for n, i := range stored {
 		it := &items[i]
-		id := firstSilence(silences, it.Event)
-		if id == 0 || it.Event.ID == "" {
+		id := matched[n]
+		if id == 0 {
 			continue
 		}
 		if err := c.storeSilencedEvent(ctx, id, silencedRow{uid: it.Event.ID, origin: it.Origin, ruleID: it.RuleID, sev: it.Sev,
@@ -431,6 +440,9 @@ func (c *Scoped) EnrichAuditEvent(ctx context.Context, en AuditEnrichment) (Audi
 	if sev != nil {
 		row.Sev = *sev
 	}
+	if err := c.invalidateRollupHours(ctx, row.Ts); err != nil {
+		return row, true, fmt.Errorf("audit rollups: %w", err)
+	}
 	if err := c.silenceStoredEvent(ctx, &row, uid); err != nil {
 		return row, true, fmt.Errorf("silenced audit event: %w", err)
 	}
@@ -441,6 +453,9 @@ func (c *Scoped) MarkAuditEventRule(ctx context.Context, row AuditEventRow, uid,
 	if _, err := c.db().Exec(ctx,
 		`UPDATE audit_events SET rule_id = $4, sev = $5 WHERE cluster_id = $1 AND id = $2 AND ts = $3`,
 		pgx.QueryExecModeExec, c.id, row.ID, row.Ts, ruleID, sev); err != nil {
+		return err
+	}
+	if err := c.invalidateRollupHours(ctx, row.Ts); err != nil {
 		return err
 	}
 	if !row.Silenced {
@@ -467,6 +482,8 @@ type AuditEventQuery struct {
 	BeforeTs   time.Time
 	BeforeID   int64
 	Limit      int
+
+	users []string
 }
 
 type AuditObject struct {
@@ -482,7 +499,10 @@ func likeEscape(s string) string {
 }
 
 func (c *Scoped) auditWhere(ctx context.Context, q AuditEventQuery) (string, []interface{}) {
-	args := []interface{}{c.id}
+	return c.auditWhereWith(ctx, q, []interface{}{c.id})
+}
+
+func (c *Scoped) auditWhereWith(ctx context.Context, q AuditEventQuery, args []interface{}) (string, []interface{}) {
 	where := []string{"cluster_id = $1"}
 	add := func(cond string, v interface{}) {
 		args = append(args, v)
@@ -494,9 +514,6 @@ func (c *Scoped) auditWhere(ctx context.Context, q AuditEventQuery) (string, []i
 	if !q.To.IsZero() {
 		add("ts <= $%d", q.To)
 	}
-	if q.User != "" {
-		add(`"user" ILIKE $%d`, "%"+likeEscape(q.User)+"%")
-	}
 	if q.Namespace != "" {
 		add("ns = $%d", q.Namespace)
 	}
@@ -504,7 +521,7 @@ func (c *Scoped) auditWhere(ctx context.Context, q AuditEventQuery) (string, []i
 		add("kind = $%d", q.Kind)
 	}
 	if q.Resource != "" {
-		add("resource ILIKE $%d", "%"+likeEscape(q.Resource)+"%")
+		add("resource LIKE $%d", likeEscape(strings.ToLower(q.Resource))+"%")
 	}
 	if q.SourceIP != "" {
 		add("source_ip LIKE $%d", likeEscape(q.SourceIP)+"%")
@@ -521,16 +538,28 @@ func (c *Scoped) auditWhere(ctx context.Context, q AuditEventQuery) (string, []i
 			`("user" ILIKE $%d OR name ILIKE $%d OR ns ILIKE $%d OR resource ILIKE $%d OR source_ip ILIKE $%d OR kind ILIKE $%d)`,
 			n, n, n, n, n, n))
 	}
+	where, args = userResultFilters(q, auditDangerExpr, where, args)
+	return strings.Join(where, " AND ") + c.silencedFilter(ctx), args
+}
+
+func userResultFilters(q AuditEventQuery, danger string, where []string, args []interface{}) ([]string, []interface{}) {
+	if q.users != nil {
+		args = append(args, q.users)
+		where = append(where, fmt.Sprintf(`"user" = ANY($%d)`, len(args)))
+	} else if q.User != "" {
+		args = append(args, "%"+likeEscape(q.User)+"%")
+		where = append(where, fmt.Sprintf(`"user" ILIKE $%d`, len(args)))
+	}
 	switch q.Result {
 	case auditrules.ResultAllowed:
-		where = append(where, "allowed = TRUE")
+		where = append(where, "allowed IS NOT FALSE")
 	case auditrules.ResultDenied:
 		where = append(where, "allowed = FALSE")
 	}
 	if q.DangerOnly {
-		where = append(where, auditDangerExpr)
+		where = append(where, danger)
 	}
-	return strings.Join(where, " AND ") + c.silencedFilter(ctx), args
+	return where, args
 }
 
 func (c *Scoped) QueryAuditEvents(ctx context.Context, q AuditEventQuery) ([]AuditEventRow, error) {
@@ -538,6 +567,35 @@ func (c *Scoped) QueryAuditEvents(ctx context.Context, q AuditEventQuery) ([]Aud
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
+	if q.User != "" && q.users == nil {
+		users, ok, err := c.resolveAuditUsers(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		if ok && len(users) == 0 {
+			return []AuditEventRow{}, nil
+		}
+		if ok {
+			q.users = users
+		}
+	}
+	out := make([]AuditEventRow, 0, limit)
+	for _, w := range auditWindows(q) {
+		part := q
+		part.From, part.To = w[0], w[1]
+		rows, err := c.queryAuditWindow(ctx, part, limit-len(out))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (c *Scoped) queryAuditWindow(ctx context.Context, q AuditEventQuery, limit int) ([]AuditEventRow, error) {
 	where, args := c.auditWhere(ctx, q)
 	if !q.BeforeTs.IsZero() {
 		args = append(args, q.BeforeTs, q.BeforeID)
@@ -578,35 +636,34 @@ func (c *Scoped) AuditEventHistogram(ctx context.Context, q AuditEventQuery, buc
 		return nil, 0, errors.New("store: histogram needs a time range")
 	}
 	step := span / time.Duration(buckets)
-	where, args := c.auditWhere(ctx, q)
-	args = append(args, q.From, step.Seconds(), buckets)
-	n := len(args)
-	rows, err := c.db().Query(ctx, fmt.Sprintf(
-		`SELECT LEAST($%d::int - 1, FLOOR(EXTRACT(EPOCH FROM (ts - $%d::timestamptz))::float8 / $%d::float8)::int) AS b,
-		        COUNT(*), COUNT(*) FILTER (WHERE %s)
-		   FROM audit_events WHERE %s GROUP BY b`, n, n-2, n-1, auditDangerExpr, where), append([]interface{}{pgx.QueryExecModeExec}, args...)...)
+	var counts map[int][2]int64
+	var err error
+	if rs, ok := c.rollupSpanFor(ctx, q); ok {
+		counts, err = c.rollupHistogram(ctx, q, rs, buckets, step)
+	} else {
+		counts, err = c.rawHistogram(ctx, q, buckets, step)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 	out := make([]AuditBucket, buckets)
 	for i := range out {
 		out[i].Start = q.From.Add(time.Duration(i) * step)
 	}
 	var total int64
-	for rows.Next() {
-		var b int
-		var all, danger int64
-		if err := rows.Scan(&b, &all, &danger); err != nil {
-			return nil, 0, err
-		}
+	for b, v := range counts {
 		if b < 0 || b >= buckets {
 			continue
 		}
-		out[b].Total, out[b].Dangerous = all, danger
-		total += all
+		out[b].Total, out[b].Dangerous = v[0], v[1]
+		total += v[0]
 	}
-	return out, total, rows.Err()
+	return out, total, nil
+}
+
+func (c *Scoped) rawHistogram(ctx context.Context, q AuditEventQuery, buckets int, step time.Duration) (map[int][2]int64, error) {
+	where, args := c.auditWhere(ctx, q)
+	return c.histogram(ctx, args, q.From, step, buckets, []func(func(string) string) string{rawBucketPart(where)})
 }
 
 type AuditGroup struct {
@@ -627,6 +684,11 @@ func (c *Scoped) AuditEventGroups(ctx context.Context, q AuditEventQuery, by str
 	}
 	if offset < 0 {
 		offset = 0
+	}
+	if by != "object" {
+		if rs, ok := c.rollupSpanFor(ctx, q); ok {
+			return c.rollupUserGroups(ctx, q, rs, limit, offset)
+		}
 	}
 	key, other, object := `"user"`, `source_ip`, `'', '', ''`
 	if by == "object" {
@@ -671,7 +733,7 @@ func (c *Scoped) AttachAuditViolationSource(ctx context.Context, eventUID, sourc
 		`UPDATE audit_violations
 		    SET source_ip = $3, data = $4, actor = CASE WHEN $6 <> '' THEN $6 ELSE actor END
 		  WHERE cluster_id = $1 AND data->>'id' = $2 AND last_seen > $5`,
-		c.id, eventUID, sourceIP, data, time.Now().Add(-AuditRetention), actor)
+		c.id, eventUID, sourceIP, data, time.Now().Add(-AuditRetention()), actor)
 	return err
 }
 

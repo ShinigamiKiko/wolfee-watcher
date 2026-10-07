@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toYaml, buildFormYaml } from './networkPolicyUtils';
+import { Icon } from '../../components/Icon';
 
 export function CreatePolicyModal({ namespaces, onClose, onApplied }) {
 
@@ -25,7 +26,7 @@ export function CreatePolicyModal({ namespaces, onClose, onApplied }) {
       <div className="np-modal" onClick={e=>e.stopPropagation()}>
         <div className="np-modal-header">
           <span className="np-modal-title">{title}</span>
-          <button className="net-sb-close" onClick={onClose}>✕</button>
+          <button className="net-sb-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         {(
@@ -82,7 +83,7 @@ export function CreatePolicyModal({ namespaces, onClose, onApplied }) {
               <div className="np-modal-yaml-wrap">
                 <div className="np-modal-yaml-hdr">
                   <span>YAML preview</span>
-                  <button className="np-copy-btn" onClick={copyYaml}>{copied?'✓ Copied':'Copy'}</button>
+                  <button className="np-copy-btn" onClick={copyYaml}>{copied?<><Icon name="check" /> Copied</>:'Copy'}</button>
                 </div>
                 <pre className="np-modal-yaml">{yaml}</pre>
               </div>
@@ -94,7 +95,7 @@ export function CreatePolicyModal({ namespaces, onClose, onApplied }) {
 
         <div className="np-modal-footer">
           <button className="np-modal-btn np-modal-btn--ghost" onClick={onClose}>Cancel</button>
-          <button className="np-modal-btn np-modal-btn--secondary" onClick={copyYaml}>{copied?'✓ Copied':'Copy YAML'}</button>
+          <button className="np-modal-btn np-modal-btn--secondary" onClick={copyYaml}>{copied?<><Icon name="check" /> Copied</>:'Copy YAML'}</button>
         </div>
       </div>
     </div>
