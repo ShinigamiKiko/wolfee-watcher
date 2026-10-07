@@ -203,7 +203,10 @@ func (s *Store) AuditInboxReady(ctx context.Context) error {
 const auditInboxCleanChunk = 5000
 
 func (s *Store) CleanAuditInbox(ctx context.Context) (int64, error) {
-	cutoff := fmt.Sprintf("%f seconds", AuditRetention.Seconds())
+	cutoff, known := auditRetentionInterval()
+	if !known {
+		return 0, nil
+	}
 	var total int64
 	for {
 		tag, err := s.pool.Exec(ctx, `DELETE FROM audit_inbox WHERE id IN (

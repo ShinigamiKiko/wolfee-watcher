@@ -730,11 +730,16 @@ func (s *Store) MaintainPartitions(ctx context.Context) error {
 
 func maintainPartitions(ctx context.Context, db execer) error {
 	retentionHours := int(ContainerLogTTL.Hours()) + 2
-	auditHours := int(AuditRetention.Hours()) + 2
+	keep, known := auditSweepRetention()
+	auditHours := int(keep.Hours()) + 2
+	var auditArg *int
+	if known {
+		auditArg = &auditHours
+	}
 	var created, dropped int
 	if err := db.QueryRow(ctx,
 		`SELECT created, dropped FROM ww_maintain_partitions($1, $2, $3)`,
-		retentionHours, partitionsAheadHours, auditHours).Scan(&created, &dropped); err != nil {
+		retentionHours, partitionsAheadHours, auditArg).Scan(&created, &dropped); err != nil {
 		return err
 	}
 	if created > 0 || dropped > 0 {

@@ -1,8 +1,10 @@
+import { PAGE_SIZES } from '../../components/Pager';
+
 const KEY = 'kvisior.audit.investigation';
 const SIZE_KEY = 'kvisior.audit.investigation.pageSize';
 const VERSION = 1;
 
-export const PAGE_SIZES = [50, 100];
+export { PAGE_SIZES } from '../../components/Pager';
 
 export function loadResults(cluster) {
   try {

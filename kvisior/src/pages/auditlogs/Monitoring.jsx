@@ -142,39 +142,39 @@ export function Monitoring({ ruleNames, apiLogConnected, canEdit, onInvestigate,
 
   return (
     <div>
-      <div className="al-toolbar">
-        <input className="al-input al-search" type="search" placeholder="Search user, object, IP, rule"
+      <div className="aul-toolbar">
+        <input className="aul-input aul-search" type="search" placeholder="Search user, object, IP, rule"
                aria-label="Search events in the window" value={search} onChange={e => setSearch(e.target.value)} />
-        <div className="al-seg" role="group" aria-label="Show">
+        <div className="aul-seg" role="group" aria-label="Show">
           <button aria-pressed={!dangerOnly} onClick={() => setDangerOnly(false)}>All events</button>
           <button aria-pressed={dangerOnly} onClick={() => setDangerOnly(true)}>Dangerous only</button>
         </div>
-        <select className="al-input" aria-label="Window size" value={windowSize} onChange={e => setWindowSize(+e.target.value)}>
+        <select className="aul-input" aria-label="Window size" value={windowSize} onChange={e => setWindowSize(+e.target.value)}>
           {WINDOW_SIZES.map(n => <option key={n} value={n}>Window: {n} events</option>)}
         </select>
-        <button className="btn btn-outline al-btn" onClick={togglePause}>{paused ? 'Resume' : 'Pause'}</button>
-        <span className={`al-live${paused ? ' paused' : ''}`}><span className="al-pulse" />{paused ? 'Paused, new events are not shown' : 'Live'}</span>
+        <button className="btn btn-outline aul-btn" onClick={togglePause}>{paused ? 'Resume' : 'Pause'}</button>
+        <span className={`aul-live${paused ? ' paused' : ''}`}><span className="aul-pulse" />{paused ? 'Paused, new events are not shown' : 'Live'}</span>
       </div>
-      <div className="al-stats">
+      <div className="aul-stats">
         <span><b>{lastHour == null ? '—' : num(lastHour)}</b> events in the last hour</span>
         <span><b className={danger ? 'hot' : ''}>{danger}</b> dangerous in window</span>
         <span><b>{denied}</b> denied</span>
         <span>{apiLogConnected ? <><b>{matched}%</b> of changes matched to an API log record</> : 'API log not connected'}</span>
       </div>
-      <div className="al-mon">
-        <div className="al-winwrap">
+      <div className="aul-mon">
+        <div className="aul-winwrap">
           {pending > 0 && (
-            <button className="btn btn-primary al-newpill" onClick={jumpToNew}>{pending} new event{pending === 1 ? '' : 's'}</button>
+            <button className="btn btn-primary aul-newpill" onClick={jumpToNew}>{pending} new event{pending === 1 ? '' : 's'}</button>
           )}
-          <div className="al-win" ref={boxRef} onScroll={onScroll} tabIndex={0} aria-label="Recent audit events">
+          <div className="aul-win" ref={boxRef} onScroll={onScroll} tabIndex={0} aria-label="Recent audit events">
             <EventTable events={rows} selectedKey={selected?.key} onSelect={setSelected}
                         ruleNames={ruleNames} freshKeys={fresh} emptyText={emptyText} />
           </div>
-          <div className="al-winfoot">
+          <div className="aul-winfoot">
             <span>{rows.length === events.length
               ? `Newest ${num(events.length)} events. Older ones leave the window as new ones arrive.`
               : `${num(rows.length)} of ${num(events.length)} events in the window match.`}</span>
-            <button className="al-link" onClick={onOlder}>Search older events in Investigation</button>
+            <button className="aul-link" onClick={onOlder}>Search older events in Investigation</button>
           </div>
         </div>
         <EventDetail ev={selected} ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={canEdit}

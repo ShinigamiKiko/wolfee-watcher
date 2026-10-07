@@ -84,7 +84,7 @@ export function Alerts() {
   }, []);
 
   const ackEvent = async (ev) => {
-    if (!confirm('Точно ли хотите удалить такие события?\n\nВсе будущие события того же паттерна будут автоматически перемещаться в Silent.')) return;
+    if (!confirm('Delete these events?\n\nAll future events with the same pattern will be moved to Silent automatically.')) return;
     const pattern = evtPattern(ev);
     const summary = bucketsRef.current.ack[pattern]?.summary || evtSummary(ev);
     setBuckets(b => ({

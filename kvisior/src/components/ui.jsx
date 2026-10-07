@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 export function SevBadge({ sev }) {
   if (!sev) return null;
   return <span className={`sev sev-${sev.toLowerCase()}`}>{sev}</span>;
@@ -89,8 +90,8 @@ export function FilterDropdown({ label, id, children }) {
   };
   return (
     <div className="filter-dd">
-      <button className="btn btn-outline" style={{fontSize:12,whiteSpace:'nowrap'}} onClick={toggle}>
-        {label} ▾
+      <button className="btn btn-outline btn-dd" onClick={toggle}>
+        {label} <Icon name="chevron-down" />
       </button>
       <div className="filter-dd-menu" id={id}>
         {children}

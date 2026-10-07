@@ -7,6 +7,7 @@ import { RunList } from './RunList';
 import { BenchDetail } from './BenchDetail';
 import { HunterDetail } from './HunterDetail';
 import { DetailModal, F } from './DetailModal';
+import { Icon } from '../../components/Icon';
 
 export function Audit() {
   return <AuditBoundary><AuditInner/></AuditBoundary>;
@@ -119,14 +120,14 @@ function AuditInner() {
       <div className="au-header">
         <div className="au-header__left">
           {detail ? (
-            <button className="au-back-btn" onClick={()=>setDetail(null)}>← Audits</button>
+            <button className="au-back-btn" onClick={()=>setDetail(null)}><Icon name="arrow-left" /> Audits</button>
           ) : (
             <><span className="au-title">Audit</span><span className="au-sep">·</span><span className="au-sub">kube-bench · kube-hunter</span></>
           )}
         </div>
         {!detail && (
           <button className="au-run-btn" onClick={()=>setDialog(tab)} disabled={isBusy}>
-            {isBusy ? '⏳ Running…' : `▶ Run ${toolName}`}
+            {isBusy ? <><Icon name="loader" /> Running…</> : <><Icon name="play" /> Run {toolName}</>}
           </button>
         )}
       </div>

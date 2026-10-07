@@ -70,8 +70,6 @@ var v0013DDL = []string{
 	`CREATE INDEX IF NOT EXISTS idx_audit_events_cluster_ts ON audit_events(cluster_id, ts DESC, id DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_events_uid        ON audit_events(cluster_id, event_uid)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_events_user       ON audit_events(cluster_id, "user", ts DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_audit_events_ip         ON audit_events(cluster_id, source_ip, ts DESC)
-	 WHERE source_ip IS NOT NULL`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_events_rule       ON audit_events(cluster_id, ts DESC)
 	 WHERE rule_id IS NOT NULL`,
 }

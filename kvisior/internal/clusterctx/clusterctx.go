@@ -29,11 +29,13 @@ var (
 	trustHdr  bool
 	certFirst = true
 	hub       bool
+	mode      string
 )
 
 func Init() {
 	trustHdr = strings.EqualFold(os.Getenv(EnvTrustHdr), "true") || os.Getenv(EnvTrustHdr) == "1" || strings.EqualFold(os.Getenv(EnvTrustHdr), "yes")
-	if mode := strings.ToLower(strings.TrimSpace(os.Getenv(EnvMode))); mode == "hub" || mode == "ingest" || mode == "audit-worker" {
+	mode = strings.ToLower(strings.TrimSpace(os.Getenv(EnvMode)))
+	if mode == "hub" || mode == "ingest" || mode == "audit-worker" {
 		hub = true
 		local = ""
 		log.Printf("[clusterctx] hub mode: no local cluster, every cluster is served through its kvisior")
@@ -57,6 +59,8 @@ func Init() {
 func Local() string { return local }
 
 func Hub() bool { return hub }
+
+func Mode() string { return mode }
 
 func FromPeerCert(r *http.Request) (string, bool) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {

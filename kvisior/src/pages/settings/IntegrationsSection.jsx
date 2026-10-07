@@ -2,8 +2,8 @@ import { apiFetch } from '../../data/cluster';
 import { useEffect, useState } from 'react';
 import { usePerms, actingHeaders } from '../../context/PermissionsContext';
 import { INTEGRATION_DEFS } from './settingsConstants';
-import { inputStyle, btnGhost, btnDanger } from './settingsUi';
 import { AuditLogSourceCard } from './AuditLogSourceCard';
+import { AuditRetentionCard } from './AuditRetentionCard';
 
 function mergeWithStored(def, values, record) {
   const out = {};
@@ -155,7 +155,7 @@ function IntegrationCard({ def, record, onSaved, toast }) {
               value={values[f.key] ?? ''}
               disabled={!writable}
               onChange={e => setValues(v => ({...v, [f.key]: e.target.value}))}
-              style={inputStyle}
+              className="form-input"
             />
           </div>
         ))}
@@ -167,11 +167,11 @@ function IntegrationCard({ def, record, onSaved, toast }) {
             {busy === 'save' ? 'Saving…' : 'Save'}
           </button>
         )}
-        <button className="btn" disabled={!!busy} onClick={test} style={btnGhost}>
+        <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={test} >
           {busy === 'test' ? 'Testing…' : 'Test connection'}
         </button>
         {isConfigured && writable && (
-          <button disabled={!!busy} onClick={remove} style={{...btnDanger, marginLeft:'auto'}}>
+          <button disabled={!!busy} onClick={remove} className="btn btn-ghost btn-sm btn-tone-danger" style={{marginLeft:'auto'}}>
             {busy === 'del' ? 'Removing…' : 'Remove'}
           </button>
         )}
@@ -210,9 +210,10 @@ export function IntegrationsSection({ toast }) {
     return (
       <div>
         <AuditLogSourceCard toast={toast} />
+        <AuditRetentionCard toast={toast} />
         <div className="card" style={{padding:24,border:'none'}}>
           <div style={{fontSize:13,color:'var(--danger)'}}>Failed to load integrations: {error}</div>
-          <button className="btn" onClick={reload} style={{...btnGhost, marginTop:12}}>Retry</button>
+          <button className="btn btn-ghost btn-sm" onClick={reload}  style={{marginTop:12}}>Retry</button>
         </div>
       </div>
     );
@@ -224,6 +225,7 @@ export function IntegrationsSection({ toast }) {
   return (
     <div>
       <AuditLogSourceCard toast={toast} />
+      <AuditRetentionCard toast={toast} />
       {INTEGRATION_DEFS.map(def => (
         <IntegrationCard key={def.kind} def={def} record={items[def.kind]} onSaved={reload} toast={toast} />
       ))}

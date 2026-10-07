@@ -1,7 +1,6 @@
 import { apiFetch } from '../../data/cluster';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePerms, actingHeaders } from '../../context/PermissionsContext';
-import { inputStyle, btnGhost } from './settingsUi';
 
 const REFRESH_MS = 15000;
 const STALE_MS = 30000;
@@ -218,7 +217,7 @@ export function AuditLogSourceCard({ toast }) {
 
       <div style={{ marginBottom: 16, maxWidth: 620 }}>
         <label style={labelStyle} htmlFor="audit-log-path">Log file path on the node</label>
-        <input id="audit-log-path" style={{ ...inputStyle, ...monoStyle }} value={form.path} disabled={!isAdmin}
+        <input id="audit-log-path" className="form-input form-input--mono" value={form.path} disabled={!isAdmin}
                placeholder={detected[0] || DEFAULT_PATH}
                onChange={e => setForm(f => ({ ...f, path: e.target.value }))} />
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
@@ -257,7 +256,7 @@ export function AuditLogSourceCard({ toast }) {
                   <td style={{ fontSize: 12 }}>{node.lastRecordAt ? ago(node.lastRecordAt) : <span style={{ color: 'var(--text-muted)' }}>none</span>}</td>
                   <td style={{ fontSize: 12, color: backlogColor }} title={backlogHint}>{backlogText}</td>
                   <td>
-                    <button className="btn" style={btnGhost} disabled={!isAdmin || !!testing} onClick={() => test(node.node)}>
+                    <button className="btn btn-ghost btn-sm" disabled={!isAdmin || !!testing} onClick={() => test(node.node)}>
                       {testing === node.node ? 'Testing…' : 'Test connection'}
                     </button>
                   </td>
@@ -321,7 +320,7 @@ export function AuditLogSourceCard({ toast }) {
 
       <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--border)', maxWidth: 620 }}>
         <label style={labelStyle} htmlFor="audit-trusted-proxies">Trusted proxies in front of the API server</label>
-        <input id="audit-trusted-proxies" style={{ ...inputStyle, ...monoStyle }} value={proxies ?? ''} disabled={!isAdmin}
+        <input id="audit-trusted-proxies" className="form-input form-input--mono" value={proxies ?? ''} disabled={!isAdmin}
                placeholder="none: use the address the API server saw"
                onChange={e => setProxies(e.target.value)} />
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, marginBottom: 12 }}>
@@ -333,7 +332,7 @@ export function AuditLogSourceCard({ toast }) {
           Use forwarded client addresses: the proxy sanitizes both X-Forwarded-For and X-Real-IP
         </label>
         {isAdmin && (
-          <button className="btn" style={btnGhost} disabled={savingProxies || (proxies === (view.trustedProxies || '') && !!headersSanitized === !!view.forwardedHeadersSanitized)} onClick={saveProxies}>
+          <button className="btn btn-ghost btn-sm" disabled={savingProxies || (proxies === (view.trustedProxies || '') && !!headersSanitized === !!view.forwardedHeadersSanitized)} onClick={saveProxies}>
             {savingProxies ? 'Saving…' : 'Save trusted proxies'}
           </button>
         )}

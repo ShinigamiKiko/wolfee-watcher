@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCluster } from '../../data/cluster';
 import { fetchEvents, fetchGroups, fetchSummary } from './api';
-import { PAGE_SIZES, clearResults, loadPageSize, loadResults, savePageSize, saveResults } from './resultStore';
-import { useFitToPage } from './useFitToPage';
+import { Pager } from '../../components/Pager';
+import { clearResults, loadPageSize, loadResults, savePageSize, saveResults } from './resultStore';
+import { DataWindow } from '../../components/DataWindow';
 import { EventDetail, EventTable, Empty, KINDS, fmtDate, normalizeEvent, num } from './shared';
+import { Icon } from '../../components/Icon';
 
 const BLANK = { hours: 24, user: '', ns: '', kind: '', resource: '', ip: '', result: '', danger: false, obj: null };
 
@@ -41,8 +43,8 @@ function Histogram({ buckets, hours }) {
   return (
     <div ref={boxRef}>
       <svg viewBox={`0 0 ${width} ${H}`} width={width} height={H} role="img" aria-label="Events over time">
-        <line x1={L} y1={y(0)} x2={width - 6} y2={y(0)} className="al-axis" />
-        <line x1={L} y1={y(max)} x2={width - 6} y2={y(max)} className="al-gridline" />
+        <line x1={L} y1={y(0)} x2={width - 6} y2={y(0)} className="aul-axis" />
+        <line x1={L} y1={y(max)} x2={width - 6} y2={y(max)} className="aul-gridline" />
         <text x={L - 6} y={y(max) + 3} textAnchor="end">{num(max)}</text>
         <text x={L - 6} y={y(0) + 3} textAnchor="end">0</text>
         {buckets.map((b, i) => {
@@ -50,8 +52,8 @@ function Histogram({ buckets, hours }) {
           const x = L + i * bw + 2, w = Math.max(2, bw - 4);
           return (
             <g key={i}>
-              {routine > 0 && <rect x={x} y={y(routine)} width={w} height={y(0) - y(routine)} rx="1.5" className="al-bar"><title>{label(i)}: {routine} routine</title></rect>}
-              {b.dangerous > 0 && <rect x={x} y={y(b.total)} width={w} height={y(routine) - y(b.total)} rx="1.5" className="al-bar-danger"><title>{label(i)}: {b.dangerous} dangerous</title></rect>}
+              {routine > 0 && <rect x={x} y={y(routine)} width={w} height={y(0) - y(routine)} rx="1.5" className="aul-bar"><title>{label(i)}: {routine} routine</title></rect>}
+              {b.dangerous > 0 && <rect x={x} y={y(b.total)} width={w} height={y(routine) - y(b.total)} rx="1.5" className="aul-bar-danger"><title>{label(i)}: {b.dangerous} dangerous</title></rect>}
             </g>
           );
         })}
@@ -104,8 +106,6 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
   const [selected, setSelected] = useState(null);
   const [state, setState] = useState({ loading: !restored.current, error: '' });
   const loadSeq = useRef(0);
-  const winRef = useRef(null);
-  const pagerRef = useRef(null);
   const { applied, view } = run;
 
   const loadBlock = useCallback(async (index, startList, landOnLast) => {
@@ -207,80 +207,71 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
     ? `${num(offset + 1)}–${num(offset + visibleRaw.length)} of ${totalKnown != null ? num(totalKnown) : `${num((block?.index || 0) * BLOCK + rows.length)}+`} ${noun}`
     : `0 ${noun}`;
 
-  const fitStyle = useFitToPage(winRef, pagerRef, [view, !!applied.obj]);
+  const fitDeps = [view, !!applied.obj];
 
   const pager = (
-    <div className="al-pager" ref={pagerRef}>
-      <span>{range}{state.loading && rows.length ? ' · loading…' : ''}</span>
-      <div>
-        <div className="al-seg" role="group" aria-label="Rows per page">
-          {PAGE_SIZES.map(n => <button key={n} type="button" aria-pressed={pageSize === n} onClick={() => changeSize(n)}>{n} rows</button>)}
-        </div>
-        <button className="btn btn-outline al-btn-sm" disabled={!canPrev || state.loading} onClick={goPrev}>Previous</button>
-        <button className="btn btn-outline al-btn-sm" disabled={!canNext || state.loading} onClick={goNext}>Next</button>
-      </div>
-    </div>
+    <Pager range={range} pageSize={pageSize} onPageSize={changeSize} busy={state.loading && rows.length > 0}
+      canPrev={canPrev} canNext={canNext} onPrev={goPrev} onNext={goNext} />
   );
 
   return (
     <div>
-      <form className="al-qgrid" onSubmit={submit} id="al-query">
+      <form className="aul-qgrid" onSubmit={submit} id="aul-query">
         <label>Time range
-          <select className="al-input" value={filters.hours} onChange={e => set('hours', +e.target.value)}>
+          <select className="aul-input" value={filters.hours} onChange={e => set('hours', +e.target.value)}>
             {ranges.map(([h, label]) => <option key={h} value={h}>{label}</option>)}
           </select>
         </label>
-        <label>User<input className="al-input" value={filters.user} onChange={e => set('user', e.target.value)} placeholder="name or part of it" /></label>
-        <label>Namespace<input className="al-input al-mono" value={filters.ns} onChange={e => set('ns', e.target.value)} placeholder="exact name" /></label>
+        <label>User<input className="aul-input" value={filters.user} onChange={e => set('user', e.target.value)} placeholder="name or part of it" /></label>
+        <label>Namespace<input className="aul-input aul-mono" value={filters.ns} onChange={e => set('ns', e.target.value)} placeholder="exact name" /></label>
         <label>Action
-          <select className="al-input" value={filters.kind} onChange={e => set('kind', e.target.value)}>
+          <select className="aul-input" value={filters.kind} onChange={e => set('kind', e.target.value)}>
             <option value="">Any</option>
             {KINDS.map(k => <option key={k} value={k}>{k}</option>)}
           </select>
         </label>
-        <label>Resource<input className="al-input al-mono" value={filters.resource} onChange={e => set('resource', e.target.value)} placeholder="secrets" /></label>
-        <label>Source IP<input className="al-input al-mono" value={filters.ip} onChange={e => set('ip', e.target.value)} placeholder="10.20." /></label>
+        <label>Resource<input className="aul-input aul-mono" value={filters.resource} onChange={e => set('resource', e.target.value)} placeholder="secrets" /></label>
+        <label>Source IP<input className="aul-input aul-mono" value={filters.ip} onChange={e => set('ip', e.target.value)} placeholder="10.20." /></label>
         <label>Result
-          <select className="al-input" value={filters.result} onChange={e => set('result', e.target.value)}>
+          <select className="aul-input" value={filters.result} onChange={e => set('result', e.target.value)}>
             <option value="">Any</option><option value="allowed">Allowed</option><option value="denied">Denied</option>
           </select>
         </label>
       </form>
-      <div className="al-toolbar">
-        <button className="btn btn-primary al-btn" type="submit" form="al-query">Search</button>
-        <button className="btn btn-outline al-btn" type="button" onClick={clear}>Clear</button>
-        <label className="al-check"><input type="checkbox" checked={filters.danger}
+      <div className="aul-toolbar">
+        <button className="btn btn-primary aul-btn" type="submit" form="aul-query">Search</button>
+        <button className="btn btn-outline aul-btn" type="button" onClick={clear}>Clear</button>
+        <label className="aul-check"><input type="checkbox" checked={filters.danger}
           onChange={e => { const f = { ...filters, danger: e.target.checked }; setFilters(f); search(f); }} />Dangerous only</label>
-        <div className="al-seg" role="group" aria-label="Group results">
+        <div className="aul-seg" role="group" aria-label="Group results">
           {VIEWS.map(([id, label]) => (
             <button key={id} aria-pressed={view === id} onClick={() => switchView(id)}>{label}</button>
           ))}
         </div>
         {applied.obj && (
-          <button className="al-link al-mono" type="button" onClick={clearObject} title="Remove the object filter">
-            Object: {objLabel(applied.obj)} ✕
+          <button className="aul-link aul-mono" type="button" onClick={clearObject} title="Remove the object filter">
+            Object: {objLabel(applied.obj)} <Icon name="x" />
           </button>
         )}
-        {view === 'events' && <button className="btn btn-outline al-btn" type="button" onClick={copy} disabled={!events.length}>Copy page as JSON</button>}
+        {view === 'events' && <button className="btn btn-outline aul-btn" type="button" onClick={copy} disabled={!events.length}>Copy page as JSON</button>}
       </div>
 
-      <div className="al-chart">
+      <div className="aul-chart">
         <Histogram buckets={summary.buckets} hours={applied.hours} />
-        <div className="al-legend">
-          <span><i className="al-swatch" />Routine</span>
-          <span><i className="al-swatch danger" />Dangerous</span>
+        <div className="aul-legend">
+          <span><i className="aul-swatch" />Routine</span>
+          <span><i className="aul-swatch danger" />Dangerous</span>
           <span>{num(summary.total)} events in the selected range</span>
         </div>
       </div>
 
       {view === 'events' ? (
-        <div className="al-mon">
-          <div className="al-winwrap">
-            <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Search results">
+        <div className="aul-mon">
+          <div className="aul-winwrap">
+            <DataWindow label="Search results" footer={pager} deps={fitDeps}>
               <EventTable events={events} selectedKey={selected?.key} onSelect={setSelected} withDate
                           ruleNames={ruleNames} emptyText={emptyText} />
-            </div>
-            {pager}
+            </DataWindow>
           </div>
           <EventDetail ev={selected} ruleNames={ruleNames} apiLogConnected={apiLogConnected} canEdit={canEdit}
                        onInvestigate={ev => drillUser(ev.user)} onCreateRule={onCreateRule}
@@ -288,8 +279,8 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
         </div>
       ) : (
         <>
-          <div className="al-win al-results al-fit" ref={winRef} style={fitStyle} tabIndex={0} aria-label="Grouped results">
-            <table className="data-table al-groups">
+          <DataWindow label="Grouped results" footer={pager} deps={fitDeps}>
+            <table className="data-table aul-groups">
               <thead>
                 <tr>
                   <th>{view === 'users' ? 'User' : 'Object'}</th><th>Events</th><th>Dangerous</th><th>Denied</th>
@@ -297,24 +288,23 @@ export function Investigation({ ruleNames, apiLogConnected, canEdit, retentionHo
                 </tr>
               </thead>
               <tbody>
-                {visibleRaw.length === 0 && <tr className="al-norow"><td colSpan={6}><div className="al-blank">{emptyText}</div></td></tr>}
+                {visibleRaw.length === 0 && <tr className="aul-norow"><td colSpan={6}><div className="aul-blank">{emptyText}</div></td></tr>}
                 {visibleRaw.map(g => {
                   const others = g.others?.length ? g.others.slice(0, 3).join(', ') + (g.others.length > 3 ? ` +${g.others.length - 3}` : '') : '';
                   return (
                     <tr key={g.key} tabIndex={0} onClick={() => drill(g)} onKeyDown={e => { if (e.key === 'Enter') drill(g); }}>
-                      <td className={`al-clip al-groupkey${view === 'users' ? '' : ' al-mono'}`} title={g.key}>{g.key || <Empty>unknown</Empty>}</td>
-                      <td className="al-mono">{num(g.events)}</td>
-                      <td className="al-mono">{g.dangerous ? <span className="al-tag al-tag-high">{num(g.dangerous)}</span> : '0'}</td>
-                      <td className="al-mono">{num(g.denied)}</td>
-                      <td className="al-mono al-clip al-others" title={(g.others || []).join(', ')}>{others || <Empty />}</td>
-                      <td className="al-mono">{fmtDate(g.lastSeen)}</td>
+                      <td className={`aul-clip aul-groupkey${view === 'users' ? '' : ' aul-mono'}`} title={g.key}>{g.key || <Empty>unknown</Empty>}</td>
+                      <td className="aul-mono">{num(g.events)}</td>
+                      <td className="aul-mono">{g.dangerous ? <span className="aul-tag aul-tag-high">{num(g.dangerous)}</span> : '0'}</td>
+                      <td className="aul-mono">{num(g.denied)}</td>
+                      <td className="aul-mono aul-clip aul-others" title={(g.others || []).join(', ')}>{others || <Empty />}</td>
+                      <td className="aul-mono">{fmtDate(g.lastSeen)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
-          {pager}
+          </DataWindow>
         </>
       )}
     </div>

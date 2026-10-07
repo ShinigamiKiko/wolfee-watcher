@@ -5,6 +5,9 @@ import { useApp } from '../../context/AppContext';
 import { epssLabel, sevColor, fmtDuration } from '../../data/scanner';
 import { FilterDD }        from './FilterDD';
 import { ImageDetailPanel } from './ImageDetailPanel';
+import { Icon } from '../../components/Icon';
+import { ProgressLine } from '../../components/ProgressLine';
+import { PagedWindow } from '../../components/PagedWindow';
 
 const SCAN_TABS = [
   { id: 'results',    label: 'Scan Results' },
@@ -104,10 +107,10 @@ export function ImageScan() {
           <div className="page-subtitle">Scan results and vulnerability findings across container images</div>
         </div>
         <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-outline" onClick={()=>toast('info','Export','Preparing CSV…')}>📥 Export</button>
+          <button className="btn btn-outline" onClick={()=>toast('info','Export','Preparing CSV…')}><Icon name="download" /> Export</button>
           <button className="btn btn-primary" onClick={handleScanAll} disabled={scanning||!agentOnline}
             style={{opacity:(scanning||!agentOnline)?0.6:1}}>
-            {scanning?'⏳ Scanning…':'🔍 Scan Now'}
+            {scanning?<><Icon name="loader" /> Scanning…</>:<><Icon name="scan" /> Scan Now</>}
           </button>
         </div>
       </div>
@@ -152,13 +155,13 @@ export function ImageScan() {
           <FilterDD label="Registry" options={['docker.io','gcr.io','quay.io','registry.k8s.io','sha256']} checked={regChecked} onChange={toggleReg}/>
         </div>
         <div className="card">
-          <div className="table-wrap">
+          <PagedWindow items={filtered} storageKey="imagescan.results" label="Scan results" noun="images" resetKey={filtered.length}>{rows => (<>
             <table className="data-table">
               <thead>
                 <tr><th>Image</th><th>Tag</th><th>OS</th><th>CVEs</th><th>Critical</th><th>High</th><th>Deployment</th><th>Last Scanned</th><th>Status</th></tr>
               </thead>
               <tbody>
-                {filtered.map((r,i)=>{
+                {rows.map((r,i)=>{
                   const [st,sl]=imgStatus(r);
                   return (
                     <tr key={i} style={{cursor:'pointer'}} className={selected===r?'selected':''}
@@ -177,12 +180,13 @@ export function ImageScan() {
                 })}
                 {filtered.length===0&&(
                   <tr><td colSpan={9} style={{textAlign:'center',color:'var(--text-muted)',padding:40}}>
-                    {agentOnline?'No results yet — click "Scan Now"':'⚠ scanner-agent offline'}
+                    {agentOnline?'No results yet — click "Scan Now"':<><Icon name="alert" /> scanner-agent offline</>}
                   </td></tr>
                 )}
               </tbody>
             </table>
-          </div>
+          </>
+          )}</PagedWindow>
         </div>
       </>}
 
@@ -190,11 +194,11 @@ export function ImageScan() {
       {tab==='namespaces' && (
         <div className="card">
           <div className="card-header"><div className="card-title">CVE Exposure by Namespace</div></div>
-          <div className="table-wrap">
+          <PagedWindow items={nsByNs} storageKey="imagescan.namespaces" label="Namespaces" noun="namespaces" resetKey={nsByNs.length}>{rows => (<>
             <table className="data-table">
               <thead><tr><th>Namespace</th><th>Images</th><th>Total CVEs</th><th>Critical</th><th>High</th><th>Pods Affected</th><th>Risk</th></tr></thead>
               <tbody>
-                {nsByNs.map((ns,i)=>{
+                {rows.map((ns,i)=>{
                   const rsk=ns.critical>0?['error','High']:ns.high>0?['warn','Medium']:['active','Low'];
                   return(
                     <tr key={i} style={{cursor:'pointer'}}>
@@ -209,7 +213,8 @@ export function ImageScan() {
                 {nsByNs.length===0&&<tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-muted)',padding:40}}>No scan data</td></tr>}
               </tbody>
             </table>
-          </div>
+          </>
+          )}</PagedWindow>
         </div>
       )}
 
@@ -217,23 +222,24 @@ export function ImageScan() {
       {tab==='unscanned' && (
         <div className="card">
           <div className="card-header"><div className="card-title">Unscanned Images</div></div>
-          <div className="table-wrap">
+          <PagedWindow items={unscanned} storageKey="imagescan.unscanned" label="Unscanned images" noun="images" resetKey={unscanned.length}>{rows => (<>
             <table className="data-table">
               <thead><tr><th>Image</th><th>Deployment</th><th>Namespace</th><th>Reason</th><th/></tr></thead>
               <tbody>
-                {unscanned.map((img,i)=>(
+                {rows.map((img,i)=>(
                   <tr key={i}>
                     <td className="td-primary mono" style={{fontSize:11}}>{img.ref}</td>
                     <td>{(img.pods||[])[0]||'—'}</td>
                     <td>{(img.namespaces||[])[0]||'—'}</td>
                     <td><span style={{color:'var(--warning)',fontSize:12}}>Not yet scanned</span></td>
-                    <td><button className="btn btn-primary" style={{fontSize:10,padding:'3px 10px'}} onClick={()=>handleScanOne(img.ref)}>🔬 Scan</button></td>
+                    <td><button className="btn btn-primary btn-sm" onClick={()=>handleScanOne(img.ref)}><Icon name="scan" /> Scan</button></td>
                   </tr>
                 ))}
-                {unscanned.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--accent-3)',padding:40}}>✓ All images scanned</td></tr>}
+                {unscanned.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--accent-3)',padding:40}}><Icon name="check" /> All images scanned</td></tr>}
               </tbody>
             </table>
-          </div>
+          </>
+          )}</PagedWindow>
         </div>
       )}
 
@@ -296,9 +302,7 @@ export function ImageScan() {
             <div style={{padding:'0 18px 18px'}}>
               <div style={{fontSize:11,fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',margin:'12px 0 8px'}}>Live Log</div>
               <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,lineHeight:1.8,background:'var(--bg-elevated)',borderRadius:8,padding:16,maxHeight:280,overflowY:'auto'}}>
-                {progress.map((line,i)=>(
-                  <div key={i} style={{color:line.startsWith('✓')?'var(--accent-3)':line.startsWith('✗')||line.startsWith('Error')?'var(--danger)':'var(--text-secondary)'}}>{line}</div>
-                ))}
+                {progress.map((line,i)=><ProgressLine key={i} line={line} />)}
               </div>
             </div>
           )}

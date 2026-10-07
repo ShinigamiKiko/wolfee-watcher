@@ -1,4 +1,5 @@
 import { StatusDot } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 export function FilterInput({ value, onChange }) {
   return (
@@ -26,7 +27,7 @@ export function EmptyRow({ cols, msg, sensorOnline }) {
   return (
     <tr>
       <td colSpan={cols} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
-        {sensorOnline === false ? '⚠ Sensor offline — no data' : msg}
+        {sensorOnline === false ? <><Icon name="alert" /> Sensor offline — no data</> : msg}
       </td>
     </tr>
   );

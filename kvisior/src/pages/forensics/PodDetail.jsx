@@ -11,7 +11,10 @@ import { SYSCALL_GROUPS }  from './watchableSyscalls';
 import { LSM_HOOKS, LSM_GROUPS, LSM_NAMES } from '../lsm/lsmCatalog';
 import { TRACEPOINTS, TRACEPOINT_GROUPS, TRACEPOINT_NAMES } from '../tracepoints/tracepointsCatalog';
 
-import { PAGE_SIZES, Pager } from './Pager';
+import { Pager } from './Pager';
+import { usePageSize } from '../../hooks/usePaged';
+import { DataWindow } from '../../components/DataWindow';
+import { Icon } from '../../components/Icon';
 
 const groupCatalog = (items, groupNames) =>
   groupNames.map(g => ({
@@ -32,7 +35,7 @@ const WATCHABLE_EVENT_NAMES = new Set([
 const MAX_PULLED_EVENTS = 99_999;
 const MAX_CATCHUP_PAGES = 5;
 
-const LIVE_ONLY_HINT = 'Недоступно: под удалён из кластера';
+const LIVE_ONLY_HINT = 'Unavailable: the pod was removed from the cluster';
 const SEV_RANK = { anomaly: 5, critical: 4, high: 3, medium: 2, low: 1, none: 0, syscall: 0 };
 const FNS_COLUMNS = [
   { key: 'ts',        label: 'Timestamp' },
@@ -51,7 +54,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const [filterBins,      setFilterBins]      = useState(new Set());
   const [activeContainer, setActiveContainer] = useState(null);
   const [page,            setPage]            = useState(1);
-  const [pageSize,        setPageSize]        = useState(40);
+  const [pageSize,        setPageSize]        = usePageSize('forensics.events');
   const [sortCol,         setSortCol]         = useState('ts');
   const [sortDir,         setSortDir]         = useState('desc');
   const [logsOpen,        setLogsOpen]        = useState(false);
@@ -412,7 +415,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
       };
       const curJson  = curRes?.ok  ? await curRes.json().catch(() => null)  : null;
       const prevJson = prevRes?.ok ? await prevRes.json().catch(() => null) : null;
-      if (!curJson && !prevJson) { setLogsError('Sensor недоступен или под не найден'); return; }
+      if (!curJson && !prevJson) { setLogsError('Sensor is unavailable or the pod was not found'); return; }
       const lines = [...(prevJson ? parseLines(prevJson, true) : []), ...(curJson ? parseLines(curJson, false) : [])];
       const blob  = new Blob([JSON.stringify(lines, null, 2)], { type: 'application/json' });
       const url   = URL.createObjectURL(blob);
@@ -420,7 +423,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
       a.href = url; a.download = `logs-${pName}-${activeContainer || 'all'}-${hours}h.json`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch(err) { setLogsError(`Ошибка загрузки: ${err.message}`); }
+    } catch(err) { setLogsError(`Failed to load: ${err.message}`); }
     finally { setLogsLoading(false); }
   };
 
@@ -438,7 +441,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
             {!gone && (!watching
               ? <button className="fns-watch-btn" onClick={doWatch}>Watch</button>
               : <button className="fns-watch-btn fns-watch-btn--active" onClick={doUnwatch}>
-                  {watchSource === 'anomaly' ? '⚠ Anomaly Watch' : 'Watching'} <span className="fns-watch-x">✕</span>
+                  {watchSource === 'anomaly' ? <><Icon name="alert" /> Anomaly Watch</> : 'Watching'} <span className="fns-watch-x"><Icon name="x" /></span>
                 </button>
             )}
           </div>
@@ -461,13 +464,13 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         <div className="fns-pod-hdr-right">
           {isAdmin && <button className="fns-btn" disabled={clearLoading}
             style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={clearEvents}>
-            {clearLoading ? '⏳ Clearing…' : 'Clear all'}
+            {clearLoading ? <><Icon name="loader" /> Clearing…</> : 'Clear all'}
           </button>}
           <div className="fns-snap-wrap" ref={logsWrapRef}>
             <button className="fns-btn" disabled={logsLoading}
               onClick={() => { setLogsOpen(o => !o); setLogsError(null); }}>
-              {logsLoading ? '⏳ Загрузка…' : `⬇ Logs · ${logsHours}h`}
-              {!logsLoading && <span className="fns-arrow">▾</span>}
+              {logsLoading ? <><Icon name="loader" /> Loading…</> : <><Icon name="download" /> Logs · {logsHours}h</>}
+              {!logsLoading && <span className="fns-arrow"><Icon name="chevron-down" /></span>}
             </button>
             {logsError && <div className="fns-snap-error">{logsError}</div>}
             {logsOpen && (
@@ -483,7 +486,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           {clearError && <div className="fns-snap-error">{clearError}</div>}
           {!gone && (
             <button className="fns-btn fns-btn--upper" disabled={upperLoading} onClick={doUpperDir}>
-              {upperLoading ? '⏳…' : '↓ Upper Dir'}
+              {upperLoading ? <Icon name="loader" /> : <><Icon name="download" /> Upper Dir</>}
             </button>
           )}
         </div>
@@ -521,19 +524,19 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         {contentTab === 'fsdiff' && (
           <div className="fns-fsdiff">
             {!watching && diff.length === 0 && (
-              <div className="fns-empty">Нажми Watch чтобы начать отслеживать изменения файловой системы</div>
+              <div className="fns-empty">Press Watch to start tracking file system changes</div>
             )}
             {watching && diff.length === 0 && (
               <div className="fns-empty">
-                {diffLoading ? '⏳ Загрузка…' : 'Изменений пока нет — проверяется каждые 2 мин'}
+                {diffLoading ? <><Icon name="loader" /> Loading…</> : 'No changes yet — checked every 2 minutes'}
               </div>
             )}
             {diff.length > 0 && (
               <>
                 <div className="fns-fsdiff-hdr">
-                  <span>{diff.length} изменений</span>
+                  <span>{diff.length} {diff.length === 1 ? 'change' : 'changes'}</span>
                   <button className="fns-btn" onClick={fetchDiff} disabled={diffLoading}>
-                    {diffLoading ? '⏳' : '↻ Обновить'}
+                    {diffLoading ? <Icon name="loader" /> : <><Icon name="refresh" /> Refresh</>}
                   </button>
                 </div>
                 <div className="fns-fsdiff-list">
@@ -613,12 +616,14 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
             <span className="fns-section-title">Runtime events</span>
             <span className="fns-section-count">{visibleEvents.length} events{activeContainer ? ` · ${activeContainer}` : ''}</span>
           </div>
+          <DataWindow label="Runtime events" deps={[contentTab, windowH, activeContainer]}
+            footer={<Pager total={visibleEvents.length} page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} />}>
           <div className="fns-etable">
-            <div className="fns-etable-hdr">
+            <div className="fns-etable-hdr dw-sticky">
               {FNS_COLUMNS.map(c => (
                 <div key={c.key} className="fns-col-head" style={{ cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => toggleSort(c.key)}>
-                  {c.label}{sortCol === c.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  {c.label}{sortCol === c.key ? <> <Icon name={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} /></> : ''}
                 </div>
               ))}
             </div>
@@ -634,13 +639,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
               ))
             }
           </div>
-          <Pager
-            total={visibleEvents.length}
-            page={page}
-            setPage={setPage}
-            pageSize={pageSize}
-            setPageSize={setPageSize}
-          />
+          </DataWindow>
         </div>
         </>
         }

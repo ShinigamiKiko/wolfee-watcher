@@ -387,7 +387,7 @@ func TestTailDeliversAsSoonAsTheReceiverIsBack(t *testing.T) {
 	restored := time.Now()
 	down.Store(false)
 	for c.names() != "late" {
-		if time.Since(restored) > probeInterval+2*pollInterval {
+		if time.Since(restored) > probeInterval+2*tailer.PollInterval {
 			t.Fatalf("not delivered %s after the receiver came back", time.Since(restored))
 		}
 		time.Sleep(20 * time.Millisecond)

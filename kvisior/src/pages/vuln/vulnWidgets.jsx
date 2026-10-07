@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from '../../components/Icon';
 
 function CvePills({ c = 0, h = 0, m = 0, l = 0 }) {
   const items = [
@@ -60,10 +61,10 @@ export function ScheduleModal({ schedule, onSave, onClose }) {
       <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12, padding: 28, width: 420, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>⏱ Scan Schedule</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}><Icon name="clock" /> Scan Schedule</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Auto-scan all cluster images</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, padding: '2px 6px' }}>✕</button>
+          <button className="btn-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         {}
@@ -88,7 +89,7 @@ export function ScheduleModal({ schedule, onSave, onClose }) {
                     background: form.frequency === f ? 'var(--accent)' : 'var(--bg-card)',
                     border: `1px solid ${form.frequency === f ? 'var(--accent)' : 'var(--border)'}`,
                     color: form.frequency === f ? '#000' : 'var(--text-primary)', textTransform: 'capitalize', transition: 'all .15s' }}>
-                  {f === 'daily' ? '📅 Daily' : '🗓 Weekly'}
+                  <Icon name="calendar" /> {f === 'daily' ? 'Daily' : 'Weekly'}
                 </button>
               ))}
             </div>
@@ -124,10 +125,9 @@ export function ScheduleModal({ schedule, onSave, onClose }) {
         </>}
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 8, cursor: 'pointer', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13 }}>Cancel</button>
-          <button onClick={handleSave} disabled={saving}
-            style={{ flex: 2, padding: 10, borderRadius: 8, cursor: 'pointer', background: 'var(--accent)', border: 'none', color: '#000', fontSize: 13, fontWeight: 600, opacity: saving ? .7 : 1 }}>
-            {saving ? 'Saving…' : '✓ Save Schedule'}
+          <button className="btn btn-outline btn-block" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary btn-block" style={{ flex: 2 }} onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : <><Icon name="check" /> Save Schedule</>}
           </button>
         </div>
       </div>

@@ -4,6 +4,9 @@ import { useApp } from '../../context/AppContext';
 import { getCluster } from '../../data/cluster';
 import { createRule, deleteRule, patchRule, restoreRules, updateRule } from './api';
 import { KINDS, READ_KINDS, RESOURCES, SEVERITIES, fmtDate, num } from './shared';
+import { DataWindow } from '../../components/DataWindow';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 const BLANK_SPEC = {
   kinds: [], resources: [], ns: '', nsExclude: '', objName: '', subject: 'any', users: '', usersExclude: '',
@@ -33,14 +36,14 @@ export function describeRule(r) {
 
 function Switch({ checked, onChange, label, disabled }) {
   return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled}
-                 className="al-switch" onClick={() => onChange(!checked)} />;
+                 className="aul-switch" onClick={() => onChange(!checked)} />;
 }
 
 function Chips({ options, selected, onToggle, label }) {
   return (
-    <div className="al-chips" role="group" aria-label={label}>
+    <div className="aul-chips" role="group" aria-label={label}>
       {options.map(o => (
-        <button key={o} type="button" className="al-chip" aria-pressed={selected.includes(o)} onClick={() => onToggle(o)}>{o}</button>
+        <button key={o} type="button" className="aul-chip" aria-pressed={selected.includes(o)} onClick={() => onToggle(o)}>{o}</button>
       ))}
     </div>
   );
@@ -85,38 +88,38 @@ function RuleForm({ initial, editing, onSave, onCancel }) {
   };
 
   return (
-    <form className="al-form" onSubmit={submit} noValidate>
+    <form className="aul-form" onSubmit={submit} noValidate>
       <h2>{editing ? `Edit rule: ${initial.name}` : 'New audit rule'}</h2>
       <fieldset>
         <legend>What happened</legend>
-        <div className="al-grid">
+        <div className="aul-grid">
           <label>Name
-            <input ref={nameRef} className={`al-input${errors.name ? ' invalid' : ''}`} maxLength={120} value={rule.name}
+            <input ref={nameRef} className={`aul-input${errors.name ? ' invalid' : ''}`} maxLength={120} value={rule.name}
                    onChange={e => setRule(r => ({ ...r, name: e.target.value }))} placeholder="Exec into payment pods" />
-            {errors.name && <span className="al-err">{errors.name}</span>}
+            {errors.name && <span className="aul-err">{errors.name}</span>}
           </label>
         </div>
-        <div className="al-sublabel">Actions</div>
+        <div className="aul-sublabel">Actions</div>
         <Chips options={KINDS} selected={spec.kinds} onToggle={v => toggle('kinds', v)} label="Actions" />
-        {errors.kinds && <span className="al-err">{errors.kinds}</span>}
-        <div className="al-sublabel">Resources <span className="al-dim">(none selected means any)</span></div>
+        {errors.kinds && <span className="aul-err">{errors.kinds}</span>}
+        <div className="aul-sublabel">Resources <span className="aul-dim">(none selected means any)</span></div>
         <Chips options={RESOURCES} selected={spec.resources} onToggle={v => toggle('resources', v)} label="Resources" />
         {spec.kinds.includes('exec') && (
-          <div className="al-grid al-gap">
+          <div className="aul-grid aul-gap">
             <label>Command contains
-              <input className="al-input al-mono" value={spec.cmd} onChange={e => setSpec('cmd', e.target.value)} placeholder="/bin/sh" />
+              <input className="aul-input aul-mono" value={spec.cmd} onChange={e => setSpec('cmd', e.target.value)} placeholder="/bin/sh" />
             </label>
           </div>
         )}
       </fieldset>
       <fieldset>
         <legend>Where</legend>
-        <div className="al-grid">
-          <label>Namespaces<input className="al-input al-mono" value={spec.ns === '*' ? '' : spec.ns} onChange={e => setSpec('ns', e.target.value)} placeholder="prod-*, staging" /></label>
-          <label>Except namespaces<input className="al-input al-mono" value={spec.nsExclude} onChange={e => setSpec('nsExclude', e.target.value)} placeholder="kube-system" /></label>
-          <label>Object name<input className="al-input al-mono" value={spec.objName} onChange={e => setSpec('objName', e.target.value)} placeholder="*-db" /></label>
+        <div className="aul-grid">
+          <label>Namespaces<input className="aul-input aul-mono" value={spec.ns === '*' ? '' : spec.ns} onChange={e => setSpec('ns', e.target.value)} placeholder="prod-*, staging" /></label>
+          <label>Except namespaces<input className="aul-input aul-mono" value={spec.nsExclude} onChange={e => setSpec('nsExclude', e.target.value)} placeholder="kube-system" /></label>
+          <label>Object name<input className="aul-input aul-mono" value={spec.objName} onChange={e => setSpec('objName', e.target.value)} placeholder="*-db" /></label>
           <label>Clusters
-            <select className="al-input" value={thisClusterOnly ? 'one' : 'all'} onChange={e => setSpec('clusters', e.target.value === 'one' ? [cluster] : [])}>
+            <select className="aul-input" value={thisClusterOnly ? 'one' : 'all'} onChange={e => setSpec('clusters', e.target.value === 'one' ? [cluster] : [])}>
               <option value="all">All clusters</option>
               <option value="one">{thisClusterOnly ? spec.clusters.join(', ') : `Only ${cluster}`}</option>
             </select>
@@ -125,66 +128,66 @@ function RuleForm({ initial, editing, onSave, onCancel }) {
       </fieldset>
       <fieldset>
         <legend>Who and from where</legend>
-        <div className="al-grid">
+        <div className="aul-grid">
           <label>Who
-            <select className="al-input" value={spec.subject} onChange={e => setSpec('subject', e.target.value)}>
+            <select className="aul-input" value={spec.subject} onChange={e => setSpec('subject', e.target.value)}>
               <option value="any">Anyone</option><option value="people">People only</option><option value="sa">Service accounts only</option>
             </select>
           </label>
-          <label>Only these users<input className="al-input al-mono" value={spec.users} onChange={e => setSpec('users', e.target.value)} placeholder="a.sokolov, system:serviceaccount:ci:*" /></label>
-          <label>Except users<input className="al-input al-mono" value={spec.usersExclude} onChange={e => setSpec('usersExclude', e.target.value)} placeholder="system:serviceaccount:argocd:*" /></label>
+          <label>Only these users<input className="aul-input aul-mono" value={spec.users} onChange={e => setSpec('users', e.target.value)} placeholder="a.sokolov, system:serviceaccount:ci:*" /></label>
+          <label>Except users<input className="aul-input aul-mono" value={spec.usersExclude} onChange={e => setSpec('usersExclude', e.target.value)} placeholder="system:serviceaccount:argocd:*" /></label>
           <label>Source IP
-            <select className="al-input" value={spec.ipMode} onChange={e => setSpec('ipMode', e.target.value)}>
+            <select className="aul-input" value={spec.ipMode} onChange={e => setSpec('ipMode', e.target.value)}>
               <option value="any">Any address</option><option value="in">Only from</option><option value="notin">Not from</option>
             </select>
           </label>
           {spec.ipMode !== 'any' && (
             <label>Addresses
-              <input className={`al-input al-mono${errors.ip ? ' invalid' : ''}`} value={spec.ipList} onChange={e => setSpec('ipList', e.target.value)} placeholder="10.20.0.0/16, 10.42.*" />
-              {errors.ip && <span className="al-err">{errors.ip}</span>}
+              <input className={`aul-input aul-mono${errors.ip ? ' invalid' : ''}`} value={spec.ipList} onChange={e => setSpec('ipList', e.target.value)} placeholder="10.20.0.0/16, 10.42.*" />
+              {errors.ip && <span className="aul-err">{errors.ip}</span>}
             </label>
           )}
           <label>Forwarding headers
-            <select className="al-input" value={spec.forwarded ? 'claimed' : 'any'} onChange={e => setSpec('forwarded', e.target.value === 'claimed')}>
+            <select className="aul-input" value={spec.forwarded ? 'claimed' : 'any'} onChange={e => setSpec('forwarded', e.target.value === 'claimed')}>
               <option value="any">Any request</option><option value="claimed">Only when the client set X-Forwarded-For</option>
             </select>
           </label>
           <label>Result
-            <select className="al-input" value={spec.result} onChange={e => setSpec('result', e.target.value)}>
+            <select className="aul-input" value={spec.result} onChange={e => setSpec('result', e.target.value)}>
               <option value="any">Allowed or denied</option><option value="allowed">Allowed only</option><option value="denied">Denied only</option>
             </select>
           </label>
         </div>
-        {needsLog && <p className="al-hint al-gap">Read actions, source IP filters, forwarding-header filters and final-result filters require the kube-apiserver audit log. Without it, those conditions cannot be evaluated.</p>}
+        {needsLog && <p className="aul-hint aul-gap">Read actions, source IP filters, forwarding-header filters and final-result filters require the kube-apiserver audit log. Without it, those conditions cannot be evaluated.</p>}
       </fieldset>
       <fieldset>
         <legend>Response</legend>
-        <div className="al-grid">
+        <div className="aul-grid">
           <label>Severity
-            <select className="al-input" value={rule.severity} onChange={e => setRule(r => ({ ...r, severity: e.target.value }))}>
+            <select className="aul-input" value={rule.severity} onChange={e => setRule(r => ({ ...r, severity: e.target.value }))}>
               {SEVERITIES.map(s => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
             </select>
           </label>
           {rule.alert && (
             <label>Raise an alert
-              <select className="al-input" value={spec.alertEvery} onChange={e => setSpec('alertEvery', e.target.value)}>
+              <select className="aul-input" value={spec.alertEvery} onChange={e => setSpec('alertEvery', e.target.value)}>
                 <option value="each">Every time</option><option value="threshold">Only after repeats</option>
               </select>
             </label>
           )}
-          {repeat && <label>Times<input className="al-input al-mono" type="number" min="2" max="1000" value={spec.thN} onChange={e => setSpec('thN', e.target.value)} /></label>}
-          {repeat && <label>Within, minutes<input className="al-input al-mono" type="number" min="1" max="1440" value={spec.thMin} onChange={e => setSpec('thMin', e.target.value)} /></label>}
+          {repeat && <label>Times<input className="aul-input aul-mono" type="number" min="2" max="1000" value={spec.thN} onChange={e => setSpec('thN', e.target.value)} /></label>}
+          {repeat && <label>Within, minutes<input className="aul-input aul-mono" type="number" min="1" max="1440" value={spec.thMin} onChange={e => setSpec('thMin', e.target.value)} /></label>}
         </div>
-        <div className="al-checks">
-          <label className="al-check"><input type="checkbox" checked={rule.enabled} onChange={e => setRule(r => ({ ...r, enabled: e.target.checked }))} />Report in Violations and highlight in Monitoring</label>
-          <label className="al-check"><input type="checkbox" checked={rule.alert} onChange={e => setRule(r => ({ ...r, alert: e.target.checked }))} />Send to Alert Log</label>
+        <div className="aul-checks">
+          <label className="aul-check"><input type="checkbox" checked={rule.enabled} onChange={e => setRule(r => ({ ...r, enabled: e.target.checked }))} />Report in Violations and highlight in Monitoring</label>
+          <label className="aul-check"><input type="checkbox" checked={rule.alert} onChange={e => setRule(r => ({ ...r, alert: e.target.checked }))} />Send to Alert Log</label>
         </div>
-        <p className="al-hint al-gap">Alerts appear in Alert Log next to runtime, anomaly and honeypot alerts and go out through the integrations configured for it.</p>
+        <p className="aul-hint aul-gap">Alerts appear in Alert Log next to runtime, anomaly and honeypot alerts and go out through the integrations configured for it.</p>
       </fieldset>
-      {errors.save && <p className="al-err">Could not save the rule: {errors.save}</p>}
-      <div className="al-actions">
-        <button className="btn btn-primary al-btn" type="submit" disabled={saving}>{editing ? 'Save changes' : 'Save rule'}</button>
-        <button className="btn btn-outline al-btn" type="button" onClick={onCancel}>Cancel</button>
+      {errors.save && <p className="aul-err">Could not save the rule: {errors.save}</p>}
+      <div className="aul-actions">
+        <button className="btn btn-primary aul-btn" type="submit" disabled={saving}>{editing ? 'Save changes' : 'Save rule'}</button>
+        <button className="btn btn-outline aul-btn" type="button" onClick={onCancel}>Cancel</button>
       </div>
     </form>
   );
@@ -226,35 +229,36 @@ export function Rules({ rules, stats, builtinMissing, canEdit, draft, onDraftUse
     setForm(null);
   };
 
+  const { pageItems: pageRows, pager } = usePaged(rows, 'audit.rules', [search, group]);
   const enabled = rules.filter(r => r.enabled).length;
   const alerting = rules.filter(r => r.alert).length;
 
   return (
     <div>
-      <div className="al-toolbar">
-        <input className="al-input al-search" type="search" placeholder="Search rules" aria-label="Search rules" value={search} onChange={e => setSearch(e.target.value)} />
-        <select className="al-input" aria-label="Group" value={group} onChange={e => setGroup(e.target.value)}>
+      <div className="aul-toolbar">
+        <input className="aul-input aul-search" type="search" placeholder="Search rules" aria-label="Search rules" value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="aul-input" aria-label="Group" value={group} onChange={e => setGroup(e.target.value)}>
           <option value="">All groups</option>
           {groups.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
-        {canEdit && <button className="btn btn-primary al-btn" onClick={() => setForm({ editing: false, rule: blankRule() })}>Add rule</button>}
+        {canEdit && <button className="btn btn-primary aul-btn" onClick={() => setForm({ editing: false, rule: blankRule() })}>Add rule</button>}
         {canEdit && builtinMissing > 0 && (
-          <button className="btn btn-outline al-btn" onClick={() => run(restoreRules, 'Built-in rules restored')}>Restore {builtinMissing} built-in rule{builtinMissing === 1 ? '' : 's'}</button>
+          <button className="btn btn-outline aul-btn" onClick={() => run(restoreRules, 'Built-in rules restored')}>Restore {builtinMissing} built-in rule{builtinMissing === 1 ? '' : 's'}</button>
         )}
       </div>
-      <p className="al-hint al-note">
+      <p className="aul-hint aul-note">
         {rules.length} rules: {enabled} report violations, {alerting} send alerts to{' '}
-        <button className="al-link" onClick={() => navigate('/alertlog')}>Alert Log</button>. Rules are stored in the database and apply to every cluster unless a rule names one.
+        <button className="aul-link" onClick={() => navigate('/alertlog')}>Alert Log</button>. Rules are stored in the database and apply to every cluster unless a rule names one.
         {!canEdit && ' Only administrators can change them.'}
       </p>
-      {loadError && <p className="al-err">Could not load the rules: {loadError}</p>}
+      {loadError && <p className="aul-err">Could not load the rules: {loadError}</p>}
       {form && <RuleForm initial={form.rule} editing={form.editing} onSave={save} onCancel={() => setForm(null)} />}
-      <div className="al-win al-results" tabIndex={0} aria-label="Audit rules">
-        <table className="data-table al-rules">
+      <DataWindow label="Audit rules" deps={[!!form, !!loadError]} footer={<Pager {...pager} noun="rules" />}>
+        <table className="data-table aul-rules">
           <thead><tr><th>Enabled</th><th>Alert</th><th>Rule</th><th>Severity</th><th>Violations</th><th>Last seen</th><th /></tr></thead>
           <tbody>
-            {rows.length === 0 && <tr className="al-norow"><td colSpan={7}><div className="al-blank">No rules match. Clear the search, or add a rule for the action you want to watch.</div></td></tr>}
-            {rows.map(r => {
+            {rows.length === 0 && <tr className="aul-norow"><td colSpan={7}><div className="aul-blank">No rules match. Clear the search, or add a rule for the action you want to watch.</div></td></tr>}
+            {pageRows.map(r => {
               const st = stats[r.id];
               return (
                 <tr key={r.id}>
@@ -262,25 +266,25 @@ export function Rules({ rules, stats, builtinMissing, canEdit, draft, onDraftUse
                               onChange={v => run(() => patchRule(r.id, { enabled: v }))} /></td>
                   <td><Switch checked={r.alert} disabled={!canEdit} label={`Send ${r.name} to Alert Log`}
                               onChange={v => run(() => patchRule(r.id, { alert: v }), v ? `"${r.name}" now sends alerts to Alert Log` : `"${r.name}" no longer sends alerts`)} /></td>
-                  <td className="al-rulecell">
-                    <div>{r.name}<span className="al-tag al-tag-origin">{r.origin === 'builtin' ? r.group : 'Custom'}</span></div>
-                    <div className="al-mono al-ruledesc">{describeRule(r)}</div>
+                  <td className="aul-rulecell">
+                    <div>{r.name}<span className="aul-tag aul-tag-origin">{r.origin === 'builtin' ? r.group : 'Custom'}</span></div>
+                    <div className="aul-mono aul-ruledesc">{describeRule(r)}</div>
                   </td>
-                  <td><span className={`al-tag al-tag-${r.severity}`}>{r.severity}</span></td>
-                  <td className="al-mono">{st ? num(st.violations) : '0'}</td>
-                  <td className="al-mono">{st?.lastSeen ? fmtDate(st.lastSeen) : <span className="al-empty">never</span>}</td>
+                  <td><span className={`aul-tag aul-tag-${r.severity}`}>{r.severity}</span></td>
+                  <td className="aul-mono">{st ? num(st.violations) : '0'}</td>
+                  <td className="aul-mono">{st?.lastSeen ? fmtDate(st.lastSeen) : <span className="aul-empty">never</span>}</td>
                   <td>
                     {canEdit && (
-                      <div className="al-rowactions">
+                      <div className="aul-rowactions">
                         {confirm === r.id ? (
                           <>
-                            <button className="btn btn-danger al-btn-sm" onClick={() => { setConfirm(null); run(() => deleteRule(r.id), `Rule "${r.name}" deleted`); }}>Delete rule</button>
-                            <button className="btn btn-outline al-btn-sm" onClick={() => setConfirm(null)}>Keep</button>
+                            <button className="btn btn-danger aul-btn-sm" onClick={() => { setConfirm(null); run(() => deleteRule(r.id), `Rule "${r.name}" deleted`); }}>Delete rule</button>
+                            <button className="btn btn-outline aul-btn-sm" onClick={() => setConfirm(null)}>Keep</button>
                           </>
                         ) : (
                           <>
-                            <button className="btn btn-outline al-btn-sm" onClick={() => setForm({ editing: true, rule: { ...r, spec: { ...BLANK_SPEC, ...r.spec } } })}>Edit</button>
-                            <button className="btn btn-outline al-btn-sm" onClick={() => setConfirm(r.id)}>Delete</button>
+                            <button className="btn btn-outline aul-btn-sm" onClick={() => setForm({ editing: true, rule: { ...r, spec: { ...BLANK_SPEC, ...r.spec } } })}>Edit</button>
+                            <button className="btn btn-outline aul-btn-sm" onClick={() => setConfirm(r.id)}>Delete</button>
                           </>
                         )}
                       </div>
@@ -291,7 +295,7 @@ export function Rules({ rules, stats, builtinMissing, canEdit, draft, onDraftUse
             })}
           </tbody>
         </table>
-      </div>
+      </DataWindow>
     </div>
   );
 }

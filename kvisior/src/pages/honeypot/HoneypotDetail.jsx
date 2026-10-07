@@ -1,6 +1,10 @@
 import { svcByName, fmtTime } from './honeypotUtils';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, detailTab, setDetailTab, events, loading, hasAlert, deleting, resolveIP, handleDelete, handleHideEvent }) {
+  const { pageItems, pager } = usePaged(events, 'honeypot.events', [selected?.name]);
   return (
   <div className="hp-detail">
     {!selected && (
@@ -14,9 +18,9 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
         <div className="hp-detail-header">
           <div>
             <div className="hp-detail-title">
-              🍯 {selected.name}
+              <Icon name="honeypot" /> {selected.name}
               {hasAlert(selected) && (
-                <span className="hp-badge-crit">⚠ Activity detected</span>
+                <span className="hp-badge-crit"><Icon name="alert" /> Activity detected</span>
               )}
             </div>
             <div className="hp-detail-sub">{selected.namespace} · {selected.clusterIP || '—'}</div>
@@ -78,7 +82,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                   const svc = svcByName(s);
                   return (
                     <div key={s} className="hp-svc-row">
-                      <span className="hp-svc-icon">{svc.icon}</span>
+                      <span className="hp-svc-icon"><Icon name={svc.icon} /></span>
                       <span className="hp-svc-name">{svc.label}</span>
                       <span className="hp-svc-port">:{svc.port}</span>
                     </div>
@@ -90,10 +94,11 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
 
           {}
           {detailTab === 'events' && (
+            <>
             <div className="hp-events-wrap">
 
               {}
-              <div className={`hp-events-list${selectedEvent ? ' hp-events-list--narrow' : ''}`}>
+              <div className={`hp-events-list dw dw-fill${selectedEvent ? ' hp-events-list--narrow' : ''}`} tabIndex={0} role="region" aria-label="Honeypot events">
                 {loading && (
                   <div className="hp-events-loading">Loading events…</div>
                 )}
@@ -102,14 +107,14 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                 )}
                 {!loading && events.length > 0 && (
                   <>
-                    <div className="hp-events-header-row">
+                    <div className="hp-events-header-row dw-sticky">
                       <span>Time</span>
                       <span>Service</span>
                       <span>Src IP</span>
                       <span>Data</span>
                       <span />
                     </div>
-                    {events.map((ev, i) => {
+                    {pageItems.map((ev, i) => {
                       const isHigh = ev.action !== 'process';
                       return (
                         <div
@@ -126,9 +131,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                               className="hp-ev-del"
                               title="Delete event"
                               onClick={(e) => { e.stopPropagation(); handleHideEvent(ev); }}
-                            >
-                              ✕
-                            </button>
+                            ><Icon name="x" /></button>
                           )}
                         </div>
                       );
@@ -142,7 +145,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                 <div className="hp-event-panel">
                   <div className="hp-event-panel-header">
                     <span>Event Detail</span>
-                    <button className="hp-panel-close" onClick={() => setSelectedEvent(null)}>✕</button>
+                    <button className="hp-panel-close" onClick={() => setSelectedEvent(null)}><Icon name="x" /></button>
                   </div>
                   <div className="hp-event-panel-body">
 
@@ -199,7 +202,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                         if (!pod) return (
                           <div className="hp-ep-unresolved">
                             <div style={{ color: 'var(--warning)', fontWeight: 600, marginBottom: 4 }}>
-                              ⚠ IP not in cluster snapshot
+                              <Icon name="alert" /> IP not in cluster snapshot
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
                               {selectedEvent.src_ip} not found in any pod.
@@ -249,6 +252,8 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                 </div>
               )}
             </div>
+            {events.length > 0 && <div className="dw-foot"><Pager {...pager} noun="events" /></div>}
+            </>
           )}
         </div>
       </div>

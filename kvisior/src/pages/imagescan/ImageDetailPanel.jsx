@@ -3,6 +3,7 @@ import { useScanner } from '../../context/ScannerContext';
 import { SevBadge, StatusDot } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { epssLabel, sevColor, fmtDuration, getImageWorkloads } from '../../data/scanner';
+import { Icon } from '../../components/Icon';
 
 const SCAN_TABS = [
   { id: 'results',    label: 'Scan Results' },
@@ -64,7 +65,7 @@ function ImageDetailPanel({ img, onClose }) {
             <div style={{fontSize:15,fontWeight:600,color:'var(--text-primary)',fontFamily:'JetBrains Mono,monospace',marginBottom:3,wordBreak:'break-all'}}>{img.name}</div>
             <div style={{fontSize:12,color:'var(--text-muted)'}}>{img.tag} · {img.os||'—'}</div>
           </div>
-          <button onClick={onClose} style={{background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'5px 9px',color:'var(--text-muted)',cursor:'pointer',fontSize:14,flexShrink:0,marginLeft:12}}>✕</button>
+          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:16}}>
@@ -126,7 +127,7 @@ function ImageDetailPanel({ img, onClose }) {
                   </tr>
                 );
               })}
-              {cves.length===0&&<tr><td colSpan={6} style={{textAlign:'center',color:'var(--accent-3)',padding:16}}>✓ No CVEs found</td></tr>}
+              {cves.length===0&&<tr><td colSpan={6} style={{textAlign:'center',color:'var(--accent-3)',padding:16}}><Icon name="check" /> No CVEs found</td></tr>}
             </tbody>
           </table>
         </div>

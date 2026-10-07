@@ -1,5 +1,6 @@
 import { useScanner } from '../../context/ScannerContext';
 import { SevBadge }   from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 const fmtLayer = (raw = '') => raw
   .replace(/^\/bin\/sh -c #\(nop\)\s+/, '')
@@ -43,14 +44,14 @@ export function BuildDetail({ v, onClose }) {
             <div className="dp-title">{v.policy}</div>
             <div className="dp-meta" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11 }}>{v.image}</div>
           </div>
-          <button className="dp-close" onClick={onClose}>✕</button>
+          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         <div style={{ marginBottom: 12 }}><SevBadge sev={v.sev} /></div>
 
         <div style={{ padding: '9px 12px', background: 'rgba(245,158,11,.07)', border: '1px solid rgba(245,158,11,.2)',
           borderRadius: 8, marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          <span style={{ color: 'var(--warning)', fontWeight: 600, marginRight: 6 }}>⚠</span>
+          <Icon name="alert" style={{ color: 'var(--warning)', marginRight: 6 }} />
           {v.detail}
         </div>
 

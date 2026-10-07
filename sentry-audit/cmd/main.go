@@ -303,6 +303,9 @@ func main() {
 			return err
 		})
 		tailer.Probe = fwd.Reachable
+		if d, err := time.ParseDuration(os.Getenv("AUDIT_LOG_POLL_INTERVAL")); err == nil && d >= time.Second {
+			tailer.PollInterval = d
+		}
 		tailDone := make(chan struct{})
 		go func() { defer close(tailDone); tailer.Run(ctx) }()
 		defer func() { <-tailDone }()

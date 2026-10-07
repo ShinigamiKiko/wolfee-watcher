@@ -156,7 +156,9 @@ No response body is required for these protections.
   example after an API server restart, every object is replayed with the revision it already had;
   that is not a change and produces no event.
 - The log reader is a DaemonSet on control-plane nodes (`sentryAudit.auditLog.enabled`). Each API
-  server writes its own file, so each node reads its own. It follows rotation and keeps its position in
+  server writes its own file, so each node reads its own. It checks the file for new lines every
+  `sentryAudit.auditLog.pollInterval` (default `5s`; records reach kvisior at most that much later),
+  reads only what was appended since the last check, follows rotation and keeps its position in
   `sentryAudit.auditLog.stateDir` on the node, so a restart continues from the last HTTP acknowledgement. A failed push is kept
   in memory and retried with a growing pause of up to 30 seconds; the checkpoint advances only after
   kvisior commits the batch. After an outage or a restart the reader finishes the rotated file it
@@ -274,9 +276,18 @@ admin role. Schema `0017-audit-silences`.
 
 ## Retention
 
-Audit events are kept for `ui.auditRetentionHours` (default 336, 14 days) in hourly partitions. Every
-kvisior that shares the database, the hub included (`AUDIT_RETENTION_HOURS` in `hub.env`), must use the
-same value: each instance drops partitions older than its own setting.
+Audit events are kept in hourly partitions for one retention period shared by every cluster. The hub
+owns it: on first start it stores `AUDIT_RETENTION_HOURS` from `hub.env` (default 336, 14 days) in
+`platform_settings`, and an admin changes it later under Settings → Integrations → Audit log retention
+(1 to 30 days). Edge kvisiors, ingest and audit workers only read the stored value once a minute; until
+they have read it they create partitions but drop nothing, so no instance can cut history short with
+its own setting. `GET/PUT /api/audit/retention`; writes are accepted only by the hub.
+
+Monitoring histograms and grouping by user read hourly rollups (`audit_user_hourly`) for complete hours
+and raw events for the partial hours at both ends of the range. A background job builds each hour five
+minutes after it closes and rebuilds any hour that late events, silences or rule hits touched. Rollups and their
+"built" marks are kept per cluster and hour, so a late event rebuilds only its own cluster's hour.
+Schema `0020-audit-rollup-marks`.
 
 ## Delivery and upgrades
 

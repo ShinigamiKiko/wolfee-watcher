@@ -470,3 +470,11 @@
   border-radius: 6px;
   margin-top: 8px;
 }
+
+.hp-events-list.dw { margin: 16px 20px; padding: 0 0 8px; align-self: flex-start; }
+.hp-events-list.dw.hp-events-list--narrow { margin-right: 12px; border-right: 1px solid var(--border); }
+.hp-events-list.dw .hp-events-header-row { padding: 8px 10px; }
+
+.hp-events-list.dw .hp-events-header-row {
+  font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #7a8599;
+}

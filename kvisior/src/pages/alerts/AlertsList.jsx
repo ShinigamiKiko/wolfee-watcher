@@ -1,10 +1,15 @@
 import { kindMeta } from './alertsUtils';
 import { RowActions } from './AlertsUi';
 import { fmtDateOnly, fmtClock } from '../../utils/format';
+import { Icon } from '../../components/Icon';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 export function AlertsList({ visible, status, groupFilter, selected, setSelected, ackEvent, fpEvent, deleteEvent }) {
+  const { pageItems, pager } = usePaged(visible, 'anomaly', [groupFilter]);
   return (
-  <div className="al-list">
+  <>
+  <div className="al-list dw dw-fill" tabIndex={0} role="region" aria-label="Anomaly events">
     {visible.length === 0 && (
       <div className="al-empty">
         {status === 'connecting'
@@ -14,7 +19,7 @@ export function AlertsList({ visible, status, groupFilter, selected, setSelected
             : 'No alerts match the current filter'}
       </div>
     )}
-    {visible.map(ev => {
+    {pageItems.map(ev => {
       const m = kindMeta(ev.kind);
 
       if (ev._isDigest) {
@@ -51,7 +56,7 @@ export function AlertsList({ visible, status, groupFilter, selected, setSelected
             onClick={() => setSelected(s => s?.id===ev.id ? null : ev)}
           >
             <span className="al-time">{fmtDateOnly(ev.ts)}<br/>{fmtClock(ev.ts)}</span>
-            <span className="al-kind-icon">{m.icon}</span>
+            <span className="al-kind-icon"><Icon name={m.icon} /></span>
             <div className="al-row-main">
               <span className="al-event-desc">
                 <span className="al-pod">{src}</span>
@@ -76,7 +81,7 @@ export function AlertsList({ visible, status, groupFilter, selected, setSelected
           onClick={() => setSelected(s => s?.id===ev.id ? null : ev)}
         >
           <span className="al-time">{fmtDateOnly(ev.ts)}<br/>{fmtClock(ev.ts)}</span>
-          <span className="al-kind-icon">{m.icon}</span>
+          <span className="al-kind-icon"><Icon name={m.icon} /></span>
           <div className="al-row-main">
             <span className="al-event-desc">
               <span className="al-pod">{pod}</span>
@@ -91,5 +96,7 @@ export function AlertsList({ visible, status, groupFilter, selected, setSelected
       );
     })}
   </div>
+  <div className="dw-foot"><Pager {...pager} noun="events" /></div>
+  </>
   );
 }

@@ -276,3 +276,6 @@
 
   &:hover { color: var(--accent); border-color: var(--accent); }
 }
+
+.al-list.dw { margin: 0 16px 16px 24px; padding: 0; align-self: flex-start; }
+.al-list.dw .al-row { padding: 10px 16px; }

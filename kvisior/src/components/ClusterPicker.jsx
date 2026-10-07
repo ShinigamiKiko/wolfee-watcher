@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useClusters } from '../context/ClusterContext';
+import { Icon } from './Icon';
 
 export const DROPDOWN_LIMIT = 30;
 
@@ -49,7 +50,7 @@ function AllClustersModal({ clusters, current, local, onPick, onClose }) {
       <div className="modal cluster-modal" role="dialog" aria-label="All clusters">
         <div className="modal-header">
           <div className="modal-title">All clusters <span className="cluster-modal-count">{clusters.length}</span></div>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><Icon name="x" /></button>
         </div>
         <input ref={inputRef} className="cluster-search" type="search" placeholder="Search clusters…"
                value={query} onChange={e => setQuery(e.target.value)} />
@@ -102,7 +103,7 @@ export function ClusterPicker() {
         <span className={`cluster-dot cluster-dot-${st.key}`} />
         <span className="cluster-picker-name">{active.name || active.id}</span>
         <span className="cluster-picker-count">{clusters.length}</span>
-        <span className="cluster-picker-caret">▾</span>
+        <span className="cluster-picker-caret"><Icon name="chevron-down" /></span>
       </button>
       {open && (
         <div className="cluster-picker-menu">

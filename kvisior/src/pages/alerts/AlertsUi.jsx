@@ -1,12 +1,13 @@
 import { KIND_META, GROUP_ORDER, GROUP_META } from './alertsConstants';
+import { Icon } from '../../components/Icon';
 
 function RowActions({ ev, onAck, onFp, onDelete }) {
   const stop = (fn) => (e) => { e.stopPropagation(); fn(ev); };
   return (
     <div className="al-row-actions" onClick={e => e.stopPropagation()}>
-      <button className="al-row-act al-row-act--ack" title="ACK · подавить будущие события того же паттерна" onClick={stop(onAck)}>ACK</button>
-      <button className="al-row-act al-row-act--fp"  title="False positive — переместить в FP"               onClick={stop(onFp)}>FP</button>
-      <button className="al-row-act al-row-act--x"   title="Переместить в Silent (хранится 1 день, затем удаляется)" onClick={stop(onDelete)}>✕</button>
+      <button className="al-row-act al-row-act--ack" title="ACK · suppress future events with the same pattern" onClick={stop(onAck)}>ACK</button>
+      <button className="al-row-act al-row-act--fp"  title="False positive — move to FP"               onClick={stop(onFp)}>FP</button>
+      <button className="al-row-act al-row-act--x"   title="Move to Silent (kept for 1 day, then deleted)" onClick={stop(onDelete)}><Icon name="x" /></button>
     </div>
   );
 }
@@ -18,16 +19,16 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
   const fpList  = Object.values(buckets.fp).sort((a,b)  => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   const tabs = [
-    { id: 'events', label: `Silent (${silentEvents.length})`, hint: 'События, скрытые кнопкой ✕ — хранятся 1 день, затем удаляются из БД' },
-    { id: 'ack',    label: `ACK (${ackList.length})`,         hint: 'Постоянное подавление по паттерну (ACK)' },
-    { id: 'fp',     label: `FP (${fpList.length})`,           hint: 'Помеченные как false positive' },
+    { id: 'events', label: `Silent (${silentEvents.length})`, hint: 'Events hidden with the dismiss button — kept for 1 day, then deleted' },
+    { id: 'ack',    label: `ACK (${ackList.length})`,         hint: 'Permanent suppression by pattern (ACK)' },
+    { id: 'fp',     label: `FP (${fpList.length})`,           hint: 'Marked as false positive' },
   ];
 
   return (
     <div className="al-detail al-buckets">
       <div className="al-detail-head">
         <span className="al-detail-kind">Silent</span>
-        <button className="al-detail-close" onClick={onClose}>✕</button>
+        <button className="al-detail-close" onClick={onClose}><Icon name="x" /></button>
       </div>
 
       <div className="al-buckets-tabs">
@@ -44,7 +45,7 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
       <div className="al-detail-body">
         {tab === 'events' && (
           <>
-            {silentEvents.length === 0 && <div className="al-bucket-empty">Нет скрытых событий</div>}
+            {silentEvents.length === 0 && <div className="al-bucket-empty">No hidden events</div>}
             {silentEvents.map(ev => (
               <div key={ev.id} className="al-bucket-item">
                 <div className="al-bucket-item-main">
@@ -54,7 +55,7 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
                   </div>
                   <div className="al-bucket-sub">{fmtTs(ev.ts)}</div>
                 </div>
-                <button className="al-bucket-restore" title="Вернуть в активные" onClick={() => onRestoreEvent(ev)}>↺</button>
+                <button className="al-bucket-restore" title="Restore to active" onClick={() => onRestoreEvent(ev)}><Icon name="undo" /></button>
               </div>
             ))}
           </>
@@ -62,7 +63,7 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
 
         {tab === 'ack' && (
           <>
-            {ackList.length === 0 && <div className="al-bucket-empty">Нет ACK-паттернов</div>}
+            {ackList.length === 0 && <div className="al-bucket-empty">No ACK patterns</div>}
             {ackList.map(it => (
               <div key={it.pattern} className="al-bucket-item">
                 <div className="al-bucket-item-main">
@@ -74,7 +75,7 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
                     {it.count > 0 ? `${it.count}× since open · last ${fmtTs(it.lastTs)}` : `since ${fmtTs(it.createdAt)}`}
                   </div>
                 </div>
-                <button className="al-bucket-restore" title="Снять подавление" onClick={() => onRestore('ack', it.pattern)}>↺</button>
+                <button className="al-bucket-restore" title="Remove suppression" onClick={() => onRestore('ack', it.pattern)}><Icon name="undo" /></button>
               </div>
             ))}
           </>
@@ -82,14 +83,14 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
 
         {tab === 'fp' && (
           <>
-            {fpList.length === 0 && <div className="al-bucket-empty">Нет FP</div>}
+            {fpList.length === 0 && <div className="al-bucket-empty">No false positives</div>}
             {fpList.map(it => (
               <div key={it.id} className="al-bucket-item">
                 <div className="al-bucket-item-main">
                   <div className="al-bucket-summary">{it.summary}</div>
                   <div className="al-bucket-sub">{fmtTs(it.createdAt)}</div>
                 </div>
-                <button className="al-bucket-restore" title="Убрать из FP" onClick={() => onRestore('fp', it.id)}>↺</button>
+                <button className="al-bucket-restore" title="Remove from false positives" onClick={() => onRestore('fp', it.id)}><Icon name="undo" /></button>
               </div>
             ))}
           </>
@@ -116,7 +117,7 @@ function KindReference({ onClose }) {
     <div className="al-detail al-kindref">
       <div className="al-detail-head">
         <span className="al-detail-kind">What lands in Anomaly</span>
-        <button className="al-detail-close" onClick={onClose}>✕</button>
+        <button className="al-detail-close" onClick={onClose}><Icon name="x" /></button>
       </div>
 
       <div className="al-detail-body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -142,7 +143,7 @@ function KindReference({ onClose }) {
                       color: REF_COLOR[m.color] || 'var(--text-muted)',
                       background: `color-mix(in srgb, ${REF_COLOR[m.color] || 'var(--text-muted)'} 14%, transparent)`,
                       border: `1px solid color-mix(in srgb, ${REF_COLOR[m.color] || 'var(--text-muted)'} 35%, transparent)`,
-                    }}>{m.icon}</span>
+                    }}><Icon name={m.icon} /></span>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {m.label}

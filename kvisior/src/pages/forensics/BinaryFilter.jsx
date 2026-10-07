@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Icon } from '../../components/Icon';
 
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 const SEV_COLORS  = { critical: 'fns-chip--sev-crit', high: 'fns-chip--sev-high', medium: 'fns-chip--sev-med', low: 'fns-chip--sev-low' };
@@ -39,7 +40,7 @@ export function BinaryFilter({ filterSev, onSevChange, filterBins, onBinsChange 
   return (
     <div className="fns-fdrop" ref={ref}>
       <button className="fns-btn" onClick={() => setOpen(o => !o)}>
-        {label} <span className="fns-arrow">▾</span>
+        {label} <span className="fns-arrow"><Icon name="chevron-down" /></span>
       </button>
 
       {}
@@ -47,11 +48,11 @@ export function BinaryFilter({ filterSev, onSevChange, filterBins, onBinsChange 
         <div className="fns-chips">
           {[...filterSev].map(s => (
             <span key={s} className={`fns-chip fns-chip--active ${SEV_COLORS[s]}`}
-              onClick={() => toggleSev(s)}>{s} ✕</span>
+              onClick={() => toggleSev(s)}>{s} <Icon name="x" /></span>
           ))}
           {[...filterBins].map(b => (
             <span key={b} className="fns-chip fns-chip--active fns-chip--bin"
-              onClick={() => removeBin(b)}>{b} ✕</span>
+              onClick={() => removeBin(b)}>{b} <Icon name="x" /></span>
           ))}
         </div>
       )}
@@ -87,7 +88,7 @@ export function BinaryFilter({ filterSev, onSevChange, filterBins, onBinsChange 
               <div className="fns-fdrop-calls" style={{ marginTop: 6 }}>
                 {[...filterBins].map(b => (
                   <div key={b} className="fns-chip fns-chip--active fns-chip--bin"
-                    onClick={() => removeBin(b)}>{b} ✕</div>
+                    onClick={() => removeBin(b)}>{b} <Icon name="x" /></div>
                 ))}
               </div>
             )}
@@ -95,7 +96,7 @@ export function BinaryFilter({ filterSev, onSevChange, filterBins, onBinsChange 
 
           <div className="fns-fdrop-footer">
             <button className="fns-btn" onClick={() => { onSevChange(new Set()); onBinsChange(new Set()); }}>Clear</button>
-            <button className="fns-btn fns-btn--accent" onClick={() => setOpen(false)}>Apply ✓</button>
+            <button className="fns-btn fns-btn--accent" onClick={() => setOpen(false)}><Icon name="check" /> Apply</button>
           </div>
         </div>
       )}

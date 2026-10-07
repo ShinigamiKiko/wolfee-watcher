@@ -2,6 +2,10 @@ import { apiFetch } from '../../data/cluster';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { SevBadge } from '../../components/ui';
+import { Icon } from '../../components/Icon';
+import { DataWindow } from '../../components/DataWindow';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 const MAX_KEEP   = 5000;
 const POLL_EVERY = 5000;
@@ -76,6 +80,7 @@ export function AlertLog() {
     if (detFilter === 'All') return items;
     return items.filter(it => it.detType === detFilter);
   }, [items, detFilter]);
+  const { pageItems, pager } = usePaged(filtered, 'alertlog', [detFilter]);
 
   const detTypes = useMemo(() => {
     const s = new Set(items.map(it => it.detType).filter(Boolean));
@@ -104,14 +109,13 @@ export function AlertLog() {
             <button
               className="btn btn-outline"
               style={{ padding: '4px 10px', fontSize: 11, color: 'var(--danger)', borderColor: 'var(--danger)', marginLeft: 8 }}
-              onClick={() => { if (confirm('Очистить весь журнал алертов?')) clearAll(); }}
+              onClick={() => { if (confirm('Clear the whole alert log?')) clearAll(); }}
             >Clear all</button>
           )}
         </div>
       </div>
 
-      <div className="card">
-        <div className="table-wrap">
+      <DataWindow label="Alert log" deps={[detFilter]} footer={<Pager {...pager} noun="alerts" />}>
           <table className="data-table">
             <thead>
               <tr>
@@ -137,7 +141,7 @@ export function AlertLog() {
                       : `No alerts matching "${detFilter}".`}
                   </td>
                 </tr>
-              ) : filtered.map(a => (
+              ) : pageItems.map(a => (
                 <tr key={a.id}>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                     {fmtTime(a.ts)}
@@ -165,22 +169,21 @@ export function AlertLog() {
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     {a.deliveredAt
-                      ? <span style={{ color: 'var(--accent-3)', fontSize: 13 }} title={a.deliveredAt}>✓</span>
+                      ? <span style={{ color: 'var(--accent-3)' }} title={a.deliveredAt}><Icon name="check" /></span>
                       : <span style={{ color: 'var(--text-muted)', fontSize: 13, opacity: 0.3 }} title="Pending delivery">·</span>}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <button
-                      title="Удалить"
+                      title="Delete"
                       onClick={() => deleteItem(a.id)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, padding: '0 4px', lineHeight: 1 }}
-                    >✕</button>
+                    ><Icon name="x" /></button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
+      </DataWindow>
     </div>
   );
 }

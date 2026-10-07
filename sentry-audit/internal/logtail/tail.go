@@ -16,8 +16,9 @@ import (
 	"time"
 )
 
+var defaultPollInterval = 5 * time.Second
+
 const (
-	pollInterval   = time.Second
 	maxLineBytes   = 1 << 20
 	maxBatch       = 200
 	checkpointName = "audit-tail.json"
@@ -89,6 +90,8 @@ type Tailer struct {
 	Stats    Stats
 	Probe    func(context.Context) error
 
+	PollInterval time.Duration
+
 	file       *os.File
 	reader     *bufio.Reader
 	line       []byte
@@ -110,7 +113,7 @@ type tailState struct {
 }
 
 func New(path, stateDir string, filter Filter, sink Sink) *Tailer {
-	t := &Tailer{path: path, stateDir: stateDir, filter: filter, sink: sink}
+	t := &Tailer{path: path, stateDir: stateDir, filter: filter, sink: sink, PollInterval: defaultPollInterval}
 	t.setState(StateStarting, nil)
 	return t
 }
@@ -501,7 +504,11 @@ func (t *Tailer) Run(ctx context.Context) {
 			t.file.Close()
 		}
 	}()
-	ticker := time.NewTicker(pollInterval)
+	poll := t.PollInterval
+	if poll <= 0 {
+		poll = defaultPollInterval
+	}
+	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	first, warned := true, false
 	var backoff time.Duration
@@ -547,7 +554,7 @@ func (t *Tailer) Run(ctx context.Context) {
 				t.setState(StateReading, nil)
 			} else if ctx.Err() == nil {
 				t.setState(StateFailing, err)
-				backoff = min(max(2*backoff, pollInterval), maxBackoff)
+				backoff = min(max(2*backoff, poll), maxBackoff)
 				retryAt = time.Now().Add(backoff)
 				slog.Warn("audit_delivery_failed",
 					"component", "sentry-audit/logtail",

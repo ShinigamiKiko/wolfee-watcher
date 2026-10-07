@@ -71,6 +71,18 @@ func (h *Hub) Publish(e Event) {
 	}
 }
 
+func (h *Hub) Latest(typ string) []Event {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []Event
+	for _, e := range h.latest {
+		if e.Type == typ {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func (h *Hub) Subscribe(ctx context.Context) <-chan Event {
 	live := make(chan Event, 256)
 	h.mu.Lock()

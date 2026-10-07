@@ -55,6 +55,7 @@ func startDatabaseServices(ctx context.Context, st *store.Store, pool *pgxpool.P
 		log.Printf("[kvisior] register local cluster %q: %v", clusterctx.Local(), err)
 	}
 	cancel()
+	go st.RunAuditRetentionSync(ctx)
 	go st.RunRetention(ctx)
 	go alertspkg.RunCleanup(ctx, pool)
 	go alertspkg.RunWebhookDelivery(ctx, pool)
@@ -158,6 +159,10 @@ func runAuditDelivery(ctx context.Context, mode string) error {
 	}
 	defer pool.Close()
 	st := store.FromPool(pool)
+	if err := st.LoadAuditRetention(ctx); err != nil {
+		log.Printf("[kvisior] audit retention: %v (sweeps wait for the hub setting)", err)
+	}
+	go st.RunAuditRetentionSync(ctx)
 	brokers := []string{}
 	if value := os.Getenv("KAFKA_BROKERS"); value != "" {
 		brokers = strings.Split(value, ",")

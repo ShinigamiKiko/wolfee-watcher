@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { SYSCALL_GROUPS } from './forensicsHelpers';
+import { Icon } from '../../components/Icon';
 
 export function SyscallFilterDropdown({ selected, onChange }) {
   const [open, setOpen] = useState(false);
@@ -22,7 +23,7 @@ export function SyscallFilterDropdown({ selected, onChange }) {
   return (
     <div className="fns-fdrop" ref={ref}>
       <button className="fns-btn" onClick={() => setOpen(o => !o)}>
-        {label} <span className="fns-arrow">▾</span>
+        {label} <span className="fns-arrow"><Icon name="chevron-down" /></span>
       </button>
       {selected.size > 0 && (
         <div className="fns-chips">
@@ -45,7 +46,7 @@ export function SyscallFilterDropdown({ selected, onChange }) {
           <div className="fns-fdrop-footer">
             <button className="fns-btn" onClick={() => onChange(new Set())}>Clear</button>
             <button className="fns-btn" onClick={() => onChange(new Set(Object.values(SYSCALL_GROUPS).flat()))}>All</button>
-            <button className="fns-btn fns-btn--accent" onClick={() => setOpen(false)}>Apply ✓</button>
+            <button className="fns-btn fns-btn--accent" onClick={() => setOpen(false)}><Icon name="check" /> Apply</button>
           </div>
         </div>
       )}

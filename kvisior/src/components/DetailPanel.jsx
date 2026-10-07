@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 
 export function DetailPanel({ open, width = 520, onClose, title, sub, children, headerExtra }) {
   return (
@@ -20,7 +21,7 @@ export function DetailPanel({ open, width = 520, onClose, title, sub, children, 
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               {headerExtra}
-              <button className="dp-close" onClick={onClose}>✕</button>
+              <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
             </div>
           </div>
           <div className="detail-panel-body">

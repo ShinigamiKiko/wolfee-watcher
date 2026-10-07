@@ -717,3 +717,10 @@
     cursor: not-allowed;
   }
 }
+
+.dw > .fns-etable { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.dw .fns-etable-hdr { padding: 8px 14px; }
+.dw .fns-col-head {
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  letter-spacing: 0; text-transform: none; color: #7a8599;
+}

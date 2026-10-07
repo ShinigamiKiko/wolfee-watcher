@@ -2,6 +2,7 @@ import { apiFetch } from '../../data/cluster';
 import { useState, useRef, useEffect } from 'react';
 import { getContainers, colorizeLog, ST } from './yamlPanelHelpers';
 import { DateRangePicker, applyToFilter } from './DateRangePicker';
+import { Icon } from '../../components/Icon';
 
 async function safeFetch(url) {
   const res = await apiFetch(url, { credentials: 'same-origin' });
@@ -18,7 +19,7 @@ function EmptyLogState() {
   return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: 'var(--text-muted)', fontSize: 13, flexDirection: 'column', gap: 10 }}>
-      <span style={{ fontSize: 32 }}>📋</span>
+      <Icon name="clipboard" size={32} />
       <span>Set a time range and click <strong style={{ color: 'var(--accent)' }}>Load Logs</strong></span>
     </div>
   );
@@ -118,16 +119,16 @@ function PodLogsTab({ item }) {
 
         <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={loadLogs} disabled={loading} style={ST.btnLoad}>
-            {loading ? '⟳ Loading…' : '▶ Load Logs'}
+            {loading ? <><Icon name="loader" /> Loading…</> : <><Icon name="play" /> Load Logs</>}
           </button>
           {lastFetchAt && (
             <button onClick={pullNew} disabled={pulling} style={ST.btnPull}>
-              {pulling ? '⟳ Pulling…' : '⬇ Pull New'}
+              {pulling ? <><Icon name="loader" /> Pulling…</> : <><Icon name="download" /> Pull New</>}
             </button>
           )}
           {lines.length > 0 && (
             <button onClick={copy} style={ST.btnCopy}>
-              {copied ? '✓ Copied' : '⎘ Copy'}
+              {copied ? <><Icon name="check" /> Copied</> : <><Icon name="copy" /> Copy</>}
             </button>
           )}
           {lines.length > 0 && (
@@ -142,7 +143,7 @@ function PodLogsTab({ item }) {
         </div>
       </div>
 
-      {error && <div style={ST.errBox}>✕ {error}</div>}
+      {error && <div style={ST.errBox}><Icon name="circle-x" /> {error}</div>}
       {!lines.length && !error && !loading && <EmptyLogState />}
       {lines.length > 0 && (
         <div style={ST.logBox}>

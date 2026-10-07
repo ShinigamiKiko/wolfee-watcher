@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -194,5 +195,23 @@ func publishUpdate(pub hub.Publisher, cluster, uid string, row store.AuditEventR
 	}
 	if data, err := json.Marshal(update); err == nil {
 		pub.Publish(hub.Event{Cluster: cluster, Type: "audit_event_update", Data: data})
+	}
+}
+
+func (e *Engine) runRollups(ctx context.Context) {
+	t := time.NewTicker(pendingSweep)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := e.store.RefreshAuditRollups(ctx)
+			if err != nil {
+				slog.Warn("audit_rollup_refresh_failed", "component", "kvisior/audit", "error", err)
+			} else if n > 0 {
+				slog.Info("audit_rollup_refreshed", "component", "kvisior/audit", "hours", n)
+			}
+		}
 	}
 }

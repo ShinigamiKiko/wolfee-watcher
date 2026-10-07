@@ -89,23 +89,23 @@ export function AuditLogs() {
   const activeSilences = useMemo(() => silences.filter(s => s.active).length, [silences]);
 
   return (
-    <div className="page active al-page">
-      <div className="page-header al-header">
+    <div className="page active aul-page">
+      <div className="page-header aul-header">
         <div className="page-title">Audit logs</div>
-        <div className="al-sources">
-          <span className="al-source">
-            <span className={`al-dot${admissionSeen ? '' : ' off'}`} />
+        <div className="aul-sources">
+          <span className="aul-source">
+            <span className={`aul-dot${admissionSeen ? '' : ' off'}`} />
             <span><b>Admission webhook</b> {sources == null ? 'checking' : admissionSeen ? 'receiving' : 'no events in the last hour'}</span>
           </span>
-          <span className="al-source">
-            <span className={`al-dot${apiLogConnected ? '' : ' off'}`} />
+          <span className="aul-source">
+            <span className={`aul-dot${apiLogConnected ? '' : ' off'}`} />
             <span><b>kube-apiserver log</b> {sources == null ? 'checking' : apiLogConnected ? 'receiving' : 'not connected'}</span>
           </span>
         </div>
       </div>
 
       {sources != null && !apiLogConnected && (
-        <div className="al-notice">
+        <div className="aul-notice">
           <p>No kube-apiserver audit log records arrived in the last hour, so source IP and client are empty and read actions (<code>get</code>, <code>list</code>) are not visible. Changes still arrive through the admission webhook. To connect the log, start kube-apiserver with <code>--audit-log-path</code> and <code>--audit-policy-file</code> and set <code>sentryAudit.auditLog.enabled</code> in the chart.</p>
         </div>
       )}
@@ -116,9 +116,9 @@ export function AuditLogs() {
                className={`tab${tab === id ? ' active' : ''}`}
                onClick={() => setTab(id)} onKeyDown={e => { if (e.key === 'Enter') setTab(id); }}>
             {label}
-            {id === 'monitoring' && danger > 0 && <span className="al-count hot">{danger}</span>}
-            {id === 'rules' && rules.length > 0 && <span className="al-count">{rules.length}</span>}
-            {id === 'silent' && activeSilences > 0 && <span className="al-count">{activeSilences}</span>}
+            {id === 'monitoring' && danger > 0 && <span className="aul-count hot">{danger}</span>}
+            {id === 'rules' && rules.length > 0 && <span className="aul-count">{rules.length}</span>}
+            {id === 'silent' && activeSilences > 0 && <span className="aul-count">{activeSilences}</span>}
           </div>
         ))}
       </div>

@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import '../../styles/rbac/rbac.scss';
 import { useSensor } from '../../context/SensorContext';
+import { Pager } from '../../components/Pager';
+import { usePaged } from '../../hooks/usePaged';
 
 const W  = (rule, v) => rule.verbs      && (rule.verbs.includes('*')     || rule.verbs.includes(v));
 const R  = (rule, r) => rule.resources  && (rule.resources.includes('*') || rule.resources.includes(r));
@@ -338,6 +340,7 @@ export function RBAC() {
       })
       .sort((a, b) => (SEV_ORDER[a.sev] ?? 4) - (SEV_ORDER[b.sev] ?? 4));
   }, [scored, search, nsFilt, sevFilt, allBindings]);
+  const { pageItems: pageRoles, pager } = usePaged(filtered, 'rbac.roles', [search, nsFilt, sevFilt]);
 
   return (
     <div className="rbac-page">
@@ -410,7 +413,7 @@ export function RBAC() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(({ role }, i) => {
+                {pageRoles.map(({ role }, i) => {
                   const key = `${roleName(role)}-${roleNS(role)}-${i}`;
                   return (
                     <RoleRow
@@ -427,6 +430,7 @@ export function RBAC() {
           )
         }
       </div>
+      {filtered.length > 0 && <div className="dw-foot"><Pager {...pager} noun="roles" /></div>}
 
     </div>
   );

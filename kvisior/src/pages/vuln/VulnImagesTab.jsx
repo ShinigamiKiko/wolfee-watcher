@@ -2,6 +2,7 @@ import { SevBadge } from '../../components/ui';
 import { EmptyState } from '../../components/EmptyState';
 import { sevColor } from '../../data/scanner';
 import { Pager } from './VulnPager';
+import { Icon } from '../../components/Icon';
 
 export function VulnImagesTab({
   imageDrill, setImageDrill,
@@ -17,7 +18,7 @@ export function VulnImagesTab({
           {imageDrill ? <><span style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setImageDrill(null)}>Images</span><span style={{ color: 'var(--text-muted)' }}>›</span><span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{imageDrill.name}</span><span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({imageDrill.cves?.length || 0} CVEs)</span></>
             : <>Container Images ({imageRows.length})</>}
         </div>
-        {imageDrill ? <button onClick={() => setImageDrill(null)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button> : filterInput}
+        {imageDrill ? <button onClick={() => setImageDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button> : filterInput}
       </div>
       {!imageDrill ? (() => {
         const filtered = imageRows.filter(r => {
@@ -32,7 +33,7 @@ export function VulnImagesTab({
               <table className="data-table">
                 <thead><tr><th>Image</th><th>Tag</th><th>Total CVEs</th><th>Digest</th><th>Scanned</th></tr></thead>
                 <tbody>
-                  {results.length === 0 ? <tr><td colSpan={5}><EmptyState icon="📦" title="No images scanned" sub="Run a scan to see vulnerability data for cluster images." action={agentOnline && <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={handleScanAll}>Scan Now</button>} /></td></tr>
+                  {results.length === 0 ? <tr><td colSpan={5}><EmptyState icon="package" title="No images scanned" sub="Run a scan to see vulnerability data for cluster images." action={agentOnline && <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={handleScanAll}>Scan Now</button>} /></td></tr>
                     : paginate(filtered).map((r, i) => {
                         const age = r._res?.scannedAt ? Math.round((Date.now() - new Date(r._res.scannedAt)) / 60000) : null;
                         const currentDigest  = r._res?.digest         || r.digest         || '';
@@ -53,7 +54,7 @@ export function VulnImagesTab({
                                   ? <span
                                       title={`Baseline: ${previousDigest.slice(7,19)}…\nCurrent:  ${currentDigest.slice(7,19)}…`}
                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, fontFamily: 'JetBrains Mono,monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.35)', color: 'var(--danger)', cursor: 'help' }}
-                                    >⚠ changed</span>
+                                    ><Icon name="alert" /> changed</span>
                                   : <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono,monospace' }}>not changed</span>
                               }
                             </td>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { apiJSON, formatDate } from './settingsApi';
-import { RoleBadge, Field, btnGhost, btnDanger } from './settingsUi';
+import { RoleBadge, Field } from './settingsUi';
 import { ROLE_OPTIONS } from './settingsConstants';
 
 function GroupEditor({ editing, setEditing, onSave, onCancel }) {
@@ -21,7 +21,7 @@ function GroupEditor({ editing, setEditing, onSave, onCancel }) {
       </div>
       <div style={{display:'flex',gap:8,marginTop:12}}>
         <button className="btn btn-primary" onClick={onSave}>Save</button>
-        <button onClick={onCancel} style={btnGhost}>Cancel</button>
+        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
       </div>
     </div>
   );
@@ -109,10 +109,10 @@ export function GroupSection({ toast }) {
                 <td style={{fontSize:12,color:'var(--text-muted)'}}>{formatDate(g.created_at)}</td>
                 <td style={{display:'flex',gap:6}}>
                   {can('groups.write') && (
-                    <button onClick={() => startEdit(g)} style={btnGhost}>Edit</button>
+                    <button onClick={() => startEdit(g)} className="btn btn-ghost btn-sm">Edit</button>
                   )}
                   {can('groups.delete') && (
-                    <button onClick={() => remove(g)} style={btnDanger}>Remove</button>
+                    <button onClick={() => remove(g)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>
                   )}
                 </td>
               </tr>

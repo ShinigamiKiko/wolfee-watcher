@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Icon } from '../../components/Icon';
 
 export function PolPicker({ ev, anchor, onClose }) {
   const [useIp,      setUseIp]      = useState(true);
@@ -70,7 +71,7 @@ export function PolPicker({ ev, anchor, onClose }) {
         <div><div className="rn-check-label">Also add Ingress rule</div><div className="rn-check-sub">On destination — allow inbound from source</div></div>
       </label>
       <div className="rn-picker-sep"/>
-      <button className="rn-yaml-toggle-sm" onClick={()=>setYamlOpen(o=>!o)}>{yamlOpen?'▾':'▸'} YAML Preview</button>
+      <button className="rn-yaml-toggle-sm" onClick={()=>setYamlOpen(o=>!o)}><Icon name={yamlOpen ? 'chevron-down' : 'chevron-right'} /> YAML Preview</button>
       {yamlOpen&&<pre className="rn-picker-yaml" style={{flex:1,maxHeight:'none',minHeight:80,overflow:'auto'}}>{yaml}</pre>}
       <div className="rn-picker-actions" style={{flexShrink:0}}>
         <button className="rn-btn rn-btn--copy" onClick={()=>navigator.clipboard?.writeText(yaml)}>

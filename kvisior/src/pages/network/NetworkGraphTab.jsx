@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Icon } from '../../components/Icon';
 
 function Edge({ src, dst, port, kind }) {
   if (!src || !dst) return null;
@@ -76,7 +77,7 @@ function NetworkGraphTab({
           {loading && <div className="net-overlay">Loading topology…</div>}
           {!loading && nodes.length === 0 && (
             <div className="net-overlay">
-              <div className="net-empty-icon">⬡</div>
+              <div className="net-empty-icon"><Icon name="hexagon" /></div>
               <div className="net-empty-title">No network flows observed yet</div>
             </div>
           )}
@@ -100,7 +101,7 @@ function NetworkGraphTab({
                 onMouseDown={e => onNodeDown(e, node)}
                 onClick={e => onNodeClick(e, node)}
               >
-                <div className="rn-node-icon">{node.external?'⊕':node.label[0]?.toUpperCase()}</div>
+                <div className="rn-node-icon">{node.external?<Icon name="globe" />:node.label[0]?.toUpperCase()}</div>
                 <div className="rn-node-label">{node.label.length>14?node.label.slice(0,13)+'…':node.label}</div>
                 <div className="rn-node-ns">{node.ns}</div>
               </div>
@@ -112,7 +113,7 @@ function NetworkGraphTab({
           <div className="net-sidebar">
             <div className="net-sb-header">
               <span className="net-sb-title">{selected.node.label}</span>
-              <button className="net-sb-close" onClick={() => setSelected(null)}>✕</button>
+              <button className="net-sb-close" onClick={() => setSelected(null)}><Icon name="x" /></button>
             </div>
             <div className="net-sb-body">
               <div className="net-sb-section">
@@ -157,7 +158,7 @@ export function NsDropdown({ nsFilter, setNsFilter, nsOpen, setNsOpen, namespace
               className={`rn-ns-item${nsFilter===ns?' active':''}`}
               onClick={() => { setNsFilter(ns); setNsOpen(false); }}>
               {ns === 'all' ? 'All namespaces' : ns}
-              {nsFilter === ns && <span style={{ marginLeft: 'auto' }}>✓</span>}
+              {nsFilter === ns && <Icon name="check" style={{ marginLeft: 'auto' }} />}
             </button>
           ))}
         </div>

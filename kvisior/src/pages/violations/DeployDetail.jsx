@@ -1,4 +1,5 @@
 import { SevBadge } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 export function DeployDetail({ v, onClose }) {
   if (!v) return null;
@@ -18,7 +19,7 @@ export function DeployDetail({ v, onClose }) {
             <div className="dp-title" style={{ fontSize: 13 }}>{v.policy}</div>
             <div className="dp-meta">{v.workload} · {v.ns}</div>
           </div>
-          <button className="dp-close" onClick={onClose}>✕</button>
+          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
         </div>
 
         <div style={{ marginBottom: 14 }}><SevBadge sev={v.sev} /></div>

@@ -1,5 +1,6 @@
 import './styles/main.scss';
 
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Topbar } from './components/Topbar';
 import { Sidebar } from './components/Sidebar';
@@ -11,30 +12,48 @@ import { ScannerProvider } from './context/ScannerContext';
 import { SensorProvider } from './context/SensorContext';
 import { ClusterProvider, useClusters } from './context/ClusterContext';
 import { ClusterBanner } from './components/ClusterPicker';
+import { RouteErrorBoundary } from './components/ErrorBoundary';
 
 import { Login }         from './pages/Login';
-import { Dashboard }     from './pages/Dashboard';
-import { Violations }    from './pages/violations';
-import { Compliance }    from './pages/compliance';
-import { VulnMgmt }      from './pages/vuln/VulnMgmt';
-import { ConfigMgmt }    from './pages/ConfigMgmt';
-import { Risk }          from './pages/risk';
-import { PolicyMgmt }    from './pages/PolicyMgmt';
-import { SystemHealth }  from './pages/SystemHealth';
-import { NetworkRuntime } from './pages/network/NetworkPolicy';
-import { MyProfile }     from './pages/MyProfile';
-import { Audit }          from './pages/audit';
-import { AuditLogs }     from './pages/auditlogs';
-import { AlertLog }      from './pages/alertlog';
-import { Alerts }        from './pages/alerts';
-import { Honeypot }      from './pages/honeypot';
-import { SBOM }          from './pages/sbom';
-import { Forensics }     from './pages/forensics';
-import { Tracepoints }   from './pages/tracepoints';
-import { Syscalls }      from './pages/syscalls';
-import { Lsm }           from './pages/lsm';
-import { RBAC }          from './pages/rbac';
-import { Settings }      from './pages/Settings';
+
+const RELOAD_KEY = 'kvisior.chunk-reload';
+
+const page = (load, name) => lazy(() => load().then(m => {
+  try { sessionStorage.removeItem(RELOAD_KEY); } catch {}
+  return { default: m[name] };
+}).catch(err => {
+  try {
+    if (!sessionStorage.getItem(RELOAD_KEY)) {
+      sessionStorage.setItem(RELOAD_KEY, '1');
+      window.location.reload();
+      return new Promise(() => {});
+    }
+  } catch {}
+  throw err;
+}));
+
+const Dashboard = page(() => import('./pages/Dashboard'), 'Dashboard');
+const Violations = page(() => import('./pages/violations'), 'Violations');
+const Compliance = page(() => import('./pages/compliance'), 'Compliance');
+const VulnMgmt = page(() => import('./pages/vuln/VulnMgmt'), 'VulnMgmt');
+const ConfigMgmt = page(() => import('./pages/ConfigMgmt'), 'ConfigMgmt');
+const Risk = page(() => import('./pages/risk'), 'Risk');
+const PolicyMgmt = page(() => import('./pages/PolicyMgmt'), 'PolicyMgmt');
+const SystemHealth = page(() => import('./pages/SystemHealth'), 'SystemHealth');
+const NetworkRuntime = page(() => import('./pages/network/NetworkPolicy'), 'NetworkRuntime');
+const MyProfile = page(() => import('./pages/MyProfile'), 'MyProfile');
+const Audit = page(() => import('./pages/audit'), 'Audit');
+const AuditLogs = page(() => import('./pages/auditlogs'), 'AuditLogs');
+const AlertLog = page(() => import('./pages/alertlog'), 'AlertLog');
+const Alerts = page(() => import('./pages/alerts'), 'Alerts');
+const Honeypot = page(() => import('./pages/honeypot'), 'Honeypot');
+const SBOM = page(() => import('./pages/sbom'), 'SBOM');
+const Forensics = page(() => import('./pages/forensics'), 'Forensics');
+const Tracepoints = page(() => import('./pages/tracepoints'), 'Tracepoints');
+const Syscalls = page(() => import('./pages/syscalls'), 'Syscalls');
+const Lsm = page(() => import('./pages/lsm'), 'Lsm');
+const RBAC = page(() => import('./pages/rbac'), 'RBAC');
+const Settings = page(() => import('./pages/Settings'), 'Settings');
 
 function AuthedShell() {
   return (
@@ -55,6 +74,8 @@ function ClusteredShell() {
           <div className="layout">
             <Sidebar />
             <main className="main">
+              <RouteErrorBoundary>
+              <Suspense fallback={<div className="page-loading">Loading…</div>}>
               <Routes>
                 <Route path="/"            element={<Dashboard />} />
                 <Route path="/violations"  element={<Violations />} />
@@ -80,6 +101,8 @@ function ClusteredShell() {
                 <Route path="/profile"     element={<MyProfile />} />
                 <Route path="*"            element={<Navigate to="/" replace />} />
               </Routes>
+              </Suspense>
+              </RouteErrorBoundary>
             </main>
           </div>
           <ToastStack />

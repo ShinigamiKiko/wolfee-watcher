@@ -2,15 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { useApp } from '../../context/AppContext';
 import { apiJSON } from './settingsApi';
-import { RoleBadge, Field, btnGhost, btnDanger, PermissionDeniedHint } from './settingsUi';
+import { RoleBadge, Field, PermissionDeniedHint } from './settingsUi';
 import { ROLE_OPTIONS } from './settingsConstants';
-
-const inputStyle = {
-  width: '100%', boxSizing: 'border-box',
-  background: 'var(--bg-base)', border: '1px solid var(--border)',
-  borderRadius: 8, padding: '9px 12px', fontSize: 13,
-  color: 'var(--text-primary)', outline: 'none', fontFamily: 'DM Sans,sans-serif',
-};
+import { Icon } from '../../components/Icon';
 
 function ResetPasswordDialog({ user, onClose, onSuccess }) {
   const [np,   setNp]   = useState('');
@@ -39,16 +33,16 @@ function ResetPasswordDialog({ user, onClose, onSuccess }) {
     <div className="modal">
       <div className="modal-header">
         <span className="modal-title">Reset password — {user.username}</span>
-        <button className="modal-close" onClick={onClose}>✕</button>
+        <button className="modal-close" onClick={onClose}><Icon name="x" /></button>
       </div>
       <form onSubmit={submit} className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
         <div>
           <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>New password</label>
-          <input type="password" autoFocus autoComplete="new-password" value={np} onChange={e => setNp(e.target.value)} disabled={busy} style={inputStyle} />
+          <input type="password" autoFocus autoComplete="new-password" value={np} onChange={e => setNp(e.target.value)} disabled={busy} className="form-input" />
         </div>
         <div>
           <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>Confirm password</label>
-          <input type="password" autoComplete="new-password" value={conf} onChange={e => setConf(e.target.value)} disabled={busy} style={inputStyle} />
+          <input type="password" autoComplete="new-password" value={conf} onChange={e => setConf(e.target.value)} disabled={busy} className="form-input" />
         </div>
         {err && (
           <div style={{fontSize:12,padding:'8px 10px',borderRadius:6,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',color:'var(--danger)'}}>
@@ -56,7 +50,7 @@ function ResetPasswordDialog({ user, onClose, onSuccess }) {
           </div>
         )}
         <div className="modal-footer">
-          <button type="button" onClick={onClose} style={btnGhost}>Cancel</button>
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button>
         </div>
       </form>
@@ -181,7 +175,7 @@ export function UsersSection({ toast }) {
           </div>
           <div style={{display:'flex',gap:8,marginTop:12}}>
             <button className="btn btn-primary" onClick={save}>Save</button>
-            <button onClick={() => setEditing(null)} style={btnGhost}>Cancel</button>
+            <button onClick={() => setEditing(null)} className="btn btn-ghost btn-sm">Cancel</button>
           </div>
         </div>
       )}
@@ -201,9 +195,9 @@ export function UsersSection({ toast }) {
                 <td><RoleBadge role={u.role}/></td>
                 <td><RoleBadge role={u.effective_role}/></td>
                 <td style={{display:'flex',gap:6}}>
-                  {can('users.write') && <button onClick={() => startEdit(u)} style={btnGhost}>Edit</button>}
-                  {can('users.write') && <button onClick={() => resetPassword(u)} style={btnGhost}>Reset password</button>}
-                  {can('users.delete') && <button onClick={() => remove(u)} style={btnDanger}>Remove</button>}
+                  {can('users.write') && <button onClick={() => startEdit(u)} className="btn btn-ghost btn-sm">Edit</button>}
+                  {can('users.write') && <button onClick={() => resetPassword(u)} className="btn btn-ghost btn-sm">Reset password</button>}
+                  {can('users.delete') && <button onClick={() => remove(u)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>}
                 </td>
               </tr>
             ))}
