@@ -370,3 +370,11 @@ mark.hit { background: rgba(245, 158, 11, 0.3); color: var(--warning-text); bord
 .layers-n { flex-shrink: 0; min-width: 22px; margin-right: 14px; text-align: right; color: var(--text-muted); font-size: var(--fs-2xs); user-select: none; }
 .layers-text { flex: 1; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .score-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.score-ring { width: 60px; height: 60px; border-radius: 50%; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;
+  &::before { content: ''; position: absolute; inset: 9px; border-radius: 50%; background: var(--bg-elevated); }
+  span { position: relative; font-size: 15px; font-weight: 700; }
+}
+.risk-cell { min-width: 140px; .meter { flex: 1; } }
+.cve-id { min-width: 120px; }
+.link-card { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; font: inherit; color: var(--accent); cursor: pointer; }
