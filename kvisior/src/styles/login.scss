@@ -102,10 +102,7 @@
 }
 
 .login__title span {
-  background: linear-gradient(100deg, #2fa8ff 0%, #22d3ee 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent);
 }
 
 .login__sub {
@@ -283,10 +280,7 @@
 
   b {
     font-weight: 600;
-    background: linear-gradient(100deg, #2fa8ff, #22d3ee);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--accent);
   }
 }
 

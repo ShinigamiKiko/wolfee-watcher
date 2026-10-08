@@ -192,7 +192,7 @@ code.inline { font-family: var(--font-mono); font-size: var(--fs-sm); background
 
 .meter { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .meter-track { flex: 1; height: 6px; background: var(--bg-elevated); border-radius: 6px; overflow: hidden; min-width: 40px; }
-.meter-fill { height: 100%; border-radius: 6px; background: var(--accent); transition: width 0.4s var(--ease-out); }
+.meter-fill { height: 100%; border-radius: 6px; background: var(--accent); }
 .meter-value { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-secondary); min-width: 34px; text-align: right; }
 
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-dim); }
