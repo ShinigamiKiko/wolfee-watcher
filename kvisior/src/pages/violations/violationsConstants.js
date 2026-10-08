@@ -2,17 +2,6 @@ export const OUTER_TABS = ['Syscalls', 'Tracepoints', 'LSM Hooks', 'Build', 'Dep
 
 export const RUNTIME_TABS = ['Syscalls', 'Tracepoints', 'LSM Hooks'];
 
-export const KIND_COLOR = {
-  ClusterRoleBinding: '#f59e0b',
-  ClusterRole:        '#f59e0b',
-  Role:               '#f59e0b',
-  ServiceAccount:     '#a78bfa',
-  Namespace:          '#60a5fa',
-  NetworkPolicy:      '#60a5fa',
-  Pod:                '#34d399',
-  MutatingWebhook:    '#f87171',
-};
-
 export const ackKey = (v, tab) => {
   if (tab === 'Syscalls')    return `sc::${v.pod||''}::${v.syscall||''}::${v.namespace||''}`;
   if (tab === 'Tracepoints') return `tp::${v.pod||''}::${v.syscall||''}::${v.namespace||''}`;

@@ -149,6 +149,17 @@ const KIND_TONE = {
   ClusterRole: 'violet', Role: 'accent', ClusterRoleBinding: 'danger', RoleBinding: 'warning',
 };
 
+const ACTION_TONE = {
+  create: 'ok', update: 'accent', patch: 'accent', delete: 'warning', deletecollection: 'warning',
+  exec: 'danger', attach: 'danger', portforward: 'danger', get: 'violet', list: 'violet', watch: 'violet',
+};
+
+export const actionTone = kind => ACTION_TONE[String(kind || '').toLowerCase().replace(/[^a-z]/g, '')];
+
+export function ActionBadge({ kind }) {
+  return <Badge tone={actionTone(kind)}>{kind || '—'}</Badge>;
+}
+
 export function KindBadge({ kind }) {
   return <Badge tone={KIND_TONE[kind] || 'accent'}>{kind}</Badge>;
 }
@@ -253,4 +264,44 @@ export function Metrics({ items, cols, className }) {
       ))}
     </div>
   );
+}
+
+export function SidePanel({ title, meta, onClose, actions, tabs, label, width, children }) {
+  return (
+    <aside className={cx('detail-panel open', width && `detail-panel--${width}`)} aria-label={label || (typeof title === 'string' ? title : undefined)}>
+      <div className="detail-panel-inner">
+        <div className="dp-header">
+          <div className="grow">
+            <div className="dp-title">{title}</div>
+            {meta && <div className="dp-meta">{meta}</div>}
+          </div>
+          <button type="button" className="dp-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
+        </div>
+        {actions && <div className="dp-actions">{actions}</div>}
+        {tabs && <div className="subtabs dp-tabs" role="tablist">{tabs}</div>}
+        {children}
+      </div>
+    </aside>
+  );
+}
+
+export function DetailSection({ title, aside, children, className }) {
+  return (
+    <section className={cx('dp-sec', className)}>
+      {title && <div className="section-label row row--between">{title}{aside}</div>}
+      {children}
+    </section>
+  );
+}
+
+export function SubTabs({ tabs, active, onChange }) {
+  return tabs.map(t => {
+    const opt = typeof t === 'object' ? t : { id: t, label: t };
+    return (
+      <button key={opt.id} type="button" role="tab" aria-selected={active === opt.id} disabled={opt.disabled}
+        className={cx('subtab', active === opt.id && 'active')} onClick={() => onChange(opt.id)}>
+        {opt.label}
+      </button>
+    );
+  });
 }
