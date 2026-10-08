@@ -720,3 +720,5 @@
   font-family: inherit; font-size: 12px; font-weight: 500;
   letter-spacing: 0; text-transform: none; color: #7a8599;
 }
+
+.fns-events-window.dw-fill { height: clamp(460px, calc(100vh - 220px), 900px); }

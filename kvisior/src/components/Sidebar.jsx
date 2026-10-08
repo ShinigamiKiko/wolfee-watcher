@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../data/cluster';
-import { Icon, ICONS } from './Icon';
+import { Icon } from './Icon';
 import '../assets/logo/logo.scss';
 
 export const SECTIONS = [
@@ -28,7 +28,7 @@ export const SECTIONS = [
   {
     label: 'Network',
     items: [
-      { id: 'net-runtime', label: 'Network Runtime', icon: 'radio' },
+      { id: 'net-runtime', label: 'Network Runtime' },
     ],
   },
   {
@@ -106,7 +106,7 @@ export function Sidebar() {
                   <Link to={itemPath(item.id)} title={collapsed ? item.label : undefined}
                     className={`nav-item${isActive(item.id) ? ' active' : ''}`}
                     aria-current={isActive(item.id) ? 'page' : undefined}>
-                    <Icon name={item.icon || (ICONS[item.id] ? item.id : 'dashboard')} size={17} />
+                    <Icon name={`nav-${item.id}`} size={18} />
                     <span className="nav-label">{item.label}</span>
                   </Link>
                 </li>
@@ -119,7 +119,7 @@ export function Sidebar() {
       <div className="sidebar-footer">
         <Link to="/profile" title={collapsed ? 'My Profile' : undefined}
           className={`nav-item${location.pathname === '/profile' ? ' active' : ''}`}>
-          <Icon name="profile" size={17} />
+          <Icon name="nav-profile" size={18} />
           <span className="nav-label">My Profile</span>
         </Link>
         <button type="button" className="nav-item sb-collapse" onClick={() => setCollapsed(c => !c)}

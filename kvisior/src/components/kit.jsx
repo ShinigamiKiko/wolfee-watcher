@@ -273,39 +273,22 @@ export function Metrics({ items, cols, className }) {
 }
 
 export function SidePanel({ title, meta, onClose, actions, tools, tabs, label, width, fill, children }) {
-  const [wide, setWide] = useState(false);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const esc = e => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if (document.querySelector('.modal-backdrop, .fwin')) return;
-      closeRef.current?.();
-    };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, []);
   return (
-    <>
-      <div className="detail-backdrop" onClick={onClose} aria-hidden="true" />
-      <aside className={cx('detail-panel open', width && `detail-panel--${width}`, wide && 'detail-panel--expanded', fill && 'detail-panel--fill')}
-        role="dialog" aria-label={label || (typeof title === 'string' ? title : undefined)}>
-        <div className="detail-panel-inner">
-          <div className="dp-header">
-            <div className="grow">
-              <div className="dp-title">{title}</div>
-              {meta && <div className="dp-meta">{meta}</div>}
-            </div>
-            {tools && <div className="row shrink-0">{tools}</div>}
-            <button type="button" className="btn-icon" aria-label={wide ? 'Shrink panel' : 'Expand panel'} aria-pressed={wide} onClick={() => setWide(w => !w)}><Icon name="maximize" /></button>
-            <button type="button" className="btn-icon dp-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
+    <aside className={cx('detail-panel open', width && `detail-panel--${width}`, fill && 'detail-panel--fill')} aria-label={label || (typeof title === 'string' ? title : undefined)}>
+      <div className="detail-panel-inner">
+        <div className="dp-header">
+          <div className="grow">
+            <div className="dp-title">{title}</div>
+            {meta && <div className="dp-meta">{meta}</div>}
           </div>
-          {actions && <div className="dp-actions">{actions}</div>}
-          {tabs && <div className="subtabs dp-tabs" role="tablist">{tabs}</div>}
-          {children}
+          {tools && <div className="row shrink-0">{tools}</div>}
+          <button type="button" className="dp-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
         </div>
-      </aside>
-    </>
+        {actions && <div className="dp-actions">{actions}</div>}
+        {tabs && <div className="subtabs dp-tabs" role="tablist">{tabs}</div>}
+        {children}
+      </div>
+    </aside>
   );
 }
 
