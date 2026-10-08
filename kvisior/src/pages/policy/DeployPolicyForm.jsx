@@ -32,8 +32,7 @@ export function DeployPolicyForm({ name, sev, onSave, onClose, initial }) {
       <div className="cpol-field">
         <label className="cpol-label">
           CIS Check
-          <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-            marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span className="cpol-label-note">
             CIS Kubernetes Benchmark v1.10
           </span>
         </label>
@@ -42,9 +41,8 @@ export function DeployPolicyForm({ name, sev, onSave, onClose, initial }) {
           const group = DEPLOY_CHECKS.filter(c => c.group === g);
           if (!group.length) return null;
           return (
-            <div key={g} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 5 }}>
+            <div key={g} className="mb-12">
+              <div className="section-label">
                 {g}
               </div>
               <div className="cpol-syscall-grid cpol-syscall-grid--wide" role="group" aria-label={`${g} checks`}>
@@ -63,7 +61,7 @@ export function DeployPolicyForm({ name, sev, onSave, onClose, initial }) {
           );
         })}
         {check && (
-          <div className="cpol-hint" style={{ marginTop: 6 }}>
+          <div className="cpol-hint">
             <code>CIS {check.cis}</code> {check.label} — {check.desc}
           </div>
         )}
@@ -75,15 +73,14 @@ export function DeployPolicyForm({ name, sev, onSave, onClose, initial }) {
           placeholder="e.g. production (empty = all)" />
       </div>
 
-      <div className="cpol-field" style={{ marginTop: 4 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)}
-            style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          <span className="cpol-label" style={{ margin: 0 }}>Alert</span>
+      <div className="cpol-field">
+        <label className="check">
+          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)} />
+          <span>Alert</span>
         </label>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+      <div className="cpol-actions">
         <button className="cpol-btn" onClick={onClose}>Cancel</button>
         <button className="cpol-btn primary" onClick={handleCreate} disabled={!canSave}>
           {initial ? 'Save changes' : 'Create & Enable'}

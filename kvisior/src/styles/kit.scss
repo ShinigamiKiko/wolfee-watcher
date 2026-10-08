@@ -411,3 +411,5 @@ mark.hit { background: rgba(245, 158, 11, 0.3); color: var(--warning-text); bord
 }
 .avatar--lg { width: 56px; height: 56px; font-size: 20px; font-weight: 700; }
 .profile-grid { max-width: 960px; align-items: start; }
+.data-table tr.is-off td { opacity: 0.55; }
+.data-table td.desc-cell { max-width: 420px; min-width: 240px; }

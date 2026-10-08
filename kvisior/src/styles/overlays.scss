@@ -209,3 +209,9 @@ textarea.cpol-input { height:auto; min-height:80px; padding:8px 12px; line-heigh
 .detail-panel--fill .detail-panel-inner { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
 .detail-panel--fill .dp-header, .detail-panel--fill .dp-actions, .detail-panel--fill .dp-tabs { flex-shrink:0; }
 .dp-fill { flex:1; min-height:0; display:flex; flex-direction:column; padding-bottom:16px; }
+
+.cpol-input--mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.cpol-label-note { font-weight: 400; color: var(--text-dim); margin-left: 6px; }
+.cpol-hint--lead { margin: 0 0 10px; }
+.cpol-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+button.cpol-syscall-chip { font: inherit; font-family: var(--font-mono); font-size: var(--fs-sm); }

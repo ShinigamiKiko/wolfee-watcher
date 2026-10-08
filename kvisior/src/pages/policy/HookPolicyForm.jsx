@@ -58,16 +58,15 @@ export function HookPolicyForm({
     <>
       <div className="cpol-field">
         <label className="cpol-label">{eventNoun}</label>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+        <div className="cpol-hint cpol-hint--lead">
           Select one — the policy matches events whose kernel event name equals it, exactly like a syscall rule.
         </div>
         {groups.map(group => {
           const items = byGroup[group];
           if (!items?.length) return null;
           return (
-            <div key={group} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 5 }}>
+            <div key={group} className="mb-12">
+              <div className="section-label">
                 {group}
               </div>
               <div className="cpol-syscall-grid">
@@ -84,7 +83,7 @@ export function HookPolicyForm({
           );
         })}
         {selectedEvent && (
-          <div className="cpol-hint" style={{ marginTop: 6 }}>
+          <div className="cpol-hint">
             <code>{selectedEvent.name}</code> — {selectedEvent.desc}
           </div>
         )}
@@ -95,10 +94,9 @@ export function HookPolicyForm({
         <div className="cpol-field">
           <label className="cpol-label">
             Path filter
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-              marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>— empty = any path</span>
+            <span className="cpol-label-note">— empty = any path</span>
           </label>
-          <div className="cpol-syscall-grid" style={{ marginBottom: 8 }}>
+          <div className="cpol-syscall-grid mb-8">
             {PATH_PRESETS.map(p => (
               <div key={p.value}
                 className={`cpol-syscall-chip${pathFilter === p.value ? ' sel' : ''}`}
@@ -108,10 +106,9 @@ export function HookPolicyForm({
               </div>
             ))}
           </div>
-          <input className="cpol-input" value={pathFilter}
+          <input className="cpol-input cpol-input--mono" value={pathFilter}
             onChange={e => setPathFilter(e.target.value)}
-            placeholder={pathPlaceholder || 'or type custom path…'}
-            style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }} />
+            placeholder={pathPlaceholder || 'or type custom path…'} />
           <div className="cpol-hint">Matches the event’s path argument — substring match</div>
         </div>
       )}
@@ -121,13 +118,11 @@ export function HookPolicyForm({
         <div className="cpol-field">
           <label className="cpol-label">
             Argument filter
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-              marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>— empty = any</span>
+            <span className="cpol-label-note">— empty = any</span>
           </label>
-          <input className="cpol-input" value={pathFilter}
+          <input className="cpol-input cpol-input--mono" value={pathFilter}
             onChange={e => setPathFilter(e.target.value)}
-            placeholder={argPlaceholder}
-            style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }} />
+            placeholder={argPlaceholder} />
           <div className="cpol-hint">
             Substring match against the event’s arguments: {argLabels.join(', ')}
           </div>
@@ -137,22 +132,20 @@ export function HookPolicyForm({
       <div className="cpol-field">
         <label className="cpol-label">
           Namespace
-          <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-            marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>— optional, substring</span>
+          <span className="cpol-label-note">— optional, substring</span>
         </label>
         <input className="cpol-input" value={ns} onChange={e => setNs(e.target.value)}
           placeholder="e.g. production (empty = all)" />
       </div>
 
-      <div className="cpol-field" style={{ marginTop: 4 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)}
-            style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          <span className="cpol-label" style={{ margin: 0 }}>Alert</span>
+      <div className="cpol-field">
+        <label className="check">
+          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)} />
+          <span>Alert</span>
         </label>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+      <div className="cpol-actions">
         <button className="cpol-btn" onClick={onClose}>Cancel</button>
         <button className="cpol-btn primary" onClick={handleCreate} disabled={!canSave}>
           {initial ? 'Save changes' : 'Create & Enable'}

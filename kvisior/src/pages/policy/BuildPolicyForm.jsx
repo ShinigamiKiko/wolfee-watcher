@@ -32,14 +32,12 @@ export function BuildPolicyForm({ name, sev, onSave, onClose, initial }) {
       <div className="cpol-field">
         <label className="cpol-label">
           Vulnerable Instruction
-          <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-            marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span className="cpol-label-note">
             — pattern to detect in image layers
           </span>
         </label>
-        <input className="cpol-input" value={instruction} onChange={e => setInstruction(e.target.value)}
+        <input className="cpol-input cpol-input--mono" value={instruction} onChange={e => setInstruction(e.target.value)}
           placeholder="e.g. :latest  or  debug  or  ubuntu:18"
-          style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }}
           autoFocus />
         <div className="cpol-hint">
            Text matching is case-insensitive. Examples: <code>curl</code> · <code>apt-get install</code> · <code>USER root</code>
@@ -49,14 +47,12 @@ export function BuildPolicyForm({ name, sev, onSave, onClose, initial }) {
       <div className="cpol-field">
         <label className="cpol-label">
           Trusted Registries
-          <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-            marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span className="cpol-label-note">
             — alert if image is NOT from these registries
           </span>
         </label>
-        <input className="cpol-input" value={trustedRegistries} onChange={e => setTrustedRegistries(e.target.value)}
-          placeholder="e.g. harbor.company.ru, gcr.io/my-project (comma-separated)"
-          style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }} />
+        <input className="cpol-input cpol-input--mono" value={trustedRegistries} onChange={e => setTrustedRegistries(e.target.value)}
+          placeholder="e.g. harbor.company.ru, gcr.io/my-project (comma-separated)" />
         <div className="cpol-hint">
           Images not matching any of these prefixes will trigger an alert. Leave empty to skip registry check.
         </div>
@@ -68,15 +64,14 @@ export function BuildPolicyForm({ name, sev, onSave, onClose, initial }) {
           placeholder="e.g. production (empty = all)" />
       </div>
 
-      <div className="cpol-field" style={{ marginTop: 4 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)}
-            style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          <span className="cpol-label" style={{ margin: 0 }}>Alert</span>
+      <div className="cpol-field">
+        <label className="check">
+          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)} />
+          <span>Alert</span>
         </label>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+      <div className="cpol-actions">
         <button className="cpol-btn" onClick={onClose}>Cancel</button>
         <button className="cpol-btn primary" onClick={handleCreate} disabled={!canSave}>
           {initial ? 'Save changes' : 'Create & Enable'}

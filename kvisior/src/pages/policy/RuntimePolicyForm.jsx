@@ -62,9 +62,8 @@ export function RuntimePolicyForm({
             const group = SYSCALLS_BY_CAT[cat];
             if (!group?.length) return null;
             return (
-              <div key={cat} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 5 }}>
+              <div key={cat} className="mb-12">
+                <div className="section-label">
                   {CAT_LABEL[cat] || cat}
                 </div>
                 <div className="cpol-syscall-grid">
@@ -81,9 +80,8 @@ export function RuntimePolicyForm({
             );
           })}
           {}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 5 }}>
+          <div className="mb-12">
+            <div className="section-label">
               Kernel Tracepoints
             </div>
             <div className="cpol-syscall-grid">
@@ -98,7 +96,7 @@ export function RuntimePolicyForm({
             </div>
           </div>
           {syscall && (
-            <div className="cpol-hint" style={{ marginTop: 6 }}>
+            <div className="cpol-hint">
               <code>{syscall}</code> — {selectedSyscall?.desc}
             </div>
           )}
@@ -119,12 +117,10 @@ export function RuntimePolicyForm({
         <div className="cpol-field">
           <label className="cpol-label">
             Arguments
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-              marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>— optional path filter</span>
+            <span className="cpol-label-note">— optional path filter</span>
           </label>
-          <input className="cpol-input" value={pathFilter} onChange={e => setPathFilter(e.target.value)}
-            placeholder="e.g. /etc/passwd"
-            style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }} />
+          <input className="cpol-input cpol-input--mono" value={pathFilter} onChange={e => setPathFilter(e.target.value)}
+            placeholder="e.g. /etc/passwd" />
           <div className="cpol-hint">Empty = alert on any invocation</div>
         </div>
       </>}
@@ -136,12 +132,11 @@ export function RuntimePolicyForm({
             {paramType === 'path'  ? 'Path filter' :
              paramType === 'prot'  ? 'Memory protection' :
              paramType === 'newfd' ? 'Target file descriptor' : 'Argument filter'}
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-              marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>— empty = any</span>
+            <span className="cpol-label-note">— empty = any</span>
           </label>
 
           {paramType === 'path' && <>
-            <div className="cpol-syscall-grid" style={{ marginBottom: 8 }}>
+            <div className="cpol-syscall-grid mb-8">
               {PATH_PRESETS.map(p => (
                 <div key={p.value}
                   className={`cpol-syscall-chip${pathFilter === p.value ? ' sel' : ''}`}
@@ -151,15 +146,14 @@ export function RuntimePolicyForm({
                 </div>
               ))}
             </div>
-            <input className="cpol-input" value={pathFilter}
+            <input className="cpol-input cpol-input--mono" value={pathFilter}
               onChange={e => setPathFilter(e.target.value)}
-              placeholder="or type custom path…"
-              style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }} />
+              placeholder="or type custom path…" />
             <div className="cpol-hint">Matches <code>pathname</code> argument — substring match</div>
           </>}
 
           {paramType === 'prot' && <>
-            <div className="cpol-syscall-grid" style={{ marginBottom: 8 }}>
+            <div className="cpol-syscall-grid mb-8">
               {PROT_PRESETS.map(p => {
                 const selected = pathFilter.split(',').map(v => v.trim()).includes(p.value);
                 return (
@@ -185,7 +179,7 @@ export function RuntimePolicyForm({
           </>}
 
           {paramType === 'socket' && <>
-            <div className="cpol-syscall-grid" style={{ marginBottom: 8 }}>
+            <div className="cpol-syscall-grid mb-8">
               {SOCKET_PRESETS.map(p => {
                 const selected = pathFilter.split(',').map(v => v.trim()).includes(p.value);
                 return (
@@ -211,7 +205,7 @@ export function RuntimePolicyForm({
           </>}
 
           {paramType === 'newfd' && <>
-            <div className="cpol-syscall-grid" style={{ marginBottom: 8 }}>
+            <div className="cpol-syscall-grid mb-8">
               {DUP_PRESETS.map(p => {
                 const selected = pathFilter.split(',').map(v => v.trim()).includes(p.value);
                 return (
@@ -237,13 +231,12 @@ export function RuntimePolicyForm({
           </>}
 
           {!paramType && <>
-            <input className="cpol-input" value={pathFilter}
+            <input className="cpol-input cpol-input--mono" value={pathFilter}
               onChange={e => setPathFilter(e.target.value)}
               placeholder={
                 syscall === 'connect' ? 'e.g. 1.2.3.4 or :443' :
                 syscall === 'execve' || syscall === 'execveat' ? 'e.g. /bin/sh' :
-                'e.g. /etc/passwd'}
-              style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 13 }} />
+                'e.g. /etc/passwd'} />
             <div className="cpol-hint">Substring match against syscall arguments</div>
           </>}
         </div>
@@ -253,8 +246,7 @@ export function RuntimePolicyForm({
       <div className="cpol-field">
         <label className="cpol-label">
           Namespace
-          <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0,
-            marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>— optional, substring</span>
+          <span className="cpol-label-note">— optional, substring</span>
         </label>
         <input className="cpol-input" value={ns} onChange={e => setNs(e.target.value)}
           placeholder="e.g. production" />
@@ -262,10 +254,9 @@ export function RuntimePolicyForm({
 
       {}
       <div className="cpol-field">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)}
-            style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          <span className="cpol-label" style={{ margin: 0 }}>Alert</span>
+        <label className="check">
+          <input type="checkbox" checked={alertOnly} onChange={e => setAlertOnly(e.target.checked)} />
+          <span>Alert</span>
         </label>
       </div>
     </>
