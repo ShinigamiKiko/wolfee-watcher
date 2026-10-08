@@ -1,16 +1,12 @@
 import { Icon } from './Icon';
 
-const KIND = {
-  ok:   { icon: 'check',   color: 'var(--accent-3)' },
-  fail: { icon: 'x',       color: 'var(--danger)' },
-  warn: { icon: 'alert',   color: 'var(--warning)' },
-};
+const ICON = { ok: 'check', fail: 'x', warn: 'alert' };
 
 export function ProgressLine({ line, compact }) {
-  const k = KIND[line?.kind];
+  const kind = ICON[line?.kind] ? line.kind : null;
   return (
-    <div className={`progress-line${compact ? ' progress-line--compact' : ''}`} style={{ color: k ? k.color : 'var(--text-secondary)' }}>
-      {k && <Icon name={k.icon} />}
+    <div className={`progress-line${compact ? ' progress-line--compact' : ''}${kind ? ` progress-line--${kind}` : ' t-secondary'}`}>
+      {kind && <Icon name={ICON[kind]} />}
       <span>{line?.text ?? String(line ?? '')}</span>
     </div>
   );

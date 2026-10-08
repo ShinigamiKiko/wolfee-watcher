@@ -1,6 +1,65 @@
 import { Icon } from './Icon';
 
-const cx = (...parts) => parts.filter(Boolean).join(' ');
+export const cx = (...parts) => parts.filter(Boolean).join(' ');
+
+const SEV_TONE = { CRITICAL: 'danger', HIGH: 'warning', MEDIUM: 'info', LOW: 'ok' };
+
+export const sevTone = sev => SEV_TONE[String(sev || '').toUpperCase()];
+
+const STAT_TONE = { danger: 'danger', warning: 'warn', ok: 'success', accent: 'info' };
+
+export function Stat({ label, value, sub, tone, onClick, active, title }) {
+  const body = (
+    <>
+      <div className="stat-label">{label}</div>
+      <div className={cx('stat-value', STAT_TONE[tone])}>{value}</div>
+      {sub != null && <div className="stat-delta">{sub}</div>}
+    </>
+  );
+  if (onClick) {
+    return <button type="button" className={cx('stat-card', active && 'active')} aria-pressed={active} title={title} onClick={onClick}>{body}</button>;
+  }
+  return <div className="stat-card" title={title}>{body}</div>;
+}
+
+export function Crumbs({ items, meta }) {
+  return (
+    <div className="crumbs">
+      {items.map((it, i) => {
+        const last = i === items.length - 1;
+        return (
+          <span key={i} className="row row--tight">
+            {last || !it.onClick
+              ? <span className="crumbs-current">{it.label}</span>
+              : <button type="button" className="crumbs-link" onClick={it.onClick}>{it.label}</button>}
+            {!last && <span className="crumbs-sep" aria-hidden="true">›</span>}
+          </span>
+        );
+      })}
+      {meta && <span className="crumbs-meta">{meta}</span>}
+    </div>
+  );
+}
+
+export function SortTh({ col, label, sort, dir, onSort, title }) {
+  const on = sort === col;
+  return (
+    <th className="th-sort" title={title} aria-sort={on ? (dir === 'desc' ? 'descending' : 'ascending') : undefined}>
+      <button type="button" className="th-sort-btn" aria-sort={on ? dir : undefined} onClick={() => onSort(col)}>
+        {label}<Icon name={on ? (dir === 'desc' ? 'chevron-down' : 'chevron-up') : 'sort'} />
+      </button>
+    </th>
+  );
+}
+
+export function Score({ label, value, className }) {
+  return (
+    <div className="score">
+      <div className="score-label">{label}</div>
+      <div className={cx('score-value', className)}>{value}</div>
+    </div>
+  );
+}
 
 export function PageHeader({ title, subtitle, actions, children, className }) {
   return (
@@ -19,12 +78,12 @@ export function Toolbar({ children, className }) {
   return <div className={cx('toolbar', className)}>{children}</div>;
 }
 
-export function SearchInput({ value, onChange, placeholder = 'Search…', label, className, width }) {
+export function SearchInput({ value, onChange, placeholder = 'Search…', label, className, width, size }) {
   return (
     <span className="input-wrap">
       <Icon name="search" />
       <input
-        className={cx('input', 'input--search', className)}
+        className={cx('input', 'input--search', size === 'sm' && 'input--sm', className)}
         style={width ? { width } : undefined}
         type="search"
         value={value}
@@ -83,6 +142,15 @@ export function Tag({ tone, mono, outline, children, title, className }) {
 
 export function Badge({ tone, children, title }) {
   return <span className={cx('badge', tone && `badge--${tone}`)} title={title}>{children}</span>;
+}
+
+const KIND_TONE = {
+  Deployment: 'accent', StatefulSet: 'violet', DaemonSet: 'ok', ReplicaSet: 'accent', Job: 'warning', CronJob: 'warning', Pod: 'accent',
+  ClusterRole: 'violet', Role: 'accent', ClusterRoleBinding: 'danger', RoleBinding: 'warning',
+};
+
+export function KindBadge({ kind }) {
+  return <Badge tone={KIND_TONE[kind] || 'accent'}>{kind}</Badge>;
 }
 
 export function Pane({ title, sub, tools, footer, flush, className, bodyClassName, children }) {
@@ -162,12 +230,12 @@ export function EmptyRow({ cols, children }) {
   );
 }
 
-export function Meter({ value, max = 100, color, label }) {
+export function Meter({ value, max = 100, color, label, showValue = true }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <div className="meter" role="meter" aria-valuenow={value} aria-valuemin={0} aria-valuemax={max} aria-label={label}>
       <div className="meter-track"><div className="meter-fill" style={{ width: `${pct}%`, background: color }} /></div>
-      <span className="meter-value">{Math.round(pct)}%</span>
+      {showValue && <span className="meter-value">{Math.round(pct)}%</span>}
     </div>
   );
 }

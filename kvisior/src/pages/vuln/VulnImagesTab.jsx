@@ -1,8 +1,16 @@
 import { SevBadge } from '../../components/ui';
 import { EmptyState } from '../../components/EmptyState';
-import { sevColor } from '../../data/scanner';
+import { Crumbs, Tag, EmptyRow, sevTone, cx } from '../../components/kit';
 import { Pager } from './VulnPager';
 import { Icon } from '../../components/Icon';
+
+const ago = iso => {
+  if (!iso) return null;
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
+};
+
+const HOUR = 60 * 60 * 1000;
 
 export function VulnImagesTab({
   imageDrill, setImageDrill,
@@ -11,62 +19,58 @@ export function VulnImagesTab({
   paginate, pageSize, page, setPage, setPageSize,
   setSelected, filterInput,
 }) {
+  const pagerProps = { pageSize, page, setPage, setPageSize };
   return (
-    <div className="card" style={{ marginTop: 16, marginRight: 24 }}>
+    <div className="card">
       <div className="card-header">
-        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {imageDrill ? <><span style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setImageDrill(null)}>Images</span><span style={{ color: 'var(--text-muted)' }}>›</span><span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{imageDrill.name}</span><span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({imageDrill.cves?.length || 0} CVEs)</span></>
-            : <>Container Images ({imageRows.length})</>}
+        <div className="card-title">
+          {imageDrill
+            ? <Crumbs items={[{ label: 'Images', onClick: () => setImageDrill(null) }, { label: <span className="mono t-sm">{imageDrill.name}</span> }]} meta={`${imageDrill.cves?.length || 0} CVEs`} />
+            : <>Container Images <span className="card-sub">({imageRows.length})</span></>}
         </div>
-        {imageDrill ? <button onClick={() => setImageDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button> : filterInput}
+        {imageDrill
+          ? <button type="button" onClick={() => setImageDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button>
+          : filterInput}
       </div>
       {!imageDrill ? (() => {
-        const filtered = imageRows.filter(r => {
-          if (!q) return true;
-          const query = q.toLowerCase();
-          return [r.image, r.name, r.ref, r.tag].some(value =>
-            String(value || '').toLowerCase().includes(query));
-        });
+        const query = (q || '').toLowerCase();
+        const filtered = imageRows.filter(r => !query || [r.image, r.name, r.ref, r.tag].some(v => String(v || '').toLowerCase().includes(query)));
         return (
           <>
             <div className="table-wrap">
               <table className="data-table">
                 <thead><tr><th>Image</th><th>Tag</th><th>Total CVEs</th><th>Digest</th><th>Scanned</th></tr></thead>
                 <tbody>
-                  {results.length === 0 ? <tr><td colSpan={5}><EmptyState icon="package" title="No images scanned" sub="Run a scan to see vulnerability data for cluster images." action={agentOnline && <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={handleScanAll}>Scan Now</button>} /></td></tr>
+                  {results.length === 0
+                    ? <tr className="static"><td colSpan={5}>
+                        <EmptyState icon="package" title="No images scanned" sub="Run a scan to see vulnerability data for cluster images."
+                          action={agentOnline && <button type="button" className="btn btn-primary" onClick={handleScanAll}>Scan Now</button>} />
+                      </td></tr>
                     : paginate(filtered).map((r, i) => {
-                        const age = r._res?.scannedAt ? Math.round((Date.now() - new Date(r._res.scannedAt)) / 60000) : null;
                         const currentDigest  = r._res?.digest         || r.digest         || '';
                         const previousDigest = r._res?.previousDigest || r.previousDigest || '';
-                        const _changedFlag   = !!(r._res?.digestChanged ?? r.digestChanged);
-                        const _changedTs     = r._res?.digestChangedAt || r._res?.scannedAt;
-                        const _changedAge    = _changedTs ? Date.now() - new Date(_changedTs).getTime() : 0;
-                        const changed        = _changedFlag && _changedAge < 60 * 60 * 1000;
+                        const changedTs      = r._res?.digestChangedAt || r._res?.scannedAt;
+                        const changed        = !!(r._res?.digestChanged ?? r.digestChanged) && changedTs && Date.now() - new Date(changedTs).getTime() < HOUR;
                         return (
-                          <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setImageDrill(r._res || { name: r.name, tag: r.tag, cves: [] })}>
-                            <td className="td-primary mono" style={{ fontSize: 11 }}>{r.name}</td>
-                            <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.tag || 'latest'}</td>
-                            <td className="mono" style={{ fontSize: 12, color: r.summary?.total > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{r.summary?.total || '—'}</td>
+                          <tr key={i} onClick={() => setImageDrill(r._res || { name: r.name, tag: r.tag, cves: [] })}>
+                            <td className="td-primary mono t-xs">{r.name}</td>
+                            <td className="mono t-xs t-muted">{r.tag || 'latest'}</td>
+                            <td className={cx('mono t-sm', r.summary?.total > 0 ? 't-danger' : 't-muted')}>{r.summary?.total || '—'}</td>
                             <td>
                               {!currentDigest
-                                ? <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                                ? <span className="t-muted">—</span>
                                 : changed
-                                  ? <span
-                                      title={`Baseline: ${previousDigest.slice(7,19)}…\nCurrent:  ${currentDigest.slice(7,19)}…`}
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, fontFamily: 'JetBrains Mono,monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.35)', color: 'var(--danger)', cursor: 'help' }}
-                                    ><Icon name="alert" /> changed</span>
-                                  : <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono,monospace' }}>not changed</span>
-                              }
+                                  ? <Tag tone="danger" mono outline title={`Baseline: ${previousDigest.slice(7, 19)}…\nCurrent:  ${currentDigest.slice(7, 19)}…`}><Icon name="alert" /> changed</Tag>
+                                  : <span className="mono t-xs t-muted">not changed</span>}
                             </td>
-                            <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{age !== null ? (age < 60 ? `${age}m ago` : `${Math.round(age / 60)}h ago`) : '—'}</td>
+                            <td className="t-sm t-muted">{ago(r._res?.scannedAt) || '—'}</td>
                           </tr>
                         );
-                      })
-                  }
+                      })}
                 </tbody>
               </table>
             </div>
-            <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={filtered.length} />
+            <Pager {...pagerProps} total={filtered.length} />
           </>
         );
       })() : (() => {
@@ -77,22 +81,25 @@ export function VulnImagesTab({
               <table className="data-table">
                 <thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>Package</th><th>Version</th><th>Fix</th></tr></thead>
                 <tbody>
-                  {!drillSorted.length ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32, fontSize: 13 }}>No CVEs found for this image</td></tr>
-                    : paginate(drillSorted).map((c, i) => (
-                        <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setSelected(c)}>
-                          <td className="td-primary mono" style={{ fontSize: 11 }}>{c.id}</td>
-                          <td><SevBadge sev={c.severity?.toUpperCase()} /></td>
-                          <td className="mono" style={{ fontSize: 12, fontWeight: 700, color: sevColor(c.severity) }}>{c.cvssV3Score > 0 ? c.cvssV3Score.toFixed(1) : '—'}</td>
-                          <td style={{ fontSize: 12 }}>{c.pkgName}</td>
-                          <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.pkgVersion}</td>
-                          <td style={{ color: c.hasFix ? 'var(--accent-3)' : 'var(--text-muted)', fontSize: 11 }}>{c.hasFix ? `→ ${c.fixedIn}` : '—'}</td>
-                        </tr>
-                      ))
-                  }
+                  {!drillSorted.length
+                    ? <EmptyRow cols={6}>No CVEs found for this image</EmptyRow>
+                    : paginate(drillSorted).map((c, i) => {
+                        const tone = sevTone(c.severity);
+                        return (
+                          <tr key={i} onClick={() => setSelected(c)}>
+                            <td className="td-primary mono t-xs">{c.id}</td>
+                            <td><SevBadge sev={c.severity?.toUpperCase()} /></td>
+                            <td className={cx('mono t-sm t-strong', tone && `t-${tone}`)}>{c.cvssV3Score > 0 ? c.cvssV3Score.toFixed(1) : '—'}</td>
+                            <td className="t-sm">{c.pkgName}</td>
+                            <td className="mono t-xs t-muted">{c.pkgVersion}</td>
+                            <td className={cx('t-xs', c.hasFix ? 't-ok' : 't-muted')}>{c.hasFix ? `→ ${c.fixedIn}` : '—'}</td>
+                          </tr>
+                        );
+                      })}
                 </tbody>
               </table>
             </div>
-            <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={drillSorted.length} />
+            <Pager {...pagerProps} total={drillSorted.length} />
           </>
         );
       })()}

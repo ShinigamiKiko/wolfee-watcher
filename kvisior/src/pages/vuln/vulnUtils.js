@@ -25,27 +25,12 @@ function buildSBOM(results) {
   });
 }
 
-function sbomLicClass(lic = '') {
+function sbomLicTone(lic = '') {
   const l = lic.toLowerCase();
-  if (l.includes('gpl') || l.includes('agpl')) return 'badge-gpl';
-  if (l.includes('apache'))                    return 'badge-apache';
-  if (l.includes('mit'))                       return 'badge-mit';
-  if (l.includes('bsd') || l.includes('isc')) return 'badge-bsd';
-  return 'badge-bsd';
-}
-function sbomSevClass(s = '') {
-  switch (s.toUpperCase()) {
-    case 'CRITICAL': return 'sev-critical';
-    case 'HIGH':     return 'sev-high';
-    case 'MEDIUM':   return 'sev-medium';
-    default:         return 'sev-low';
-  }
-}
-function sbomScoreColor(v, type) {
-  const n = parseFloat(v) || 0;
-  if (type === 'cvss') return n >= 9 ? 'red' : n >= 7 ? 'orange' : 'purple';
-  if (type === 'epss') return n >= 0.5 ? 'red' : n >= 0.1 ? 'orange' : 'purple';
-  return 'purple';
+  if (l.includes('gpl'))    return 'danger';
+  if (l.includes('apache')) return 'accent';
+  if (l.includes('mit'))    return 'ok';
+  return 'violet';
 }
 function sbomVulnInfo(cves) {
   if (!cves.length) return { dot: 'none', label: '0' };
@@ -60,4 +45,4 @@ function sbomVulnInfo(cves) {
   return { dot, label };
 }
 
-export { buildSBOM, sbomLicClass, sbomSevClass, sbomScoreColor, sbomVulnInfo };
+export { buildSBOM, sbomLicTone, sbomVulnInfo };
