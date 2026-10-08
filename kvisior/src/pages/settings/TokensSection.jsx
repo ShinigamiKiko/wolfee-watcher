@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { apiJSON, formatDate } from './settingsApi';
-import { RoleBadge, Field } from './settingsUi';
+import { RoleBadge, Field, SettingsSection, EditorBox, ListState } from './settingsUi';
+import { Notice } from '../../components/kit';
 import { ROLE_OPTIONS, TOKEN_TTL_OPTIONS } from './settingsConstants';
 
 export function TokensSection({ toast }) {
@@ -48,75 +49,54 @@ export function TokensSection({ toast }) {
   };
 
   return (
-    <div className="card" style={{padding:24,border:'none'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:3}}>API Tokens</div>
-          <div style={{fontSize:12,color:'var(--text-muted)'}}>Tokens allow programmatic access to the wolfee-watcher API.</div>
-        </div>
-        {can('tokens.create') ? (
-          <button className="btn btn-primary" onClick={startCreate}>+ Generate token</button>
-        ) : (
-          <span style={{fontSize:11,color:'var(--text-muted)'}}>Read-only — cannot create tokens</span>
-        )}
-      </div>
-
-      {error && <div style={{fontSize:12,color:'var(--danger)',marginBottom:10}}>Error: {error}</div>}
-
+    <SettingsSection
+      title="API Tokens"
+      desc="Tokens allow programmatic access to the wolfee-watcher API."
+      canCreate={can('tokens.create')}
+      readOnlyText="Read-only — cannot create tokens"
+      action={<button type="button" className="btn btn-primary" onClick={startCreate}>+ Generate token</button>}
+      error={error}
+    >
       {creating && (
-        <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8,marginBottom:16,background:'var(--bg-elevated)'}}>
-          <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>New API token</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="Name *" value={creating.name} onChange={v => setCreating(c => ({...c, name: v}))} />
-            <Field label="Role" type="select" value={creating.role} options={ROLE_OPTIONS}
-              onChange={v => setCreating(c => ({...c, role: v}))} />
-            <Field label="Owner" type="select" value={creating.user_id}
-              options={[{value: '', label: '— No owner —'}, ...users.map(u => ({value: u.id, label: u.username}))]}
-              onChange={v => setCreating(c => ({...c, user_id: v}))} />
-            <Field label="Expires" type="select" value={creating.expires_in} options={TOKEN_TTL_OPTIONS}
-              onChange={v => setCreating(c => ({...c, expires_in: v}))} />
-          </div>
-          <div style={{display:'flex',gap:8,marginTop:12}}>
-            <button className="btn btn-primary" onClick={save}>Generate</button>
-            <button onClick={() => setCreating(null)} className="btn btn-ghost btn-sm">Cancel</button>
-          </div>
-        </div>
+        <EditorBox title="New API token" saveLabel="Generate" onSave={save} onCancel={() => setCreating(null)}>
+          <Field label="Name *" value={creating.name} onChange={v => setCreating(c => ({ ...c, name: v }))} />
+          <Field label="Role" type="select" value={creating.role} options={ROLE_OPTIONS} onChange={v => setCreating(c => ({ ...c, role: v }))} />
+          <Field label="Owner" type="select" value={creating.user_id}
+            options={[{ value: '', label: '— No owner —' }, ...users.map(u => ({ value: u.id, label: u.username }))]}
+            onChange={v => setCreating(c => ({ ...c, user_id: v }))} />
+          <Field label="Expires" type="select" value={creating.expires_in} options={TOKEN_TTL_OPTIONS} onChange={v => setCreating(c => ({ ...c, expires_in: v }))} />
+        </EditorBox>
       )}
 
       {revealed && (
-        <div style={{padding:14,border:'1px solid var(--accent-3)',borderRadius:8,marginBottom:16,background:'rgba(34,197,94,.08)'}}>
-          <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:'var(--accent-3)'}}>Token "{revealed.name}" generated</div>
-          <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:8}}>Copy it now. The plaintext is not stored and will not be shown again.</div>
-          <div className="mono" style={{fontSize:12,padding:'8px 10px',background:'var(--bg-base)',borderRadius:6,wordBreak:'break-all',color:'var(--text-primary)'}}>{revealed.plaintext}</div>
-          <button onClick={() => { navigator.clipboard.writeText(revealed.plaintext); }} className="btn btn-ghost btn-sm" style={{marginTop:8}}>Copy to clipboard</button>
-          <button onClick={() => setRevealed(null)} className="btn btn-ghost btn-sm" style={{marginTop:8, marginLeft:6}}>Dismiss</button>
-        </div>
+        <Notice tone="ok" icon="check">
+          <div className="t-strong t-ok mb-4">Token "{revealed.name}" generated</div>
+          <div className="t-xs t-secondary mb-8">Copy it now. The plaintext is not stored and will not be shown again.</div>
+          <div className="secret-box">{revealed.plaintext}</div>
+          <div className="row mt-8">
+            <button type="button" onClick={() => navigator.clipboard.writeText(revealed.plaintext)} className="btn btn-ghost btn-sm">Copy to clipboard</button>
+            <button type="button" onClick={() => setRevealed(null)} className="btn btn-ghost btn-sm">Dismiss</button>
+          </div>
+        </Notice>
       )}
 
       <div className="table-wrap">
-        <table className="data-table">
-          <thead><tr><th>Name</th><th>Role</th><th>Owner</th><th>Created</th><th>Expires</th><th>Status</th><th/></tr></thead>
+        <table className="data-table data-table--static">
+          <thead><tr><th>Name</th><th>Role</th><th>Owner</th><th>Created</th><th>Expires</th><th>Status</th><th aria-label="Actions" /></tr></thead>
           <tbody>
-            {tokens == null && <tr><td colSpan={7} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>Loading…</td></tr>}
-            {tokens != null && tokens.length === 0 && <tr><td colSpan={7} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>No tokens yet</td></tr>}
+            <ListState items={tokens} cols={7} empty="No tokens yet" />
             {(tokens || []).map(t => {
               const expired = t.expires_at && new Date(t.expires_at) < new Date();
               return (
                 <tr key={t.id}>
-                  <td className="td-primary mono" style={{fontSize:12}}>{t.name}</td>
-                  <td><RoleBadge role={t.role}/></td>
-                  <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.username || '—'}</td>
-                  <td style={{fontSize:12,color:'var(--text-muted)'}}>{formatDate(t.created_at)}</td>
-                  <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.expires_at ? formatDate(t.expires_at) : 'Never'}</td>
-                  <td>
-                    <span className={`status-dot ${expired ? 'status-warn' : 'status-active'}`}>
-                      {expired ? 'Expired' : 'Active'}
-                    </span>
-                  </td>
-                  <td>
-                    {can('tokens.delete') && (
-                      <button onClick={() => revoke(t)} className="btn btn-ghost btn-sm btn-tone-danger">Revoke</button>
-                    )}
+                  <td className="td-primary mono t-sm">{t.name}</td>
+                  <td><RoleBadge role={t.role} /></td>
+                  <td className="t-sm t-muted">{t.username || '—'}</td>
+                  <td className="t-sm t-muted">{formatDate(t.created_at)}</td>
+                  <td className="t-sm t-muted">{t.expires_at ? formatDate(t.expires_at) : 'Never'}</td>
+                  <td><span className={`status-dot ${expired ? 'status-warn' : 'status-active'}`}>{expired ? 'Expired' : 'Active'}</span></td>
+                  <td className="row-actions-cell">
+                    {can('tokens.delete') && <button type="button" onClick={() => revoke(t)} className="btn btn-ghost btn-sm btn-tone-danger">Revoke</button>}
                   </td>
                 </tr>
               );
@@ -124,6 +104,6 @@ export function TokensSection({ toast }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </SettingsSection>
   );
 }

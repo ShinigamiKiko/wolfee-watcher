@@ -1,0 +1,22 @@
+.yaml-pre { flex: 1; max-height: none; color: var(--text-primary); line-height: 1.65; }
+
+.log-tools { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; padding: 2px 0 10px; flex-shrink: 0; }
+.log-box {
+  flex: 1; min-height: 160px; overflow: auto; padding: 12px 14px; white-space: pre;
+  background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.75; color: var(--text-secondary);
+  > div { min-height: 1em; }
+}
+.log-line--error { color: var(--danger-text); }
+.log-line--warn { color: var(--warning-text); }
+.log-line--info { color: var(--text-primary); }
+
+.dt-range { display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+.dt-field { display: grid; gap: 3px; }
+.dt-field label { font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); }
+.dt-field .input { height: 28px; font-family: var(--font-mono); font-size: var(--fs-xs); color-scheme: dark; }
+.dt-arrow { color: var(--text-muted); padding-bottom: 6px; }
+
+.fill-center { flex: 1; display: flex; align-items: center; justify-content: center; }
+.events-scroll { flex: 1; overflow-y: auto; }
+.subjects .badge { max-width: 120px; }

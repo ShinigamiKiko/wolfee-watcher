@@ -77,6 +77,12 @@ export function epssLabel(score) {
   return { text: pct, color: 'var(--text-muted)' };
 }
 
+export function epssTone(score) {
+  if (score >= 0.5) return 'danger';
+  if (score >= 0.1) return 'warning';
+  return undefined;
+}
+
 export function sevColor(sev) {
   switch ((sev || '').toUpperCase()) {
     case 'CRITICAL': return 'var(--danger)';

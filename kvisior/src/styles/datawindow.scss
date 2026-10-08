@@ -34,6 +34,11 @@
   > .aul-pager { padding-top: 0; }
 }
 
+.dw-foot--sticky {
+  position: sticky; bottom: 0; z-index: 3; margin-top: auto;
+  padding: 8px 12px; background: var(--bg-surface); border-top: 1px solid var(--border);
+}
+
 .pager {
   display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; align-items: center;
   color: var(--text-secondary); font-size: 13px;

@@ -10,7 +10,7 @@ function DetailModal({ item, type, onClose }) {
           <div className="au-modal__hdr-left">
             {type==='bench' && <>
               <code className="au-modal__id">{item.number}</code>
-              <span style={{color:STATUS_COLOR[item.status],fontSize:11,fontWeight:700}}>{item.status}</span>
+              <span className="t-xs t-strong" style={{color:STATUS_COLOR[item.status]}}>{item.status}</span>
             </>}
             {type==='hunter' && item.id && <>
               <code className="au-modal__id">{item.id}</code>

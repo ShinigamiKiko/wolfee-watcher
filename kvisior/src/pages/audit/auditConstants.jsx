@@ -6,7 +6,7 @@ class AuditBoundary extends Component {
   static getDerivedStateFromError(err) { return { err }; }
   render() {
     if (this.state.err) return (
-      <div style={{padding:24,color:'var(--danger)',fontFamily:'monospace',fontSize:12}}>
+      <div className="page-error mono t-sm">
         <b>Error:</b><pre>{String(this.state.err)}</pre>
       </div>
     );

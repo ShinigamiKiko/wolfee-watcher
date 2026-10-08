@@ -20,7 +20,7 @@ export function CreateModal({ showModal, setShowModal, formName, setFormName, fo
               onChange={e => setFormName(e.target.value)}
               placeholder="e.g. prod-redis-trap"
             />
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <div className="field-hint">
               Trap name — the pod is created as <code>h-&lt;name&gt;</code>
             </div>
           </div>
@@ -32,7 +32,7 @@ export function CreateModal({ showModal, setShowModal, formName, setFormName, fo
               onChange={e => setFormNs(e.target.value)}
               placeholder="production"
             />
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <div className="field-hint">
               Deploy in target namespace — not kube-system
             </div>
           </div>

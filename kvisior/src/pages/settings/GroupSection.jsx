@@ -1,31 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { apiJSON, formatDate } from './settingsApi';
-import { RoleBadge, Field } from './settingsUi';
+import { RoleBadge, Field, SettingsSection, EditorBox, ListState } from './settingsUi';
 import { ROLE_OPTIONS } from './settingsConstants';
-
-function GroupEditor({ editing, setEditing, onSave, onCancel }) {
-  return (
-    <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8,marginBottom:16,background:'var(--bg-elevated)'}}>
-      <div style={{fontSize:12,fontWeight:600,marginBottom:10,color:'var(--text-primary)'}}>
-        {editing.id ? 'Edit group' : 'New group'}
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-        <Field label="Name *" value={editing.name} onChange={v => setEditing(e => ({...e, name: v}))} />
-        <Field label="Role" type="select" value={editing.role} options={ROLE_OPTIONS}
-          onChange={v => setEditing(e => ({...e, role: v}))} />
-        <div style={{gridColumn:'span 2'}}>
-          <Field label="Description" value={editing.description}
-            onChange={v => setEditing(e => ({...e, description: v}))} />
-        </div>
-      </div>
-      <div style={{display:'flex',gap:8,marginTop:12}}>
-        <button className="btn btn-primary" onClick={onSave}>Save</button>
-        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
-      </div>
-    </div>
-  );
-}
 
 export function GroupSection({ toast }) {
   const { can } = usePerms();
@@ -70,56 +47,45 @@ export function GroupSection({ toast }) {
   };
 
   return (
-    <div className="card" style={{padding:24,border:'none'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:3}}>Groups</div>
-          <div style={{fontSize:12,color:'var(--text-muted)'}}>Bundle users and assign shared roles.</div>
-        </div>
-        {can('groups.create') ? (
-          <button className="btn btn-primary" onClick={startCreate}>+ New group</button>
-        ) : (
-          <span style={{fontSize:11,color:'var(--text-muted)'}}>Read-only — cannot create groups</span>
-        )}
-      </div>
-
-      {error && <div style={{fontSize:12,color:'var(--danger)',marginBottom:10}}>Error: {error}</div>}
-
+    <SettingsSection
+      title="Groups"
+      desc="Bundle users and assign shared roles."
+      canCreate={can('groups.create')}
+      readOnlyText="Read-only — cannot create groups"
+      action={<button type="button" className="btn btn-primary" onClick={startCreate}>+ New group</button>}
+      error={error}
+    >
       {editing && (
-        <GroupEditor
-          editing={editing}
-          setEditing={setEditing}
-          onSave={save}
-          onCancel={() => setEditing(null)}
-        />
+        <EditorBox title={editing.id ? 'Edit group' : 'New group'} onSave={save} onCancel={() => setEditing(null)}>
+          <Field label="Name *" value={editing.name} onChange={v => setEditing(e => ({ ...e, name: v }))} />
+          <Field label="Role" type="select" value={editing.role} options={ROLE_OPTIONS} onChange={v => setEditing(e => ({ ...e, role: v }))} />
+          <Field span label="Description" value={editing.description} onChange={v => setEditing(e => ({ ...e, description: v }))} />
+        </EditorBox>
       )}
 
       <div className="table-wrap">
-        <table className="data-table">
-          <thead><tr><th>Name</th><th>Description</th><th>Members</th><th>Role</th><th>Created</th><th/></tr></thead>
+        <table className="data-table data-table--static">
+          <thead><tr><th>Name</th><th>Description</th><th>Members</th><th>Role</th><th>Created</th><th aria-label="Actions" /></tr></thead>
           <tbody>
-            {groups == null && <tr><td colSpan={6} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>Loading…</td></tr>}
-            {groups != null && groups.length === 0 && <tr><td colSpan={6} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>No groups yet</td></tr>}
+            <ListState items={groups} cols={6} empty="No groups yet" />
             {(groups || []).map(g => (
               <tr key={g.id}>
-                <td className="td-primary mono" style={{fontSize:12}}>{g.name}</td>
-                <td style={{fontSize:12,color:'var(--text-muted)',maxWidth:280}}>{g.description || '—'}</td>
-                <td style={{fontSize:12,color:'var(--text-muted)'}}>{g.member_count}</td>
-                <td><RoleBadge role={g.role}/></td>
-                <td style={{fontSize:12,color:'var(--text-muted)'}}>{formatDate(g.created_at)}</td>
-                <td style={{display:'flex',gap:6}}>
-                  {can('groups.write') && (
-                    <button onClick={() => startEdit(g)} className="btn btn-ghost btn-sm">Edit</button>
-                  )}
-                  {can('groups.delete') && (
-                    <button onClick={() => remove(g)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>
-                  )}
+                <td className="td-primary mono t-sm">{g.name}</td>
+                <td className="t-sm t-muted wrap">{g.description || '—'}</td>
+                <td className="t-sm t-muted">{g.member_count}</td>
+                <td><RoleBadge role={g.role} /></td>
+                <td className="t-sm t-muted">{formatDate(g.created_at)}</td>
+                <td className="row-actions-cell">
+                  <span className="row-actions">
+                    {can('groups.write') && <button type="button" onClick={() => startEdit(g)} className="btn btn-ghost btn-sm">Edit</button>}
+                    {can('groups.delete') && <button type="button" onClick={() => remove(g)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>}
+                  </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </SettingsSection>
   );
 }

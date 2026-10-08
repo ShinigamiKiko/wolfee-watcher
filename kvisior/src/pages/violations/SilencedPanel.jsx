@@ -2,6 +2,10 @@ import { ackKey } from './violationsConstants';
 import { DataWindow } from '../../components/DataWindow';
 import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
+import { Badge, Tag } from '../../components/kit';
+
+const TAB_TONE = { Syscalls: 'accent', Tracepoints: 'accent', 'LSM Hooks': 'violet', Build: 'violet', Deploy: 'ok', Audit: 'warning' };
+const KIND_TONE = { Silent: 'warning', ACK: 'accent', DISMISSED: 'danger' };
 
 export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepointViolations = [], lsmViolations = [], buildViolations, deployViolations, auditViolations }) {
   const parseKey = key => {
@@ -12,7 +16,6 @@ export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepo
     if (key.startsWith('dep::')) { const [,workload,ns]    = key.split('::'); return { tab:'Deploy',      parts:[workload,ns] }; }
     const [,kind,name,ns]        = key.split('::');                           return { tab:'Audit',       parts:[kind,name,ns] };
   };
-  const tabColor = { Syscalls:'var(--accent)', Tracepoints:'#38bdf8', 'LSM Hooks':'#f472b6', Build:'#a78bfa', Deploy:'#34d399', Audit:'#f59e0b' };
   const colLabel = {
     Syscalls:    ['Pod','Syscall','Namespace'],
     Tracepoints: ['Pod','Tracepoint','Namespace'],
@@ -53,79 +56,39 @@ export function SilencedPanel({ silenced, doUnsilent, syscallViolations, tracepo
   });
   const { pageItems: pageEntries, pager } = usePaged(entries, 'violations.silenced');
   return (
-    <div style={{ marginRight: 24 }}>
-      <div style={{ padding: '0 2px 10px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>Silenced</span>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>hidden until manually removed</span>
+    <>
+      <div className="section-head">
+        <div className="section-title">Silenced <span className="card-sub">hidden until manually removed</span></div>
       </div>
       <DataWindow label="Silenced violations" deps={[entries.length === 0]} footer={<Pager {...pager} noun="entries" />}>
-      {entries.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>No silenced violations</div>
-      ) : (
-          <table className="data-table">
-            <thead><tr><th>Tab</th><th>Type</th><th>Parameters</th><th>Suppressed</th><th>Expires</th><th></th></tr></thead>
+        {entries.length === 0 ? (
+          <div className="empty-state empty-state--compact">No silenced violations</div>
+        ) : (
+          <table className="data-table data-table--static">
+            <thead><tr><th>Tab</th><th>Type</th><th>Parameters</th><th>Suppressed</th><th>Expires</th><th aria-label="Actions" /></tr></thead>
             <tbody>
-              {pageEntries.map(({ key, kind, tab, parts, expiresAt }) => {
-                const color   = tabColor[tab];
-                const labels  = colLabel[tab];
-                const expLabel = msToLabel(expiresAt);
-                const badge = {
-                  Silent:    { bg:'rgba(251,191,36,.12)', fg:'var(--warning)',    bd:'rgba(251,191,36,.3)'  },
-                  FP:        { bg:'rgba(100,116,139,.15)', fg:'var(--text-muted)', bd:'rgba(100,116,139,.3)' },
-                  ACK:       { bg:'rgba(56,189,248,.12)',  fg:'#38bdf8',           bd:'rgba(56,189,248,.3)'  },
-                  DISMISSED: { bg:'rgba(248,113,113,.12)', fg:'var(--danger)',     bd:'rgba(248,113,113,.3)' },
-                }[kind] || { bg:'rgba(100,116,139,.15)', fg:'var(--text-muted)', bd:'rgba(100,116,139,.3)' };
-                return (
-                  <tr key={key}>
-                    <td>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
-                        background: `${color}22`, color, border: `1px solid ${color}44`, fontFamily: 'monospace' }}>
-                        {tab}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
-                        background: badge.bg, color: badge.fg, border: `1px solid ${badge.bd}` }}>
-                        {kind}
-                      </span>
-                    </td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11 }}>
-                      {parts.map((p, i) => p ? (
-                        <span key={i} style={{ marginRight: 10 }}>
-                          <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{labels[i]}: </span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{p}</span>
-                        </span>
+              {pageEntries.map(({ key, kind, tab, parts, expiresAt }) => (
+                <tr key={key}>
+                  <td><Badge tone={TAB_TONE[tab]}>{tab}</Badge></td>
+                  <td><Tag tone={KIND_TONE[kind]}>{kind}</Tag></td>
+                  <td className="mono t-xs">
+                    <span className="row row--wrap row--loose">
+                      {parts.map((part, i) => part ? (
+                        <span key={i}><span className="t-muted">{colLabel[tab][i]}: </span>{part}</span>
                       ) : null)}
-                    </td>
-                    <td>
-                      {kind === 'Silent' && (countByKey[key] || 0) > 0 && (
-                        <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10,
-                          background: 'rgba(251,191,36,.12)', color: 'var(--warning)',
-                          border: '1px solid rgba(251,191,36,.2)', fontWeight: 600 }}>
-                          {countByKey[key]}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono,monospace', whiteSpace: 'nowrap' }}>
-                      {expiresAt ? (expLabel || '—') : '∞'}
-                    </td>
-                    <td>
-                      <button onClick={() => doUnsilent(key)}
-                        style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-                          border: '1px solid rgba(251,191,36,.35)', cursor: 'pointer',
-                          background: 'transparent', color: 'var(--warning)' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(251,191,36,.1)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        Unsilent
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                    </span>
+                  </td>
+                  <td>{kind === 'Silent' && (countByKey[key] || 0) > 0 && <Tag tone="warning" mono>{countByKey[key]}</Tag>}</td>
+                  <td className="mono t-xs t-muted">{expiresAt ? (msToLabel(expiresAt) || '—') : '∞'}</td>
+                  <td className="row-actions-cell">
+                    <button type="button" className="btn btn-xs btn-ghost btn-tone-warning" onClick={() => doUnsilent(key)}>Unsilent</button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-      )}
+        )}
       </DataWindow>
-    </div>
+    </>
   );
 }

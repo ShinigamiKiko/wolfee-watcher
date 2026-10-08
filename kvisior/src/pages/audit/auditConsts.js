@@ -1,9 +1,9 @@
-export const STATUS_COLOR = { PASS:'var(--accent-3)', FAIL:'var(--danger)', WARN:'var(--warning)', INFO:'var(--text-muted)' };
+export const STATUS_COLOR = { PASS:'var(--ok-text)', FAIL:'var(--danger-text)', WARN:'var(--warning-text)', INFO:'var(--text-dim)' };
 export const SEV = {
-  critical: { color:'#f87171', bg:'rgba(248,113,113,0.1)',  border:'rgba(248,113,113,0.25)' },
-  high:     { color:'#fb923c', bg:'rgba(251,146,60,0.1)',   border:'rgba(251,146,60,0.25)' },
-  medium:   { color:'#fbbf24', bg:'rgba(251,191,36,0.1)',   border:'rgba(251,191,36,0.25)' },
-  low:      { color:'#94a3b8', bg:'rgba(148,163,184,0.08)', border:'rgba(148,163,184,0.2)' },
+  critical: { color:'var(--danger-text)',    bg:'var(--danger-tint)',         border:'rgba(239,68,68,0.3)' },
+  high:     { color:'var(--warning-text)',   bg:'var(--warning-tint-strong)', border:'rgba(245,158,11,0.35)' },
+  medium:   { color:'var(--info)',           bg:'var(--info-tint)',           border:'rgba(99,102,241,0.35)' },
+  low:      { color:'var(--text-secondary)', bg:'rgba(255,255,255,0.06)',     border:'var(--border-strong)' },
 };
 export const sev = s => SEV[s] || SEV.low;
 export const SEV_ORDER = { critical:0, high:1, medium:2, low:3 };

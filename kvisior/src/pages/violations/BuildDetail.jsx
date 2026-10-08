@@ -1,6 +1,6 @@
 import { useScanner } from '../../context/ScannerContext';
 import { SevBadge }   from '../../components/ui';
-import { Icon } from '../../components/Icon';
+import { SidePanel, DetailSection, KV, Notice } from '../../components/kit';
 
 const fmtLayer = (raw = '') => raw
   .replace(/^\/bin\/sh -c #\(nop\)\s+/, '')
@@ -8,91 +8,65 @@ const fmtLayer = (raw = '') => raw
   .trim() || raw;
 
 function highlight(text, query) {
-  if (!query) return <span>{text}</span>;
+  if (!query) return text;
   const lowerText = text.toLowerCase();
   const lowerQuery = query.toLowerCase();
   const parts = [];
   let offset = 0;
   let index;
-
   while ((index = lowerText.indexOf(lowerQuery, offset)) !== -1) {
     if (index > offset) parts.push(<span key={offset}>{text.slice(offset, index)}</span>);
-    parts.push(
-      <mark key={index} style={{ background: 'rgba(245,158,11,.35)', color: 'var(--warning)', borderRadius: 3, padding: '0 2px', fontWeight: 700 }}>
-        {text.slice(index, index + query.length)}
-      </mark>
-    );
+    parts.push(<mark key={index} className="hit">{text.slice(index, index + query.length)}</mark>);
     offset = index + query.length;
   }
   if (offset < text.length) parts.push(<span key={offset}>{text.slice(offset)}</span>);
-  return parts.length ? parts : <span>{text}</span>;
+  return parts.length ? parts : text;
 }
 
 export function BuildDetail({ v, onClose }) {
+  const { histories } = useScanner();
   if (!v) return null;
 
-  const { histories } = useScanner();
-  const hist    = histories.find(h => h.image === v.image);
+  const hist      = histories.find(h => h.image === v.image);
   const matchText = v.instruction?.trim().slice(0, 256) || '';
-  const layers  = hist?.layers || [];
+  const layers    = hist?.layers || [];
+
+  const status = hist?.status === 'unavailable'
+    ? <span className="t-danger t-xs">{hist.error}</span>
+    : (!hist || hist.status === 'fetching') ? <span className="t-muted t-xs">loading…</span> : null;
 
   return (
-    <div className="detail-panel open">
-      <div className="detail-panel-inner">
-        <div className="dp-header">
-          <div style={{ minWidth: 0 }}>
-            <div className="dp-title">{v.policy}</div>
-            <div className="dp-meta" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11 }}>{v.image}</div>
-          </div>
-          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
-        </div>
+    <SidePanel title={v.policy} meta={<span className="mono">{v.image}</span>} onClose={onClose} actions={<SevBadge sev={v.sev} />}>
+      <Notice tone="warning">{v.detail}</Notice>
 
-        <div style={{ marginBottom: 12 }}><SevBadge sev={v.sev} /></div>
-
-        <div style={{ padding: '9px 12px', background: 'rgba(245,158,11,.07)', border: '1px solid rgba(245,158,11,.2)',
-          borderRadius: 8, marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          <Icon name="alert" style={{ color: 'var(--warning)', marginRight: 6 }} />
-          {v.detail}
-        </div>
-
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-          color: 'var(--text-muted)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-          Dockerfile
-          {hist?.status === 'unavailable' && <span style={{ color: 'var(--danger)', marginLeft: 8, textTransform: 'none', fontWeight: 400, fontSize: 10 }}>{hist.error}</span>}
-          {(!hist || hist.status === 'fetching') && <span style={{ color: 'var(--text-muted)', marginLeft: 8, textTransform: 'none', fontWeight: 400, fontSize: 10 }}>loading…</span>}
-        </div>
-
+      <DetailSection title="Dockerfile" aside={status}>
         {layers.length > 0 ? (
-          <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, lineHeight: 1.75,
-            background: 'var(--bg-base)', borderRadius: 8, border: '1px solid var(--border)',
-            overflow: 'auto', maxHeight: 400, padding: '8px 0' }}>
+          <ol className="layers">
             {layers.map((l, i) => {
               const instruction = fmtLayer(l.created_by);
               if (!instruction || instruction === 'nop') return null;
               const isEmpty = l.empty_layer;
               const isMatch = !isEmpty && matchText && instruction.toLowerCase().includes(matchText.toLowerCase());
               return (
-                <div key={i} style={{ display: 'flex', borderLeft: isMatch ? '2px solid var(--warning)' : '2px solid transparent', padding: '0 10px 0 8px', opacity: isEmpty ? 0.45 : 1 }}>
-                  <span style={{ color: 'var(--text-muted)', userSelect: 'none', marginRight: 14, minWidth: 22, textAlign: 'right', flexShrink: 0, opacity: .4, fontSize: 10 }}>
-                    {i + 1}
-                  </span>
-                  <span style={{ color: isEmpty ? 'var(--text-muted)' : 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 }}>
-                    {isMatch ? highlight(instruction, matchText) : instruction}
-                  </span>
-                </div>
+                <li key={i} className={isMatch ? 'match' : isEmpty ? 'empty' : undefined}>
+                  <span className="layers-n">{i + 1}</span>
+                  <span className="layers-text">{isMatch ? highlight(instruction, matchText) : instruction}</span>
+                </li>
               );
             })}
-          </div>
+          </ol>
         ) : hist?.status === 'done' ? (
-          <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No layers found.</div>
+          <div className="t-sm t-muted">No layers found.</div>
         ) : null}
+      </DetailSection>
 
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div className="dp-kv"><span>Pattern</span><code style={{ fontSize: 11 }}>{v.instruction || '—'}</code></div>
-          <div className="dp-kv"><span>Action</span><span>{v.action || 'alert'}</span></div>
-          {v.namespace && <div className="dp-kv"><span>Namespace</span><span>{v.namespace}</span></div>}
-        </div>
-      </div>
-    </div>
+      <DetailSection>
+        <KV items={[
+          ['Pattern', <code className="inline">{v.instruction || '—'}</code>],
+          ['Action', v.action || 'alert'],
+          v.namespace && ['Namespace', v.namespace],
+        ]} />
+      </DetailSection>
+    </SidePanel>
   );
 }

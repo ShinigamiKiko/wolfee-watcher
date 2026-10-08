@@ -60,7 +60,7 @@ export function Sidebar() {
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
     >
-      <ul style={{ listStyle:'none', padding:0, margin:0, flex:1 }}>
+      <ul className="nav-list">
         {SECTIONS.map(section => (
           <div key={section.label} className="nav-section">
             <div className="nav-section-label">{section.label}</div>
@@ -68,7 +68,7 @@ export function Sidebar() {
               const to = getItemPath(item.id);
 
               return (
-                <li key={item.id} style={{ listStyle:'none' }}>
+                <li key={item.id}>
                   <Link
                     to={to}
                     className={`nav-item${isActive(item.id) ? ' active' : ''}`}
@@ -86,7 +86,7 @@ export function Sidebar() {
       </ul>
 
       <div className="sidebar-footer">
-        <li style={{ listStyle:'none' }}>
+        <li>
           <Link
             to="/profile"
             className={`nav-item${location.pathname === '/profile' ? ' active' : ''}`}

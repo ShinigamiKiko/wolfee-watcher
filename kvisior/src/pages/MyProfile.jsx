@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { usePerms } from '../context/PermissionsContext';
 import { apiJSON, formatDate } from './settings/settingsApi';
+import { RoleBadge, Field, SettingsSection, EditorBox } from './settings/settingsUi';
+import { PageHeader, KV, Notice, Meter, Field as KitField, EmptyRow } from '../components/kit';
 
 const TOKEN_TTL_OPTIONS = [
   { value: '',       label: 'Never expires' },
@@ -35,7 +37,8 @@ export function MyProfile() {
   useEffect(() => { reloadTokens(); }, [reloadTokens]);
 
   const strength = np.length === 0 ? 0 : np.length < 8 ? 1 : np.length < 12 ? 2 : 3;
-  const strengthColor = ['','var(--danger)','var(--warning)','var(--accent-3)'][strength];
+  const strengthColor = ['', 'var(--danger)', 'var(--warning)', 'var(--ok-text)'][strength];
+  const strengthTone = ['', 't-danger', 't-warning', 't-ok'][strength];
   const strengthLabel = ['','Weak','Fair','Strong'][strength];
 
   const savePassword = async () => {
@@ -88,148 +91,111 @@ export function MyProfile() {
 
   const initials = (me?.full_name || me?.username || 'U').split(/\s+/).map(s => s[0]).join('').slice(0,2).toUpperCase();
 
+  const passwords = [['Current Password', cur, setCur, 'current-password'], ['New Password', np, setNp, 'new-password'], ['Confirm New Password', conf, setConf, 'new-password']];
+
   return (
     <div className="page active" id="page-profile">
-      <div className="page-header">
-        <div>
-          <div className="page-title">My Profile</div>
-          <div className="page-subtitle">Account details and security settings</div>
-        </div>
-      </div>
+      <PageHeader title="My Profile" subtitle="Account details and security settings" />
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,maxWidth:960}}>
+      <div className="grid-2 profile-grid">
+        <section className="pane">
+          <div className="pane-body">
+            <div className="row row--loose mb-16">
+              <div className="avatar avatar--lg">{initials}</div>
+              <div>
+                <div className="t-lg t-strong t-primary">{me?.full_name || me?.username || 'Unknown user'}</div>
+                <div className="t-sm t-muted mt-4">{me?.email || '—'}</div>
+              </div>
+            </div>
+            <KV items={[
+              ['Username', me?.username || '—'],
+              ['Group', me?.group_name || '—'],
+              ['Direct role', me?.role ? <RoleBadge role={me.role} /> : '—'],
+              ['Effective role', me?.effective_role ? <RoleBadge role={me.effective_role} /> : '—'],
+            ]} />
+          </div>
+        </section>
 
-        <div className="card" style={{padding:24,border:'none'}}>
-          <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:24}}>
-            <div style={{width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,var(--accent),var(--accent-2))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
-            <div>
-              <div style={{fontSize:16,fontWeight:600,color:'var(--text-primary)'}}>{me?.full_name || me?.username || 'Unknown user'}</div>
-              <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>{me?.email || '—'}</div>
+        <section className="pane">
+          <div className="pane-head">
+            <div className="grow">
+              <div className="pane-title">Change Password</div>
+              <div className="pane-sub">Passwords must be at least 8 characters.</div>
             </div>
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:14}}>
-            <Pair k="Username" v={me?.username || '—'} />
-            <Pair k="Group" v={me?.group_name || '—'} />
-            <Pair k="Direct role" v={me?.role || '—'} />
-            <Pair k="Effective role" v={me?.effective_role || '—'} />
-          </div>
-        </div>
-
-        <div className="card" style={{padding:24,border:'none'}}>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:6}}>Change Password</div>
-          <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:20}}>Passwords must be at least 8 characters.</div>
-          <div style={{display:'flex',flexDirection:'column',gap:14}}>
-            {[['Current Password',cur,setCur],['New Password',np,setNp],['Confirm New Password',conf,setConf]].map(([label,val,setter])=>(
-              <div key={label}>
-                <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>{label}</label>
-                <input type="password" placeholder="••••••••" value={val} onChange={e=>setter(e.target.value)}
-                  style={{width:'100%',background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'var(--text-primary)',outline:'none',fontFamily:'DM Sans,sans-serif'}} />
-                {label==='New Password' && np.length>0 && (
-                  <div style={{marginTop:6}}>
-                    <div style={{height:3,borderRadius:2,background:'var(--bg-base)',overflow:'hidden'}}>
-                      <div style={{height:'100%',width:`${strength*33}%`,background:strengthColor,borderRadius:2,transition:'all .3s'}} />
-                    </div>
-                    <div style={{fontSize:10,color:strengthColor,marginTop:4}}>{strengthLabel}</div>
+          <div className="pane-body">
+            {passwords.map(([label, val, setter, auto]) => (
+              <KitField key={label} label={label} htmlFor={`pw-${label}`}>
+                <input id={`pw-${label}`} type="password" autoComplete={auto} placeholder="••••••••" className="input input--block"
+                  value={val} onChange={e => setter(e.target.value)} />
+                {label === 'New Password' && np.length > 0 && (
+                  <div className="row">
+                    <div className="grow"><Meter value={strength} max={3} color={strengthColor} showValue={false} label="Password strength" /></div>
+                    <span className={`t-2xs ${strengthTone}`}>{strengthLabel}</span>
                   </div>
                 )}
-              </div>
+              </KitField>
             ))}
-            <button className="btn btn-primary" style={{alignSelf:'flex-start',marginTop:4}} onClick={savePassword} disabled={savingPw}>{savingPw ? 'Saving…' : 'Save password'}</button>
+            <button type="button" className="btn btn-primary" onClick={savePassword} disabled={savingPw}>{savingPw ? 'Saving…' : 'Save password'}</button>
           </div>
-        </div>
+        </section>
 
-        <div className="card" style={{padding:24,gridColumn:'span 2',border:'none'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-            <div>
-              <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:3}}>API Tokens</div>
-              <div style={{fontSize:12,color:'var(--text-muted)'}}>Tokens you've created. Plaintext is shown once on creation.</div>
-            </div>
-            {can('tokens.create') ? (
-              <button className="btn btn-primary" onClick={startCreate}>+ Generate token</button>
-            ) : (
-              <span style={{fontSize:11,color:'var(--text-muted)'}}>Read-only — cannot create tokens</span>
+        <div className="span-2">
+          <SettingsSection
+            title="API Tokens"
+            desc="Tokens you've created. Plaintext is shown once on creation."
+            canCreate={can('tokens.create')}
+            readOnlyText="Read-only — cannot create tokens"
+            action={<button type="button" className="btn btn-primary" onClick={startCreate}>+ Generate token</button>}
+            error={tokError}
+          >
+            {creating && (
+              <EditorBox title="New API token" saveLabel="Generate" onSave={generate} onCancel={() => setCreating(null)}>
+                <Field label="Name *" value={creating.name} onChange={v => setCreating(c => ({ ...c, name: v }))} />
+                <Field label="Role" type="select" value={creating.role} onChange={v => setCreating(c => ({ ...c, role: v }))}
+                  options={[{ value: 'admin', label: 'Admin' }, { value: 'ro', label: 'Read-Only' }]} />
+                <Field label="Expires" type="select" value={creating.expires_in} options={TOKEN_TTL_OPTIONS} onChange={v => setCreating(c => ({ ...c, expires_in: v }))} />
+              </EditorBox>
             )}
-          </div>
 
-          {tokError && <div style={{fontSize:12,color:'var(--danger)',marginBottom:10}}>Error: {tokError}</div>}
+            {revealed && (
+              <Notice tone="ok" icon="check">
+                <div className="t-strong t-ok mb-4">Token "{revealed.name}" generated</div>
+                <div className="t-xs t-secondary mb-8">Copy it now — the plaintext is not stored.</div>
+                <div className="secret-box">{revealed.plaintext}</div>
+                <div className="row mt-8">
+                  <button type="button" onClick={() => navigator.clipboard.writeText(revealed.plaintext)} className="btn btn-ghost btn-sm">Copy</button>
+                  <button type="button" onClick={() => setRevealed(null)} className="btn btn-ghost btn-sm">Dismiss</button>
+                </div>
+              </Notice>
+            )}
 
-          {creating && (
-            <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8,marginBottom:16,background:'var(--bg-elevated)'}}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
-                <div>
-                  <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>Name *</label>
-                  <input value={creating.name} onChange={e => setCreating(c => ({...c, name: e.target.value}))}
-                    style={{width:'100%',background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'var(--text-primary)',outline:'none',fontFamily:'DM Sans,sans-serif'}} />
-                </div>
-                <div>
-                  <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>Role</label>
-                  <select value={creating.role} onChange={e => setCreating(c => ({...c, role: e.target.value}))}
-                    style={{width:'100%',background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'var(--text-primary)',outline:'none',fontFamily:'DM Sans,sans-serif'}}>
-                    <option value="admin">Admin</option>
-                    <option value="ro">Read-Only</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>Expires</label>
-                  <select value={creating.expires_in} onChange={e => setCreating(c => ({...c, expires_in: e.target.value}))}
-                    style={{width:'100%',background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',fontSize:13,color:'var(--text-primary)',outline:'none',fontFamily:'DM Sans,sans-serif'}}>
-                    {TOKEN_TTL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8,marginTop:12}}>
-                <button className="btn btn-primary" onClick={generate}>Generate</button>
-                <button onClick={() => setCreating(null)} style={{fontSize:11,padding:'4px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:5,color:'var(--text-primary)',cursor:'pointer'}}>Cancel</button>
-              </div>
+            <div className="table-wrap">
+              <table className="data-table data-table--static">
+                <thead><tr><th>Name</th><th>Role</th><th>Created</th><th>Expiration</th><th>Status</th><th aria-label="Actions" /></tr></thead>
+                <tbody>
+                  {tokens.length === 0 && <EmptyRow cols={6}>No tokens yet</EmptyRow>}
+                  {tokens.map(t => {
+                    const expired = t.expires_at && new Date(t.expires_at) < new Date();
+                    return (
+                      <tr key={t.id}>
+                        <td className="td-primary mono t-sm">{t.name}</td>
+                        <td><RoleBadge role={t.role} /></td>
+                        <td className="t-sm t-muted">{formatDate(t.created_at)}</td>
+                        <td className="t-sm t-muted">{t.expires_at ? formatDate(t.expires_at) : 'Never'}</td>
+                        <td><span className={`status-dot ${expired ? 'status-warn' : 'status-active'}`}>{expired ? 'Expired' : 'Active'}</span></td>
+                        <td className="row-actions-cell">
+                          {can('tokens.delete') && <button type="button" onClick={() => revoke(t)} className="btn btn-ghost btn-sm btn-tone-danger">Revoke</button>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-
-          {revealed && (
-            <div style={{padding:14,border:'1px solid var(--accent-3)',borderRadius:8,marginBottom:16,background:'rgba(34,197,94,.08)'}}>
-              <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:'var(--accent-3)'}}>Token "{revealed.name}" generated</div>
-              <div style={{fontSize:11,color:'var(--text-muted)',marginBottom:8}}>Copy it now — the plaintext is not stored.</div>
-              <div className="mono" style={{fontSize:12,padding:'8px 10px',background:'var(--bg-base)',borderRadius:6,wordBreak:'break-all',color:'var(--text-primary)'}}>{revealed.plaintext}</div>
-              <button onClick={() => navigator.clipboard.writeText(revealed.plaintext)} style={{fontSize:11,padding:'4px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:5,color:'var(--text-primary)',cursor:'pointer',marginTop:8}}>Copy</button>
-              <button onClick={() => setRevealed(null)} style={{fontSize:11,padding:'4px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:5,color:'var(--text-primary)',cursor:'pointer',marginTop:8,marginLeft:6}}>Dismiss</button>
-            </div>
-          )}
-
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Name</th><th>Role</th><th>Created</th><th>Expiration</th><th>Status</th><th/></tr></thead>
-              <tbody>
-                {tokens.length === 0 && <tr><td colSpan={6} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>No tokens yet</td></tr>}
-                {tokens.map(t => {
-                  const expired = t.expires_at && new Date(t.expires_at) < new Date();
-                  return (
-                    <tr key={t.id}>
-                      <td className="td-primary mono" style={{fontSize:12}}>{t.name}</td>
-                      <td><span style={{fontSize:11,padding:'2px 8px',borderRadius:5,background:'rgba(124,58,237,.12)',color:'#a78bfa'}}>{t.role}</span></td>
-                      <td style={{fontSize:12,color:'var(--text-muted)'}}>{formatDate(t.created_at)}</td>
-                      <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.expires_at ? formatDate(t.expires_at) : 'Never'}</td>
-                      <td><span className={`status-dot ${expired ? 'status-warn' : 'status-active'}`}>{expired ? 'Expired' : 'Active'}</span></td>
-                      <td>
-                        {can('tokens.delete') && (
-                          <button onClick={() => revoke(t)} style={{fontSize:11,padding:'3px 8px',background:'transparent',border:'1px solid var(--border)',borderRadius:5,color:'var(--danger)',cursor:'pointer'}}>Revoke</button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          </SettingsSection>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Pair({ k, v }) {
-  return (
-    <div>
-      <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:4}}>{k}</div>
-      <div style={{fontSize:13,color:'var(--text-primary)',fontWeight:500}}>{v}</div>
     </div>
   );
 }

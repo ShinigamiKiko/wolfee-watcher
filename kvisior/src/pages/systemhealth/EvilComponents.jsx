@@ -1,5 +1,6 @@
 import { useBridge }  from '../../context/BridgeContext';
 import { useScanner } from '../../context/ScannerContext';
+import { Stat, Metrics } from '../../components/kit';
 
 const CARD_META = {
   'tracee-bridge':    { label: 'Tracee Bridge',    sub: (s) => s ? `${s.events_total || 0} events total` : 'No data' },
@@ -25,50 +26,33 @@ function fmtUptime(sec) {
   return `${sec}s`;
 }
 
-function HealthCard({ id, label, alive, total, found, sub, dotOk }) {
+function HealthCard({ label, alive, total, found, sub, dotOk }) {
   const hasReplicas = found && total > 0;
-  const ok = hasReplicas ? (alive > 0 && alive === total) : !!dotOk;
   const value = hasReplicas
     ? (alive === total ? 'Healthy' : (alive === 0 ? 'Offline' : 'Degraded'))
     : (dotOk ? 'Healthy' : 'Unknown');
-  const color = ok ? 'var(--accent-3)' : (value === 'Degraded' ? 'var(--warn,#f5a623)' : 'var(--danger)');
-  const replicaLine = hasReplicas
-    ? `${alive}/${total} replicas alive`
-    : (found ? '0/0 replicas' : 'replicas: n/a');
+  const tone = value === 'Healthy' ? 'ok' : value === 'Degraded' ? 'warning' : 'danger';
+  const replicaLine = hasReplicas ? `${alive}/${total} replicas alive` : (found ? '0/0 replicas' : 'replicas: n/a');
 
   return (
     <div className="health-widget">
       <div className="health-label">
-        {label}{' '}
-        <span className={`status-dot status-${ok ? 'active' : 'error'}`} style={{ fontSize: 10 }} />
+        {label}
+        <span className={`dot dot--${tone}`} />
       </div>
-      <div className="health-value" style={{ color }}>{value}</div>
+      <div className={`health-value t-${tone}`}>{value}</div>
       <div className="health-sub">{replicaLine}</div>
-      {sub && <div className="health-sub" style={{ opacity: 0.7, marginTop: 2 }}>{sub}</div>}
+      {sub && <div className="health-sub mt-4">{sub}</div>}
     </div>
   );
 }
-
-const SEV_COLORS = {
-  critical: 'var(--danger,#e25c5c)',
-  high:     'var(--warn,#f5a623)',
-  medium:   '#5b8dee',
-  low:      'var(--text-muted)',
-};
 
 export function EvilComponents() {
   const { connected, stats, components, counts } = useBridge();
   const { agentOnline, agentInfo, summary: vulnSummary } = useScanner();
 
   const liveHints = { 'tracee-bridge': connected, 'scanner-agent': agentOnline };
-
-  const totalCounts = {
-    critical: (counts?.critical || 0) + (vulnSummary?.critical || 0),
-    high:     (counts?.high     || 0) + (vulnSummary?.high     || 0),
-    medium:   (counts?.medium   || 0) + (vulnSummary?.medium   || 0),
-    low:      (counts?.low      || 0) + (vulnSummary?.low      || 0),
-    total:    (counts?.total    || 0) + (vulnSummary?.total    || 0),
-  };
+  const sum = key => (counts?.[key] || 0) + (vulnSummary?.[key] || 0);
 
   const cards = (components && components.length)
     ? components
@@ -76,73 +60,45 @@ export function EvilComponents() {
 
   return (
     <>
-      {}
       <div className="health-grid">
         {cards.map(c => {
           const meta = CARD_META[c.id] || { label: c.label || c.id, sub: () => `${c.kind || ''} ${c.name || ''}`.trim() };
           return (
-            <HealthCard
-              key={c.id}
-              id={c.id}
-              label={meta.label}
-              alive={c.alive | 0}
-              total={c.total | 0}
-              found={!!c.found}
-              dotOk={liveHints[c.id]}
-              sub={meta.sub(stats, agentInfo)}
-            />
+            <HealthCard key={c.id} label={meta.label} alive={c.alive | 0} total={c.total | 0} found={!!c.found}
+              dotOk={liveHints[c.id]} sub={meta.sub(stats, agentInfo)} />
           );
         })}
       </div>
 
-      {}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card">
         <div className="card-header">
           <div className="card-title">Active Violations</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            runtime + audit + image CVEs
-          </div>
+          <span className="card-sub">runtime + audit + image CVEs</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 0 }}>
-          {[
-            ['Total',    totalCounts.total,    'var(--accent)'],
-            ['Critical', totalCounts.critical, SEV_COLORS.critical],
-            ['High',     totalCounts.high,     SEV_COLORS.high],
-            ['Medium',   totalCounts.medium,   SEV_COLORS.medium],
-            ['Low',      totalCounts.low,      SEV_COLORS.low],
-          ].map(([label, val, color]) => (
-            <div key={label} style={{ padding: '14px 20px', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
-              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: 'JetBrains Mono,monospace', color }}>{val}</div>
-            </div>
-          ))}
-        </div>
+        <Metrics cols={5} items={[
+          { label: 'Total',    value: sum('total'),    tone: 'accent' },
+          { label: 'Critical', value: sum('critical'), tone: 'danger' },
+          { label: 'High',     value: sum('high'),     tone: 'warning' },
+          { label: 'Medium',   value: sum('medium'),   tone: 'info' },
+          { label: 'Low',      value: sum('low'),      tone: 'muted' },
+        ]} />
       </div>
 
-      {}
       {stats && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card">
           <div className="card-header"><div className="card-title">Bridge Statistics</div></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
-            {[
-              ['Events Total',    stats.events_total         || 0],
-              ['Events/s',        (stats.events_per_sec      || 0).toFixed(1)],
-              ['Deduplicated',    stats.dedup_skipped        || 0],
-              ['Rate Limited',    stats.events_rate_limited  || 0],
-              ['Ingest avg ms',   (stats.ingest_avg_ms       || 0).toFixed(2)],
-              ['Query avg ms',    (stats.query_avg_ms        || 0).toFixed(2)],
-              ['SSE Clients',     stats.clients              || 0],
-              ['Uptime',          fmtUptime(stats.uptime_sec || 0)],
-            ].map(([label, val]) => (
-              <div key={label} style={{ padding: '14px 20px', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
-                <div style={{ fontSize: 20, fontWeight: 300, fontFamily: 'JetBrains Mono,monospace', color: 'var(--accent)' }}>{val}</div>
-              </div>
-            ))}
-          </div>
+          <Metrics items={[
+            { label: 'Events Total',  value: stats.events_total || 0 },
+            { label: 'Events/s',      value: (stats.events_per_sec || 0).toFixed(1) },
+            { label: 'Deduplicated',  value: stats.dedup_skipped || 0 },
+            { label: 'Rate Limited',  value: stats.events_rate_limited || 0 },
+            { label: 'Ingest avg ms', value: (stats.ingest_avg_ms || 0).toFixed(2) },
+            { label: 'Query avg ms',  value: (stats.query_avg_ms || 0).toFixed(2) },
+            { label: 'SSE Clients',   value: stats.clients || 0 },
+            { label: 'Uptime',        value: fmtUptime(stats.uptime_sec || 0) },
+          ]} />
         </div>
       )}
-
     </>
   );
 }

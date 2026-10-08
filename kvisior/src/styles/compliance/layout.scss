@@ -100,8 +100,7 @@
 .co-ctrl {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-left: 3px solid rgba(0, 200, 255, 0.3);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: visible;
   cursor: pointer;
   transition: border-color 0.12s;
@@ -217,3 +216,6 @@
   }
 }
 
+
+.co-leg-gap { margin-left: 10px; }
+.co-ctrl-entities--scroll { max-height: 120px; overflow-y: auto; }

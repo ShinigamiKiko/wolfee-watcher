@@ -17,7 +17,7 @@ export function EventRow({ ev, podIP, getSev }) {
     <>
       <div className={`fns-erow fns-erow--${sev}`} onClick={() => setOpen(o => !o)}>
         <div className="fns-cell fns-cell--ts">
-          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{fmtDateOnly(ev.ts)}</div>
+          <div className="t-2xs t-muted">{fmtDateOnly(ev.ts)}</div>
           <div>{time}<span className="fns-ms">{ms}</span></div>
         </div>
         <div className="fns-cell fns-cell--sev">
@@ -34,7 +34,7 @@ export function EventRow({ ev, podIP, getSev }) {
         <div className="fns-cell fns-cell--cid" title={ev.containerId || ev.container || ''}>
           {ev.containerId
             ? <span>{ev.containerId.slice(0, 8)}</span>
-            : <span style={{color:'var(--text-muted)'}}>—</span>
+            : <span className="t-muted">—</span>
           }
         </div>
         <div className="fns-cell fns-cell--pid">{ev.pid}</div>

@@ -174,7 +174,7 @@ function EventCard({
                   <div className="pb-arg-head">
                     <span className="pb-arg-key">args.{arg.key}</span>
                     <span className="pb-arg-kind">{arg.label || 'path'}</span>
-                    <span className="pb-preset-wrap" style={{ marginLeft: 'auto' }}>
+                    <span className="pb-preset-wrap ml-auto">
                       <button className="pb-arg-add pb-arg-add-path" title="Choose a path to watch"
                         onClick={() => setPickerFor(p => p === pk ? null : pk)}>+ Add path</button>
                       {pickerFor === pk && (

@@ -8,7 +8,7 @@ import { usePaged } from '../../hooks/usePaged';
 export function AlertsList({ visible, status, groupFilter, selected, setSelected, ackEvent, fpEvent, deleteEvent }) {
   const { pageItems, pager } = usePaged(visible, 'anomaly', [groupFilter]);
   return (
-  <>
+  <div className="al-stack">
   <div className="al-list dw dw-fill" tabIndex={0} role="region" aria-label="Anomaly events">
     {visible.length === 0 && (
       <div className="al-empty">
@@ -30,7 +30,7 @@ export function AlertsList({ visible, status, groupFilter, selected, setSelected
             onClick={() => setSelected(s => s?.id===ev.id ? null : ev)}
           >
             <span className="al-time">{fmtDateOnly(ev.ts)}<br/>{fmtClock(ev.ts)}</span>
-            <span className="al-kind-icon" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, fontWeight: 700 }}>D</span>
+            <span className="al-kind-icon mono t-xs t-strong">D</span>
             <div className="al-row-main">
               <span className="al-event-desc">
                 <span className="al-pod">{ev.src_pod}</span>
@@ -97,6 +97,6 @@ export function AlertsList({ visible, status, groupFilter, selected, setSelected
     })}
   </div>
   <div className="dw-foot"><Pager {...pager} noun="events" /></div>
-  </>
+  </div>
   );
 }

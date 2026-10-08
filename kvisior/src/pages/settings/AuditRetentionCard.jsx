@@ -26,7 +26,7 @@ export function AuditRetentionCard({ toast }) {
 
   if (!view) {
     return (
-      <div className="card" style={{ padding: 24, border: 'none', marginBottom: 16, fontSize: 13, color: error ? 'var(--danger)' : 'var(--text-muted)' }}>
+      <div className={`pane empty-state empty-state--compact settings-section ${error ? 't-danger' : ''}`}>
         {error ? `Failed to load the audit log retention: ${error}` : 'Loading the audit log retention…'}
       </div>
     );
@@ -63,29 +63,27 @@ export function AuditRetentionCard({ toast }) {
       : 'Taken from AUDIT_RETENTION_HOURS when the hub first started';
 
   return (
-    <div className="card" style={{ padding: 24, border: 'none', marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>Audit log retention</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 620 }}>
+    <section className="pane settings-section">
+      <div className="pane-head">
+        <div className="grow">
+          <div className="pane-title">Audit log retention</div>
+          <div className="pane-sub">
             How long audit events, silenced events and rollups are kept. One value applies to every cluster that shares the database.
           </div>
-          <div style={{ fontSize: 11, color: view.synced ? 'var(--text-muted)' : 'var(--warning)', marginTop: 8 }}>
+          <div className={`t-xs mt-8 ${view.synced ? 't-muted' : 't-warning'}`}>
             {view.synced ? note : 'Waiting for the hub value: nothing is deleted until it is read.'}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <select className="form-select" style={{ width: 120 }} value={choice} disabled={!editable || busy}
-                  onChange={e => setChoice(Number(e.target.value))} aria-label="Retention in days">
+        <div className="row shrink-0">
+          <select className="input input--narrow" value={choice} disabled={!editable || busy}
+            onChange={e => setChoice(Number(e.target.value))} aria-label="Retention in days">
             {options.map(d => <option key={d} value={d}>{d} {d === 1 ? 'day' : 'days'}</option>)}
           </select>
           {editable && (
-            <button className="btn btn-primary" disabled={busy || choice === current} onClick={save}>
-              {busy ? 'Saving…' : 'Save'}
-            </button>
+            <button type="button" className="btn btn-primary" disabled={busy || choice === current} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
           )}
         </div>
       </div>
-    </div>
+    </section>
   );
 }

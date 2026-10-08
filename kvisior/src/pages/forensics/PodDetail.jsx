@@ -462,8 +462,8 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           )}
         </div>
         <div className="fns-pod-hdr-right">
-          {isAdmin && <button className="fns-btn" disabled={clearLoading}
-            style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={clearEvents}>
+          {isAdmin && <button className="fns-btn fns-btn--danger" disabled={clearLoading}
+            onClick={clearEvents}>
             {clearLoading ? <><Icon name="loader" /> Clearing…</> : 'Clear all'}
           </button>}
           <div className="fns-snap-wrap" ref={logsWrapRef}>
@@ -621,7 +621,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           <div className="fns-etable">
             <div className="fns-etable-hdr dw-sticky">
               {FNS_COLUMNS.map(c => (
-                <div key={c.key} className="fns-col-head" style={{ cursor: 'pointer', userSelect: 'none' }}
+                <div key={c.key} className="fns-col-head fns-col-head--sort"
                   onClick={() => toggleSort(c.key)}>
                   {c.label}{sortCol === c.key ? <> <Icon name={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} /></> : ''}
                 </div>

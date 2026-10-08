@@ -8,6 +8,7 @@ import { DataWindow } from '../components/DataWindow';
 import { Icon } from '../components/Icon';
 import { Pager } from '../components/Pager';
 import { usePaged } from '../hooks/usePaged';
+import { PageHeader, SearchInput, EmptyRow, cx } from '../components/kit';
 
 const TABS = [
   { id: 'policies', label: 'Policies'       },
@@ -100,133 +101,118 @@ export function PolicyMgmt() {
   if (loading) {
     return (
       <div className="page active" id="page-policies">
-        <div className="page-header">
-          <div className="page-title">Policy Management</div>
-        </div>
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-          Loading policies…
-        </div>
+        <PageHeader title="Policy Management" />
+        <div className="page-loading">Loading policies…</div>
       </div>
     );
   }
 
+  const hitsOf = p => (p.detType === 'Audit' ? auditHits?.[p.id] : ruleHits?.[p.id]) || 0;
+
   return (
     <div className="page active" id="page-policies">
-      <div className="page-header">
-        <div>
-          <div className="page-title">Policy Management</div>
-          <div className="page-subtitle">
-            <span style={{ color: 'var(--accent-3)' }}>{rules.filter(r => r.enabled !== false).length}</span> active ·{' '}
-            <span style={{ color: 'var(--text-muted)' }}>{rules.length}</span> total
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+      <PageHeader
+        title="Policy Management"
+        subtitle={<><span className="t-ok">{rules.filter(r => r.enabled !== false).length}</span> active · <span className="t-muted">{rules.length}</span> total</>}
+        actions={<>
           {rules.length > 0 && (
-            <button className="btn btn-outline btn-tone-danger"
-              onClick={() => { if (window.confirm('Delete all custom policies?')) deleteAll(); }}>
+            <button type="button" className="btn btn-outline btn-tone-danger" onClick={() => { if (window.confirm('Delete all custom policies?')) deleteAll(); }}>
               <Icon name="trash" /> Delete all
             </button>
           )}
-          <button className="btn btn-primary" onClick={openCreate}>+ Create policy</button>
-        </div>
-      </div>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>+ Create policy</button>
+        </>}
+      />
 
       <Tabs tabs={TABS} active={tab} onSwitch={setTab} />
 
       {tab === 'policies' && <>
-        <div className="page-search">
-          <input type="text" placeholder="Search policies…" value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="toolbar">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search policies…" />
         </div>
         <DataWindow label="Policies" deps={[tab]} footer={<Pager {...policyPage.pager} noun="policies" />}>
-            <table className="data-table">
-              <thead><tr><th>Policy</th><th>Status</th><th>Origin</th><th>Severity</th><th>Match</th><th>Hits</th><th>Alert</th><th></th></tr></thead>
-              <tbody>
-                {policyPage.pageItems.map(p => (
-                  <tr key={p.id} style={{ opacity: p.enabled === false ? .5 : 1 }}>
+          <table className="data-table data-table--static">
+            <thead><tr><th>Policy</th><th>Status</th><th>Origin</th><th>Severity</th><th>Match</th><th>Hits</th><th className="t-center">Alert</th><th aria-label="Actions" /></tr></thead>
+            <tbody>
+              {policyPage.pageItems.map(p => {
+                const on = p.enabled !== false;
+                return (
+                  <tr key={p.id} className={on ? undefined : 'is-off'}>
                     <td className="td-primary">{p.name}</td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12,
-                        color: p.enabled !== false ? 'var(--accent-3)' : 'var(--text-muted)' }}>
-                        {p.enabled !== false ? <Icon name="check" /> : '—'}
-                        <span style={{ fontSize: 11 }}>{p.enabled !== false ? 'Enabled' : 'Disabled'}</span>
-                      </span>
+                    <td className={cx('t-xs', on ? 't-ok' : 't-muted')}>
+                      <span className="ic-label">{on ? <Icon name="check" /> : '—'}{on ? 'Enabled' : 'Disabled'}</span>
                     </td>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.origin || 'Custom'}</td>
+                    <td className="t-sm t-muted">{p.origin || 'Custom'}</td>
                     <td><SevBadge sev={p.sev} /></td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--accent)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td className="mono t-xs t-accent clip clip--md">
                       {p.detType === 'Binary' ? `$ ${p.processFilter}${p.pathFilter ? ' ' + p.pathFilter : ''}` : (p.syscall || '*')}
                     </td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: (p.detType === 'Audit' ? auditHits?.[p.id] : ruleHits?.[p.id]) > 0 ? 'var(--accent-3)' : 'var(--text-muted)' }}>
+                    <td className={cx('mono t-sm', hitsOf(p) > 0 ? 't-ok' : 't-muted')}>
                       {p.detType === 'Audit' ? (auditHits?.[p.id] ?? 0) : p.detType === 'Build' || p.detType === 'Deploy' ? '—' : (ruleHits?.[p.id] ?? 0)}
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {p.alertOnly
-                        ? <Icon name="check" style={{ color: 'var(--accent)' }} />
-                        : <span style={{ fontSize: 13, color: 'var(--text-muted)', opacity: 0.3 }}>—</span>}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-outline btn-sm" onClick={e => { e.stopPropagation(); openEdit(p); }} title="Edit"><Icon name="edit" /></button>
-                        <button className={`btn btn-outline btn-sm ${p.enabled !== false ? 'btn-tone-warning' : 'btn-tone-ok'}`}
-                          onClick={e => { e.stopPropagation(); toggleRule(p.id); }}
-                          title={p.enabled !== false ? 'Stop rule' : 'Run rule'}>
-                          {p.enabled !== false ? 'Stop' : 'Run'}
-                        </button>
-                        <button className="btn btn-outline btn-sm btn-tone-danger" onClick={e => { e.stopPropagation(); deleteRule(p.id); }} title="Delete"><Icon name="trash" /></button>
-                      </div>
+                    <td className="t-center">{p.alertOnly ? <span className="t-accent"><Icon name="check" /></span> : <span className="t-muted">—</span>}</td>
+                    <td className="row-actions-cell">
+                      <span className="row-actions">
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(p)} title="Edit" aria-label={`Edit ${p.name}`}><Icon name="edit" /></button>
+                        <button type="button" className={`btn btn-outline btn-sm ${on ? 'btn-tone-warning' : 'btn-tone-ok'}`} onClick={() => toggleRule(p.id)}
+                          title={on ? 'Stop rule' : 'Run rule'}>{on ? 'Stop' : 'Run'}</button>
+                        <button type="button" className="btn btn-outline btn-sm btn-tone-danger" onClick={() => deleteRule(p.id)} title="Delete" aria-label={`Delete ${p.name}`}><Icon name="trash" /></button>
+                      </span>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                );
+              })}
+              {filtered.length === 0 && <EmptyRow cols={8}>{rules.length === 0 ? 'No policies yet — create one to start detecting' : 'No policies match the search'}</EmptyRow>}
+            </tbody>
+          </table>
         </DataWindow>
       </>}
 
       {tab === 'catalog' && (
         <DataWindow label="Syscall catalog" deps={[tab]} footer={<Pager {...syscallPage.pager} noun="syscalls" />}>
-            <table className="data-table">
-              <thead><tr><th>Syscall</th><th>Category</th><th>Severity</th><th>Description</th><th>Live Events</th></tr></thead>
-              <tbody>
-                {syscallPage.pageItems.map(s => (
+          <table className="data-table data-table--static">
+            <thead><tr><th>Syscall</th><th>Category</th><th>Severity</th><th>Description</th><th>Live Events</th></tr></thead>
+            <tbody>
+              {syscallPage.pageItems.map(s => {
+                const hits = ruleHits?.[`sys-${s.name}`] ?? 0;
+                return (
                   <tr key={s.name}>
-                    <td className="td-primary" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{s.name}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.cat}</td>
+                    <td className="td-primary mono t-sm">{s.name}</td>
+                    <td className="t-sm t-muted">{s.cat}</td>
                     <td><SevBadge sev={s.sev?.toUpperCase()} /></td>
-                    <td style={{ fontSize: 12, maxWidth: 300, whiteSpace: 'normal' }}>{s.desc}</td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: (ruleHits?.[`sys-${s.name}`] || 0) > 0 ? 'var(--accent-3)' : 'var(--text-muted)' }}>
-                      {ruleHits?.[`sys-${s.name}`] ?? 0}
-                    </td>
+                    <td className="t-sm wrap desc-cell">{s.desc}</td>
+                    <td className={cx('mono t-sm', hits > 0 ? 't-ok' : 't-muted')}>{hits}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                );
+              })}
+            </tbody>
+          </table>
         </DataWindow>
       )}
 
       {tab === 'live' && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px 10px' }}>
-            <div className="card-title">Live Rule Hits</div>
+          <div className="section-head">
+            <div className="section-title">Live Rule Hits</div>
             <span className="live-dot">Live</span>
           </div>
           <DataWindow label="Live rule hits" deps={[tab]} footer={<Pager {...hitsPage.pager} noun="hits" />}>
-            <table className="data-table">
+            <table className="data-table data-table--static">
               <thead><tr><th>Syscall</th><th>Rule</th><th>Severity</th><th>Process</th><th>Pod</th><th>Namespace</th><th>Time</th></tr></thead>
               <tbody>
                 {liveHits.length === 0
-                  ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No rule hits yet — waiting for events</td></tr>
+                  ? <EmptyRow cols={7}>No rule hits yet — waiting for events</EmptyRow>
                   : hitsPage.pageItems.map((e, i) => (
                       <tr key={e._fp || i}>
-                        <td className="td-primary" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{e.syscall || e.name || '—'}</td>
-                        <td style={{ fontSize: 12 }}>{e._ruleName || '—'}</td>
+                        <td className="td-primary mono t-sm">{e.syscall || e.name || '—'}</td>
+                        <td className="t-sm">{e._ruleName || '—'}</td>
                         <td><SevBadge sev={(e.sev || e.severity || '').toUpperCase()} /></td>
-                        <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{e.process || e._raw?.process || '—'}</td>
-                        <td style={{ fontSize: 12 }}>{e.pod || '—'}</td>
-                        <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.namespace || '—'}</td>
-                        <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{e.ts ? new Date(e.ts).toLocaleTimeString() : '—'}</td>
+                        <td className="mono t-xs">{e.process || e._raw?.process || '—'}</td>
+                        <td className="t-sm">{e.pod || '—'}</td>
+                        <td className="t-sm t-muted">{e.namespace || '—'}</td>
+                        <td className="t-xs t-muted">{e.ts ? new Date(e.ts).toLocaleTimeString() : '—'}</td>
                       </tr>
-                    ))
-                }
+                    ))}
               </tbody>
             </table>
           </DataWindow>

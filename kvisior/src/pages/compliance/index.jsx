@@ -174,12 +174,12 @@ export function Compliance() {
               <div className="co-controls-wrap">
                 <div className="co-controls-topbar">
                   <span className="co-controls-title">
-                    {current.label}{catFilter!=='all'?` — ${catFilter}`:''}<span style={{color:'var(--text-muted)',fontWeight:400}}> ({visible.length})</span>
+                    {current.label}{catFilter!=='all'?` — ${catFilter}`:''}<span className="card-sub"> ({visible.length})</span>
                   </span>
                   <div className="co-controls-legend">
-                    <span className="co-leg-dot" style={{background:'var(--accent-3)'}}/>100%
-                    <span className="co-leg-dot" style={{background:'var(--warning)',marginLeft:10}}/>partial
-                    <span className="co-leg-dot" style={{background:'var(--danger)',marginLeft:10}}/>0%
+                    <span className="dot dot--ok"/>100%
+                    <span className="dot dot--warning co-leg-gap"/>partial
+                    <span className="dot dot--danger co-leg-gap"/>0%
                   </div>
                 </div>
 
@@ -213,7 +213,7 @@ export function Compliance() {
                           {(r.total-r.passing)>0&&(
                             <div className="co-ctrl-expand-row co-ctrl-expand-row--top">
                               <span>Failing</span>
-                              <div className="co-ctrl-entities" style={{maxHeight:120,overflowY:'auto'}}>
+                              <div className="co-ctrl-entities co-ctrl-entities--scroll">
                                 {r.entities?.length>0
                                   ? r.entities.map((e,i)=><span key={i} className="co-ctrl-entity">{e}</span>)
                                   : <span className="co-ctrl-entity co-ctrl-entity--more">{r.total-r.passing} entities</span>
@@ -223,9 +223,9 @@ export function Compliance() {
                           )}
                           <div className="co-ctrl-expand-row co-ctrl-expand-row--top">
                             <span>Fix</span>
-                            <span style={{fontSize:11,color:'var(--text-secondary)',lineHeight:1.4}}>{r.fix}</span>
+                            <span className="t-xs t-secondary">{r.fix}</span>
                           </div>
-                          {r.err&&<div className="co-ctrl-expand-row"><span>Error</span><code style={{color:'var(--danger)'}}>{r.err}</code></div>}
+                          {r.err&&<div className="co-ctrl-expand-row"><span>Error</span><code className="t-danger">{r.err}</code></div>}
                         </div>
                       )}
                     </div>

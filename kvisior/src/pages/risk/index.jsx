@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useScanner } from '../../context/ScannerContext';
 import { useSensor }  from '../../context/SensorContext';
 import { SevBadge }   from '../../components/ui';
+import { PageHeader, SearchInput, SidePanel, DetailSection, Tag, EmptyRow, Meter, sevTone, cx } from '../../components/kit';
 import { DataWindow } from '../../components/DataWindow';
 import { Icon } from '../../components/Icon';
 import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
 
-const RISK_COLOR = s => s>=8?'var(--danger)':s>=6?'var(--warning)':s>=4?'#a78bfa':'var(--accent-3)';
 const SEV_LABEL  = s => s>=8?'CRITICAL':s>=6?'HIGH':s>=4?'MEDIUM':'LOW';
+const RING_COLOR = { danger: 'var(--danger)', warning: 'var(--warning)', info: 'var(--info)', ok: 'var(--ok-text)' };
 
 const SYS_NS = new Set(['kube-system','kube-public','kube-node-lease',
   'metallb-system','calico-system','cert-manager','wolfee-watcher']);
@@ -19,20 +20,21 @@ function buildFactors(w, imageResults) {
   let score = 0;
 
   const allCVEs   = imageResults.flatMap(r => r.cves || []);
-  const critCount = allCVEs.filter(c => c.severity === 'CRITICAL').length;
-  const highCount = allCVEs.filter(c => c.severity === 'HIGH').length;
-  const kevCount  = allCVEs.filter(c => c.inKEV).length;
-  const maxCVSS   = allCVEs.reduce((m, c) => Math.max(m, c.cvss   || 0), 0);
-  const maxEPSS   = allCVEs.reduce((m, c) => Math.max(m, c.epss   || 0), 0);
-  const maxRisk   = allCVEs.reduce((m, c) => Math.max(m, c.riskScore || 0), 0);
+  const sevOf     = c => String(c.severity || '').toUpperCase();
+  const critCount = allCVEs.filter(c => sevOf(c) === 'CRITICAL').length;
+  const highCount = allCVEs.filter(c => sevOf(c) === 'HIGH').length;
+  const kevCount  = allCVEs.filter(c => c.inKev).length;
+  const maxCVSS   = allCVEs.reduce((m, c) => Math.max(m, c.cvssV3Score || 0), 0);
+  const maxEPSS   = allCVEs.reduce((m, c) => Math.max(m, c.epssScore   || 0), 0);
+  const maxRisk   = allCVEs.reduce((m, c) => Math.max(m, c.riskScore   || 0), 0);
 
   if (allCVEs.length > 0) {
-    const s = Math.min(4.0, maxRisk * 0.4);
+    const s = Math.min(4.0, maxRisk * 0.04);
     score += s;
     factors.push({
       icon:'bug', label:'Vulnerabilities',
       detail:`${allCVEs.length} CVEs · ${critCount} critical · ${highCount} high`,
-      score:s, color: critCount>0?'var(--danger)':highCount>0?'var(--warning)':'var(--text-muted)',
+      score:s, tone: critCount>0?'danger':highCount>0?'warning':'muted',
     });
   }
 
@@ -41,7 +43,7 @@ function buildFactors(w, imageResults) {
     score += s;
     factors.push({ icon:'flame', label:'Known Exploited (CISA KEV)',
       detail:`${kevCount} CVE${kevCount>1?'s':''} actively exploited in the wild`,
-      score:s, color:'var(--danger)' });
+      score:s, tone:'danger' });
   }
 
   if (maxEPSS >= 0.5) {
@@ -49,7 +51,7 @@ function buildFactors(w, imageResults) {
     score += s;
     factors.push({ icon:'target', label:'High Exploit Probability',
       detail:`EPSS ${(maxEPSS*100).toFixed(1)}% — likely to be exploited`,
-      score:s, color:'var(--warning)' });
+      score:s, tone:'warning' });
   }
 
   const containers = [
@@ -61,17 +63,17 @@ function buildFactors(w, imageResults) {
     score += 1.5;
     factors.push({ icon:'unlock', label:'Privileged Containers',
       detail:`${privC.length} container${privC.length>1?'s':''}: ${privC.map(c=>c.name).join(', ')}`,
-      score:1.5, color:'var(--danger)' });
+      score:1.5, tone:'danger' });
   }
 
   const spec = w.raw?.spec?.template?.spec||{};
   if (spec.hostNetwork) {
     score += 1.0;
-    factors.push({ icon:'globe', label:'Host Network Access', detail:'Pod uses host network namespace', score:1.0, color:'var(--warning)' });
+    factors.push({ icon:'globe', label:'Host Network Access', detail:'Pod uses host network namespace', score:1.0, tone:'warning' });
   }
   if (spec.hostPID) {
     score += 0.8;
-    factors.push({ icon:'eye', label:'Host PID Access', detail:'Pod can see all host processes', score:0.8, color:'var(--warning)' });
+    factors.push({ icon:'eye', label:'Host PID Access', detail:'Pod can see all host processes', score:0.8, tone:'warning' });
   }
 
   const noLimits = containers.filter(c=>!c.resources?.limits?.memory&&!c.resources?.limits?.cpu);
@@ -79,7 +81,7 @@ function buildFactors(w, imageResults) {
     score += 0.3;
     factors.push({ icon:'trending-up', label:'No Resource Limits',
       detail:`${noLimits.length}/${containers.length} containers without CPU/memory limits`,
-      score:0.3, color:'var(--text-muted)' });
+      score:0.3, tone:'muted' });
   }
 
   return { score: Math.min(9.9, score), factors, allCVEs,
@@ -143,228 +145,135 @@ export function Risk() {
   const hasData = workloads.length > 0;
 
   return (
-    <div className="page active flex-page" id="page-risk" style={{flexDirection:'column',padding:0}}>
-      <div style={{padding:'20px 24px 0',flexShrink:0}}>
-        <div className="page-header" style={{marginBottom:14}}>
-          <div>
-            <div className="page-title">Risk</div>
-            <div className="page-subtitle">Workloads ranked by CVEs · KEV · CIS security posture</div>
-          </div>
-          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text-muted)',cursor:'pointer',userSelect:'none'}}>
-            <input type="checkbox" checked={showSys} onChange={e=>setShowSys(e.target.checked)}
-              style={{accentColor:'var(--accent)',cursor:'pointer'}}/>
-            show system namespaces
-          </label>
-        </div>
-        <div className="page-search" style={{marginBottom:14}}>
-          <input type="text" placeholder="Search workloads…" value={search} onChange={e=>setSearch(e.target.value)}/>
+    <div className="page active flex-page split-page" id="page-risk">
+      <div className="split-head">
+        <PageHeader
+          className="mb-12"
+          title="Risk"
+          subtitle="Workloads ranked by CVEs · KEV · CIS security posture"
+          actions={
+            <label className="check t-sm t-secondary">
+              <input type="checkbox" checked={showSys} onChange={e => setShowSys(e.target.checked)} />
+              show system namespaces
+            </label>
+          }
+        />
+        <div className="toolbar">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search workloads…" />
         </div>
       </div>
 
-      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        <div style={{flex:1,overflowY:'auto',padding:'0 0 24px 24px',minWidth:0}}>
+      <div className="split-body">
+        <div className="split-main">
           {!hasData && (
-            <div style={{margin:'40px 24px 0 0',padding:32,background:'var(--bg-card)',borderRadius:12,
-              border:'1px solid var(--border)',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
-              Sensor offline — waiting for workload data.
-            </div>
+            <div className="pane empty-state">Sensor offline — waiting for workload data.</div>
           )}
           {hasData && (
-            <div style={{marginRight:selected?0:24}}>
-              <DataWindow label="Workloads by risk" deps={[!!selected]} footer={<Pager {...pager} noun="workloads" />}>
-                <table className="data-table">
-                  <thead><tr>
-                    <th style={{width:36}}>#</th>
-                    <th>Workload</th>
-                    <th>Namespace</th>
-                    <th>Risk Score</th>
-                    <th>CVEs</th>
-                    <th>KEV</th>
-                    <th>Age</th>
-                  </tr></thead>
-                  <tbody>
-                    {filtered.length===0 && (
-                      <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-muted)',padding:40}}>No workloads matching filter</td></tr>
-                    )}
-                    {pageRisk.map(r => {
-                      const color = RISK_COLOR(r.score);
-                      return (
-                        <tr key={r.name+r.ns}
-                          className={selected?.name===r.name&&selected?.ns===r.ns?'selected':''}
-                          style={{cursor:'pointer'}}
-                          onClick={()=>setSelected(selected?.name===r.name&&selected?.ns===r.ns?null:r)}>
-                          <td><SevBadge sev={SEV_LABEL(r.score)}>#{r.rank}</SevBadge></td>
-                          <td className="td-primary">
-                            {r.name}
-                            <span style={{marginLeft:6,fontSize:10,color:'var(--text-muted)',fontWeight:400}}>{r.kind}</span>
-                          </td>
-                          <td style={{fontSize:12,color:'var(--text-muted)'}}>{r.ns}</td>
-                          <td>
-                            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                              <span className="mono" style={{fontSize:13,color,fontWeight:700,minWidth:28}}>
-                                {r.score>0?r.score.toFixed(1):'—'}
-                              </span>
-                              {r.score>0&&<div style={{flex:1,height:5,background:'var(--bg-elevated)',borderRadius:3,minWidth:60}}>
-                                <div style={{width:`${r.score*10}%`,height:'100%',background:color,borderRadius:3}}/>
-                              </div>}
-                            </div>
-                          </td>
-                          <td>
-                            {r.allCVEs.length>0
-                              ?<span style={{fontSize:12}}>
-                                {r.critCount>0&&<span style={{color:'var(--danger)',fontWeight:600}}>{r.critCount}C </span>}
-                                {r.highCount>0&&<span style={{color:'var(--warning)',fontWeight:600}}>{r.highCount}H </span>}
-                                <span style={{color:'var(--text-muted)'}}>{r.allCVEs.length}</span>
-                              </span>
-                              :<span style={{color:'var(--text-muted)',fontSize:12}}>—</span>}
-                          </td>
-                          <td>
-                            {r.kevCount>0
-                              ?<span style={{fontSize:11,padding:'1px 6px',borderRadius:3,
-                                background:'rgba(239,68,68,.15)',color:'var(--danger)',fontWeight:600}}><Icon name="alert" /> {r.kevCount}</span>
-                              :<span style={{color:'var(--text-muted)',fontSize:12}}>—</span>}
-                          </td>
-                          <td style={{color:'var(--text-muted)',fontSize:12}}>{r.age}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </DataWindow>
-            </div>
+            <DataWindow label="Workloads by risk" deps={[!!selected]} footer={<Pager {...pager} noun="workloads" />}>
+              <table className="data-table">
+                <thead><tr>
+                  <th>#</th><th>Workload</th><th>Namespace</th><th>Risk Score</th><th>CVEs</th><th>KEV</th><th>Age</th>
+                </tr></thead>
+                <tbody>
+                  {filtered.length === 0 && <EmptyRow cols={7}>No workloads matching filter</EmptyRow>}
+                  {pageRisk.map(r => {
+                    const tone = sevTone(SEV_LABEL(r.score));
+                    const isSel = selected?.name === r.name && selected?.ns === r.ns;
+                    return (
+                      <tr key={r.name + r.ns} className={isSel ? 'selected' : ''} onClick={() => setSelected(isSel ? null : r)}>
+                        <td><Tag tone={tone} mono>#{r.rank}</Tag></td>
+                        <td className="td-primary">{r.name} <span className="t-2xs t-muted">{r.kind}</span></td>
+                        <td className="t-sm t-muted">{r.ns}</td>
+                        <td>
+                          <div className="row risk-cell">
+                            <span className={cx('mono t-md t-strong', `t-${tone}`)}>{r.score > 0 ? r.score.toFixed(1) : '—'}</span>
+                            {r.score > 0 && <Meter value={r.score} max={10} color={RING_COLOR[tone]} showValue={false} label="Risk score" />}
+                          </div>
+                        </td>
+                        <td className="t-sm">
+                          {r.allCVEs.length > 0
+                            ? <>{r.critCount > 0 && <span className="t-danger t-strong">{r.critCount}C </span>}
+                                {r.highCount > 0 && <span className="t-warning t-strong">{r.highCount}H </span>}
+                                <span className="t-muted">{r.allCVEs.length}</span></>
+                            : <span className="t-muted">—</span>}
+                        </td>
+                        <td>{r.kevCount > 0 ? <Tag tone="danger"><Icon name="alert" /> {r.kevCount}</Tag> : <span className="t-muted">—</span>}</td>
+                        <td className="t-sm t-muted">{r.age}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </DataWindow>
           )}
         </div>
 
-        {}
-        {selected && (
-          <div className="detail-panel open">
-            <div className="detail-panel-inner">
-              <div className="dp-header">
-                <div>
-                  <div className="dp-title">{selected.name}</div>
-                  <div className="dp-meta">{selected.kind} · {selected.ns}</div>
+        {selected && (() => {
+          const tone = sevTone(SEV_LABEL(selected.score));
+          const color = RING_COLOR[tone];
+          const deg = selected.score * 36;
+          return (
+            <SidePanel title={selected.name} meta={`${selected.kind} · ${selected.ns}`} onClose={() => setSelected(null)}>
+              <div className="item-card row row--loose mb-16">
+                <div className="score-ring" style={{ background: `conic-gradient(${color} 0deg ${deg}deg, var(--bg-card) ${deg}deg 360deg)` }}>
+                  <span className={cx('mono', `t-${tone}`)}>{selected.score > 0 ? selected.score.toFixed(1) : '0'}</span>
                 </div>
-                <button className="dp-close" onClick={()=>setSelected(null)}><Icon name="x" /></button>
+                <div>
+                  <div className="section-label mb-4">Risk score</div>
+                  <div className={cx('t-lg t-strong', `t-${tone}`)}>{SEV_LABEL(selected.score)}</div>
+                  <div className="t-xs t-muted mt-4">
+                    {selected.images.length} image{selected.images.length !== 1 ? 's' : ''} · {selected.allCVEs.length} CVEs
+                  </div>
+                </div>
               </div>
 
-              {}
-              {(() => {
-                const c = RISK_COLOR(selected.score);
-                const deg = selected.score * 36;
-                return (
-                  <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:20,
-                    padding:14,background:'var(--bg-elevated)',borderRadius:10}}>
-                    <div style={{width:60,height:60,borderRadius:'50%',flexShrink:0,position:'relative',
-                      background:`conic-gradient(${c} 0deg ${deg}deg, var(--bg-card) ${deg}deg 360deg)`,
-                      display:'flex',alignItems:'center',justifyContent:'center'}}>
-                      <div style={{position:'absolute',width:42,height:42,background:'var(--bg-elevated)',borderRadius:'50%'}}/>
-                      <span style={{position:'relative',zIndex:1,fontFamily:'JetBrains Mono,monospace',
-                        fontSize:15,fontWeight:700,color:c}}>
-                        {selected.score>0?selected.score.toFixed(1):'0'}
-                      </span>
-                    </div>
-                    <div>
-                      <div style={{fontSize:12,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'.06em'}}>Risk Score</div>
-                      <div style={{fontSize:14,fontWeight:700,color:c,marginTop:2}}>{SEV_LABEL(selected.score)}</div>
-                      <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>
-                        {selected.images.length} image{selected.images.length!==1?'s':''} · {selected.allCVEs.length} CVEs
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {}
-              <div className="dp-section">Risk Factors</div>
-              {selected.factors.length===0
-                ?<div style={{padding:20,textAlign:'center',color:'var(--text-muted)',fontSize:12,
-                  background:'var(--bg-card)',borderRadius:8,border:'1px solid var(--border)',marginBottom:16}}>
-                  No risk factors detected
-                </div>
-                :<div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
-                  {selected.factors.sort((a,b)=>b.score-a.score).map((f,i)=>(
-                    <div key={i} style={{background:'var(--bg-card)',border:'1px solid var(--border)',
-                      borderRadius:8,padding:'10px 12px',display:'flex',gap:10}}>
-                      <span style={{fontSize:16,lineHeight:1,marginTop:1,flexShrink:0,color:f.color}}><Icon name={f.icon} /></span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-                          <div style={{fontSize:12,fontWeight:600,color:f.color}}>{f.label}</div>
-                          <span className="mono" style={{fontSize:11,color:'var(--text-muted)',flexShrink:0}}>+{f.score.toFixed(1)}</span>
+              <DetailSection title="Risk factors">
+                {selected.factors.length === 0
+                  ? <div className="item-card t-center t-sm t-muted">No risk factors detected</div>
+                  : [...selected.factors].sort((a, b) => b.score - a.score).map((f, i) => (
+                      <div key={i} className="item-card row row--top">
+                        <span className={`t-lg t-${f.tone}`}><Icon name={f.icon} /></span>
+                        <div className="grow">
+                          <div className="row row--between">
+                            <span className={`t-sm t-strong t-${f.tone}`}>{f.label}</span>
+                            <span className="mono t-xs t-muted">+{f.score.toFixed(1)}</span>
+                          </div>
+                          <div className="t-xs t-muted mt-4">{f.detail}</div>
                         </div>
-                        <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{f.detail}</div>
                       </div>
+                    ))}
+              </DetailSection>
+
+              {selected.allCVEs.length > 0 && (
+                <DetailSection title="Top CVEs">
+                  {[...selected.allCVEs].sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0)).slice(0, 6).map((c, i) => (
+                    <div key={i} className="item-card row">
+                      <span className="mono t-xs t-accent cve-id">{c.id}</span>
+                      <SevBadge sev={String(c.severity || '').toUpperCase()} />
+                      <span className="grow" />
+                      <span className="mono t-xs t-muted">{(c.cvssV3Score || 0).toFixed(1)}</span>
+                      {c.inKev && <Tag tone="danger">KEV</Tag>}
                     </div>
                   ))}
-                </div>
-              }
-
-              {}
-              {selected.allCVEs.length>0&&(
-                <>
-                  <div className="dp-section">Top CVEs</div>
-                  <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:20}}>
-                    {selected.allCVEs
-                      .sort((a,b)=>(b.riskScore||0)-(a.riskScore||0))
-                      .slice(0,6)
-                      .map((c,i)=>(
-                      <div key={i} style={{display:'flex',alignItems:'center',gap:8,
-                        padding:'6px 10px',background:'var(--bg-card)',borderRadius:6,border:'1px solid var(--border)'}}>
-                        <span className="mono" style={{fontSize:11,color:'var(--accent)',minWidth:120,flexShrink:0}}>{c.id}</span>
-                        <SevBadge sev={c.severity}>{c.severity}</SevBadge>
-                        <span className="mono" style={{fontSize:11,color:'var(--text-muted)',marginLeft:'auto',flexShrink:0}}>
-                          {(c.cvss||0).toFixed(1)}
-                        </span>
-                        {c.inKEV&&<span style={{fontSize:10,padding:'1px 5px',borderRadius:3,
-                          background:'rgba(239,68,68,.2)',color:'var(--danger)',fontWeight:700,flexShrink:0}}>KEV</span>}
-                      </div>
-                    ))}
-                    {selected.allCVEs.length>6&&<div style={{fontSize:11,color:'var(--text-muted)',textAlign:'center',padding:4}}>
-                      +{selected.allCVEs.length-6} more
-                    </div>}
-                  </div>
-                </>
+                  {selected.allCVEs.length > 6 && <div className="t-xs t-muted t-center mt-8">+{selected.allCVEs.length - 6} more</div>}
+                </DetailSection>
               )}
 
-              {}
-              {selected.images.length>0&&(
-                <>
-                  <div className="dp-section">Images</div>
-                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                    {selected.images.map((img,i)=>(
-                      <div key={i}
-                        onClick={() => {
-                          localStorage.setItem('wv_vuln_image', img);
-                          navigate('/vulnmgmt');
-                        }}
-                        style={{
-                          fontSize:11, fontFamily:'monospace',
-                          padding:'6px 10px',
-                          background:'rgba(99,179,237,.08)',
-                          border:'1px solid rgba(99,179,237,.3)',
-                          borderRadius:5,
-                          color:'var(--accent)',
-                          wordBreak:'break-all',
-                          cursor:'pointer',
-                          display:'flex', alignItems:'center', gap:8,
-                          transition:'all .12s',
-                        }}
-                        onMouseEnter={e=>{e.currentTarget.style.background='rgba(99,179,237,.16)';e.currentTarget.style.borderColor='rgba(99,179,237,.5)';}}
-                        onMouseLeave={e=>{e.currentTarget.style.background='rgba(99,179,237,.08)';e.currentTarget.style.borderColor='rgba(99,179,237,.3)';}}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink:0}}>
-                          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-                        </svg>
-                        {img}
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{marginLeft:'auto',flexShrink:0,opacity:.6}}>
-                          <path d="M5 12h14M12 5l7 7-7 7"/>
-                        </svg>
-                      </div>
-                    ))}
-                  </div>
-                </>
+              {selected.images.length > 0 && (
+                <DetailSection title="Images">
+                  {selected.images.map((img, i) => (
+                    <button key={i} type="button" className="item-card item-card--link link-card"
+                      onClick={() => { localStorage.setItem('wv_vuln_image', img); navigate('/vulnmgmt'); }}>
+                      <Icon name="package" />
+                      <span className="mono t-xs break grow">{img}</span>
+                      <Icon name="chevron-right" />
+                    </button>
+                  ))}
+                </DetailSection>
               )}
-            </div>
-          </div>
-        )}
+            </SidePanel>
+          );
+        })()}
       </div>
     </div>
   );

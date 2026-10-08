@@ -3,9 +3,10 @@ import { useScanner } from '../../context/ScannerContext';
 import { useBridge }  from '../../context/BridgeContext';
 import { useApp }     from '../../context/AppContext';
 import { useSensor }  from '../../context/SensorContext';
-import { SevBadge, StatusDot } from '../../components/ui';
+import { SevBadge, StatusDot, Tabs } from '../../components/ui';
 import { EmptyState }  from '../../components/EmptyState';
-import { sevColor, epssLabel } from '../../data/scanner';
+import { PageHeader, SearchInput, Stat, Crumbs, SortTh, Tag, KindBadge, EmptyRow, Notice, sevTone, cx } from '../../components/kit';
+import { epssLabel, epssTone } from '../../data/scanner';
 import { CveDetail }     from './CveDetail';
 import { SbomDetail }    from './SbomDetail';
 import { ScheduleModal } from './vulnWidgets';
@@ -16,6 +17,17 @@ import { VulnLibsTab } from './VulnLibsTab';
 import { VulnImagesTab } from './VulnImagesTab';
 import { Icon } from '../../components/Icon';
 import { ProgressLine } from '../../components/ProgressLine';
+import '../../styles/vuln.scss';
+
+const SYSTEM_NS = ['kube-system', 'kube-public', 'kube-node-lease', 'metallb-system', 'calico-system', 'cert-manager'];
+
+const ago = iso => {
+  if (!iso) return null;
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
+};
+
+const fmt = v => (typeof v === 'number' && v > 999 ? v.toLocaleString() : v);
 
 export function VulnMgmt() {
   const { toast } = useApp();
@@ -135,6 +147,7 @@ export function VulnMgmt() {
   const critCVEs    = summary?.critical || allCVEs.filter(c => c.severity?.toUpperCase() === 'CRITICAL').length;
   const highCVEs    = summary?.high     || allCVEs.filter(c => c.severity?.toUpperCase() === 'HIGH').length;
   const fixableCVEs = summary?.fixable  || allCVEs.filter(c => c.hasFix).length;
+  const critImages  = results.filter(r => r.summary?.critical > 0).length;
 
   const imageRows = useMemo(() => {
     return clusterImages.filter(img => { const r = img.ref || img.name || ''; return !r.startsWith('sha256:') && !r.match(/^[0-9a-f]{64}$/); })
@@ -146,7 +159,7 @@ export function VulnMgmt() {
     const resultByImage = {};
     results.forEach(r => { resultByImage[r.image] = r; resultByImage[r.name] = r; });
     return workloads
-      .filter(w => !['kube-system','kube-public','kube-node-lease','metallb-system','calico-system','cert-manager'].includes(w.metadata?.namespace))
+      .filter(w => !SYSTEM_NS.includes(w.metadata?.namespace))
       .map(w => {
         const allC = [...(w.spec?.template?.spec?.containers || []), ...(w.spec?.template?.spec?.initContainers || [])];
         const images = [...new Set(allC.map(c => c.image).filter(img => img && !img.startsWith('sha256:')))];
@@ -164,15 +177,9 @@ export function VulnMgmt() {
       .sort((a, b) => b.total - a.total || b.events - a.events);
   }, [sensorNodes, clusterImages, results, nodeStats]);
 
-  const imageToController = useMemo(() => {
-    const m = {};
-    deployRows.forEach(r => r.images.forEach(img => { m[img] = { name: r.name, kind: r.kind }; m[img.split(':')[0]] = { name: r.name, kind: r.kind }; }));
-    return m;
-  }, [deployRows]);
-
   const q = search.toLowerCase();
   const toggleSort = col => { if (sortCol === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc'); else { setSortCol(col); setSortDir('desc'); } };
-  const SortTh = ({ col, label }) => <th style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} onClick={() => toggleSort(col)}>{label} <Icon name={sortCol === col ? (sortDir === 'desc' ? 'chevron-down' : 'chevron-up') : 'sort'} style={sortCol === col ? undefined : { opacity: .3 }} /></th>;
+  const sortProps = { sort: sortCol, dir: sortDir, onSort: toggleSort };
 
   const sortedFiltered = useMemo(() => {
     const filtered = allCVEs.filter(c => !q || c.id?.toLowerCase().includes(q) || c.bduId?.toLowerCase().includes(q) || c.pkgName?.toLowerCase().includes(q) || c._imageName?.toLowerCase().includes(q));
@@ -194,13 +201,7 @@ export function VulnMgmt() {
   };
 
   const filterInput = (
-    <input
-      type="text"
-      placeholder={`Filter ${tab.toLowerCase()}...`}
-      value={search}
-      onChange={e => setSearch(e.target.value)}
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 10px', fontSize: 12, color: 'var(--text-primary)', outline: 'none', fontFamily: 'DM Sans,sans-serif' }}
-    />
+    <SearchInput size="sm" value={search} onChange={setSearch} placeholder={`Filter ${tab.toLowerCase()}…`} />
   );
 
   const exportCSV = () => {
@@ -218,325 +219,294 @@ export function VulnMgmt() {
     toast('success', 'Exported', `${allCVEs.length} CVEs`);
   };
 
-  const kindColors = { Deployment: ['rgba(0,200,255,.08)', 'var(--accent)'], StatefulSet: ['rgba(124,58,237,.12)', '#a78bfa'], DaemonSet: ['rgba(16,185,129,.1)', 'var(--accent-3)'] };
+  const switchTab = t => { setTab(t); setSelected(null); setSearch(''); setNodeDrill(null); setDeployDrill(null); setImageDrill(null); };
+  const doneCount = progress.filter(p => p.kind === 'ok').length;
+  const failCount = progress.filter(p => p.kind === 'fail').length;
+  const pagerProps = { pageSize, page, setPage, setPageSize };
+  const shown = v => (scanning && !v ? '…' : fmt(v || 0));
 
   return (
-    <div className="page active flex-page" id="page-vulnmgmt" style={{ flexDirection: 'column', padding: 0 }}>
-      <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
-        <div className="page-header" style={{ marginBottom: 14 }}>
-          <div>
-            <div className="page-title">Vulnerability Management</div>
-            <div className="page-subtitle">
+    <div className="page active flex-page split-page" id="page-vulnmgmt">
+      <div className="split-head">
+        <PageHeader
+          className="mb-12"
+          title="Vulnerability Management"
+          subtitle={
+            <span className="row row--wrap">
               CVEs across images, deployments and nodes
-              {agentOnline ? <span style={{ color: 'var(--accent-3)', marginLeft: 8, fontSize: 11 }}>
-                               ● scanner online · {okResults} images scanned
-                               {failedResults.length > 0 && <span style={{ color: 'var(--danger)' }}> · {failedResults.length} failed</span>}
-                             </span>
-                           : <span style={{ color: 'var(--warning)', marginLeft: 8, fontSize: 11 }}><Icon name="alert" /> scanner offline</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-outline" onClick={() => setScheduleOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {agentOnline
+                ? <span className="row row--tight t-ok t-xs"><span className="dot dot--ok" /> scanner online · {okResults} images scanned
+                    {failedResults.length > 0 && <span className="t-danger"> · {failedResults.length} failed</span>}</span>
+                : <span className="row row--tight t-warning t-xs"><Icon name="alert" /> scanner offline</span>}
+            </span>
+          }
+          actions={<>
+            <button type="button" className="btn btn-outline" onClick={() => setScheduleOpen(true)}>
               <Icon name="clock" /> Schedule
-              {schedule?.enabled && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#000', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>ON</span>}
+              {schedule?.enabled && <Tag tone="accent">ON</Tag>}
             </button>
             {!scanning && (
-              <button
-                className="btn btn-primary"
-                onClick={handleScanAll}
-                disabled={!agentOnline || starting}
-                title={agentOnline ? 'Scan every image running in the cluster' : 'Scanner agent is offline'}
-              >
-                {starting
-                  ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>&nbsp;Starting…</>
-                  : <><Icon name="scan" /> Scan All Images</>}
+              <button type="button" className="btn btn-primary" onClick={handleScanAll} disabled={!agentOnline || starting}
+                title={agentOnline ? 'Scan every image running in the cluster' : 'Scanner agent is offline'}>
+                {starting ? <><Icon name="loader" /> Starting…</> : <><Icon name="scan" /> Scan All Images</>}
               </button>
             )}
-            {scanning && <button className="btn btn-danger" onClick={handleStop} title="Cancel running Trivy processes and clear the queue">
-              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>&nbsp;Stop Scan
-            </button>}
-            {allCVEs.length > 0 && <button className="btn btn-outline" onClick={exportCSV}><Icon name="download" /> CSV</button>}
-          </div>
-        </div>
+            {scanning && (
+              <button type="button" className="btn btn-danger" onClick={handleStop} title="Cancel running Trivy processes and clear the queue">
+                <Icon name="loader" /> Stop Scan
+              </button>
+            )}
+            {allCVEs.length > 0 && <button type="button" className="btn btn-outline" onClick={exportCSV}><Icon name="download" /> CSV</button>}
+          </>}
+        />
 
-        <div ref={summaryRef} style={{ maxHeight: summaryH ?? 'none', overflow: 'hidden', opacity: summaryH == null ? 1 : Math.min(1, summaryH / 60) }}>
-        {failedResults.length > 0 && !errorsDismissed && (
-          <div className="card" style={{ padding: '12px 14px', marginBottom: 14, borderLeft: '3px solid var(--danger)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)' }}>
-                <Icon name="circle-x" /> {failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan
+        <div ref={summaryRef} className="vuln-summary"
+          style={summaryH == null ? undefined : { maxHeight: summaryH, opacity: Math.min(1, summaryH / 60) }}>
+          {failedResults.length > 0 && !errorsDismissed && (
+            <Notice tone="danger" icon="circle-x">
+              <div className="row row--between">
+                <span className="t-strong">{failedResults.length} image{failedResults.length === 1 ? '' : 's'} failed to scan</span>
+                <button type="button" className="btn-icon btn-icon--sm" aria-label="Close scan errors" onClick={() => setErrorsDismissed(true)}><Icon name="x" /></button>
               </div>
-              <button
-                type="button"
-                aria-label="Close scan errors"
-                onClick={() => setErrorsDismissed(true)}
-                style={{ background: 'none', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}
-              ><Icon name="x" /></button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 132, overflowY: 'auto' }}>
-              {failedResults.slice(0, 6).map(r => (
-                <div key={r.image} style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'var(--text-muted)', wordBreak: 'break-all' }}>
-                  <span style={{ color: 'var(--text)' }}>{r.image}</span> — {r.error || 'unknown error'}
+              <div className="scan-errors">
+                {failedResults.slice(0, 6).map(r => (
+                  <div key={r.image}><b>{r.image}</b> — {r.error || 'unknown error'}</div>
+                ))}
+                {failedResults.length > 6 && <div>…and {failedResults.length - 6} more</div>}
+              </div>
+            </Notice>
+          )}
+
+          <div className="stats-grid stats-grid--5 mb-16">
+            <Stat label="Total CVEs" tone="danger" value={shown(totalCVEs)}
+              sub={critCVEs > 0 ? `${critCVEs} critical · ${highCVEs} high` : 'No critical CVEs'} />
+            <Stat label="Images Scanned" tone="warning" value={shown(okResults)}
+              sub={failedResults.length > 0 ? `${failedResults.length} failed to scan` : (critImages > 0 ? `${critImages} with critical` : 'No critical images')} />
+            <Stat label="Fixable" tone="ok" value={shown(fixableCVEs)}
+              sub={totalCVEs > 0 ? `${Math.round(fixableCVEs / totalCVEs * 100)}% of total` : '—'} />
+            <Stat label="CISA KEV" tone="danger" value={shown(summary?.inKev)} sub="Actively exploited" />
+            <Stat label="With PoC" tone="warning" value={shown(summary?.hasPoc)} sub="Public exploit code" />
+          </div>
+
+          {(scanning || (showProgress && progress.length > 0)) && (
+            <div className="scan-log" data-open={!logCollapsed}>
+              <div className="scan-log-head">
+                <button type="button" className="scan-log-toggle" aria-expanded={!logCollapsed} onClick={() => setLogCollapsed(c => !c)}>
+                  <Icon name={logCollapsed ? 'chevron-right' : 'chevron-down'} />
+                  {scanning
+                    ? <span className="row row--tight t-accent t-strong"><Icon name="loader" /> Scanning images…</span>
+                    : <span className="row row--tight t-ok t-strong"><Icon name="check" /> Scan complete</span>}
+                  <span className="t-xs t-muted">{doneCount} done{failCount > 0 && ` · ${failCount} errors`}</span>
+                </button>
+                <button type="button" className="btn-icon btn-icon--sm" aria-label="Hide scan log" onClick={() => setShowProgress(false)}><Icon name="x" /></button>
+              </div>
+              {!logCollapsed && (
+                <div className="scan-log-body">
+                  {progress.slice(-30).map((line, i) => <ProgressLine key={i} line={line} compact />)}
                 </div>
-              ))}
-              {failedResults.length > 6 && (
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>…and {failedResults.length - 6} more</div>
               )}
             </div>
-          </div>
-        )}
-
-        {}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
-          {[['Total CVEs', totalCVEs, 'var(--danger)', critCVEs > 0 ? `${critCVEs} critical · ${highCVEs} high` : 'No critical CVEs'],
-            ['Images Scanned', okResults, 'var(--warning)', failedResults.length > 0 ? `${failedResults.length} failed to scan` : (results.filter(r => r.summary?.critical > 0).length > 0 ? `${results.filter(r => r.summary?.critical > 0).length} with critical` : 'No critical images')],
-            ['Fixable', fixableCVEs, 'var(--accent-3)', totalCVEs > 0 ? `${Math.round(fixableCVEs / totalCVEs * 100)}% of total` : '—'],
-            ['CISA KEV', summary?.inKev || 0, 'var(--danger)', 'Actively exploited'],
-            ['With PoC', summary?.hasPoc || 0, 'var(--warning)', 'Public exploit code'],
-          ].map(([label, val, color, sub]) => (
-            <div key={label} className="card" style={{ padding: '14px 16px', marginBottom: 0 }}>
-              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color, fontFamily: 'JetBrains Mono,monospace' }}>{scanning && val === 0 ? '…' : (typeof val === 'number' && val > 999 ? val.toLocaleString() : val)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>
-            </div>
-          ))}
+          )}
         </div>
 
-        {}
-        {(scanning || (showProgress && progress.length > 0)) && (
-          <div style={{ marginBottom: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-            <div
-              onClick={() => setLogCollapsed(c => !c)}
-              title={logCollapsed ? 'Click to expand log' : 'Click to collapse log'}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: logCollapsed ? 'none' : '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Icon name={logCollapsed ? 'chevron-right' : 'chevron-down'} style={{ color: 'var(--text-muted)' }} />
-                {scanning ? <span style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 600 }}><Icon name="loader" style={{ marginRight: 6 }} />Scanning images…</span>
-                           : <span style={{ color: 'var(--accent-3)', fontSize: 12, fontWeight: 600 }}><Icon name="check" /> Scan complete</span>}
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{progress.filter(p => p.kind === 'ok').length} done{progress.filter(p => p.kind === 'fail').length > 0 && ` · ${progress.filter(p => p.kind === 'fail').length} errors`}</span>
-              </div>
-              <button onClick={e => { e.stopPropagation(); setShowProgress(false); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, padding: '2px 6px' }}><Icon name="x" /></button>
-            </div>
-            {!logCollapsed && (
-              <div style={{ maxHeight: 120, overflowY: 'auto', padding: '6px 14px 8px', fontFamily: 'JetBrains Mono,monospace', fontSize: 11 }}>
-                {progress.slice(-30).map((line, i) => <ProgressLine key={i} line={line} compact />)}
-              </div>
-            )}
-          </div>
-        )}
-        </div>
-
-        <div className="tabs">
-          {TABS.map(t => <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => { setTab(t); setSelected(null); setSearch(''); setNodeDrill(null); setDeployDrill(null); setImageDrill(null); }}>{t}</div>)}
-        </div>
-        <div
-          className="resize-grip"
-          onMouseDown={onSummaryResizeDown}
-          onDoubleClick={() => setSummaryH(null)}
-          title="Drag up to enlarge the table · double-click to reset"
-          style={{ height: 12, margin: '-17px 0 5px' }}
-        />
+        <Tabs tabs={TABS.map(t => ({ id: t, label: t }))} active={tab} onSwitch={switchTab} />
+        <div className="resize-grip vuln-grip" onMouseDown={onSummaryResizeDown} onDoubleClick={() => setSummaryH(null)}
+          title="Drag up to enlarge the table · double-click to reset" />
       </div>
 
-      <div style={{ display: tab === 'Libs' ? 'none' : 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 24px 24px', minWidth: 0 }}>
-
-          {}
-          {tab === 'CVEs' && (
-            <div className="card" style={{ marginTop: 16, marginRight: 24 }}>
-              <div className="card-header">
-                <div className="card-title">CVEs {allCVEs.length > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>({allCVEs.length.toLocaleString()})</span>}</div>
-                {filterInput}
-              </div>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>CVE ID</th><th title="FSTEC BDU — Russian national vulnerability database identifier">BDU</th><th>Severity</th><SortTh col="cvss" label="CVSS" /><SortTh col="epss" label="EPSS" /><SortTh col="risk" label="Risk" /><th>Package</th><th>Version</th><th>Image</th><th>KEV</th><th>PoC</th><th>Fix</th></tr></thead>
-                  <tbody>
-                    {allCVEs.length === 0
-                      ? <tr><td colSpan={12}><EmptyState icon={agentOnline ? 'search' : 'wifi-off'} title={agentOnline ? 'No scan results yet' : 'Scanner agent offline'} sub={agentOnline ? 'Run a scan to detect CVEs in your cluster images.' : 'Deploy scanner-agent to start vulnerability detection.'} action={agentOnline && <button className="btn btn-primary" style={{ marginTop: 4 }} onClick={handleScanAll}>Start Scan</button>} /></td></tr>
-                      : paginate(sortedFiltered).map((c, i) => {
-                          const epss = c.epssScore > 0 ? epssLabel(c.epssScore) : null;
-                          const riskCol = { CRITICAL: 'var(--danger)', HIGH: 'var(--warning)', MEDIUM: '#a78bfa', LOW: 'var(--accent-3)' }[c.riskLabel] || 'var(--text-muted)';
-                          return (
-                            <tr key={i} className={selected === c ? 'selected' : ''} style={{ cursor: 'pointer' }} onClick={() => setSelected(selected === c ? null : c)}>
-                              <td className="td-primary mono" style={{ fontSize: 12 }}>{c.id}</td>
-                              <td className="mono" style={{ fontSize: 11 }} title={c.bduId ? `${c.bduId}${c.bduSeverity ? ` · ${c.bduSeverity}` : ''}` : 'Not found in the FSTEC BDU'}>
-                                {c.bduId
-                                  ? <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'rgba(239,68,68,.12)', color: 'var(--danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>{c.bduId}</span>
-                                  : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}
-                              </td>
-                              <td><SevBadge sev={c.severity?.toUpperCase()} /></td>
-                              <td className="mono" style={{ fontSize: 12, fontWeight: 700, color: sevColor(c.severity) }}>{c.cvssV3Score > 0 ? c.cvssV3Score.toFixed(1) : '—'}</td>
-                              <td className="mono" style={{ fontSize: 11, color: epss?.color || 'var(--text-muted)' }}>{epss?.text || '—'}</td>
-                              <td>{c.riskScore > 0 ? <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: riskCol, fontWeight: 700, background: `${riskCol}18`, padding: '1px 6px', borderRadius: 4 }}>{c.riskScore}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>}</td>
-                              <td style={{ fontSize: 12 }}>{c.pkgName}</td>
-                              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.pkgVersion}</td>
-                              <td className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c._imageName}>{c._imageName || '—'}</td>
-                              <td style={{ fontSize: 12 }}>{c.inKev ? <span title="CISA KEV — actively exploited" style={{ color: 'var(--danger)' }}><Icon name="flame" /></span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                              <td style={{ fontSize: 12 }}>{c.pocs?.length > 0 ? <span className="ic-label" title={`${c.pocs.length} PoC(s)`}><Icon name="code" />{c.pocs.length}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                              <td><StatusDot type={c.hasFix ? 'active' : 'error'} label={c.hasFix ? 'Yes' : 'No'} /></td>
-                            </tr>
-                          );
-                        })
-                    }
-                  </tbody>
-                </table>
-              </div>
-              <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={sortedFiltered.length} />
-            </div>
-          )}
-
-          {}
-          {tab === 'Images' && (
-            <VulnImagesTab
-              imageDrill={imageDrill} setImageDrill={setImageDrill}
-              imageRows={imageRows}
-              q={q} results={results} agentOnline={agentOnline} handleScanAll={handleScanAll}
-              paginate={paginate} pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize}
-              setSelected={setSelected} filterInput={filterInput}
-            />
-          )}
-
-          {}
-          {tab === 'Deployments' && (
-            <div className="card" style={{ marginTop: 16, marginRight: deployDrill ? 0 : 24 }}>
-              <div className="card-header">
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {deployDrill ? <><span style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setDeployDrill(null)}>Workloads</span><span style={{ color: 'var(--text-muted)' }}>›</span><span>{deployDrill.name}</span><span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({deployDrill.images.length} images)</span></>
-                    : <>Workloads ({deployRows.length})</>}
+      {tab !== 'Libs' && (
+        <div className="split-body">
+          <div className="split-main">
+            {tab === 'CVEs' && (
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title">CVEs {allCVEs.length > 0 && <span className="card-sub">({allCVEs.length.toLocaleString()})</span>}</div>
+                  {filterInput}
                 </div>
-                {deployDrill ? <button onClick={() => setDeployDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button> : filterInput}
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead><tr>
+                      <th>CVE ID</th><th title="FSTEC BDU — Russian national vulnerability database identifier">BDU</th><th>Severity</th>
+                      <SortTh col="cvss" label="CVSS" {...sortProps} /><SortTh col="epss" label="EPSS" {...sortProps} /><SortTh col="risk" label="Risk" {...sortProps} />
+                      <th>Package</th><th>Version</th><th>Image</th><th>KEV</th><th>PoC</th><th>Fix</th>
+                    </tr></thead>
+                    <tbody>
+                      {allCVEs.length === 0
+                        ? <tr className="static"><td colSpan={12}>
+                            <EmptyState icon={agentOnline ? 'search' : 'wifi-off'}
+                              title={agentOnline ? 'No scan results yet' : 'Scanner agent offline'}
+                              sub={agentOnline ? 'Run a scan to detect CVEs in your cluster images.' : 'Deploy scanner-agent to start vulnerability detection.'}
+                              action={agentOnline && <button type="button" className="btn btn-primary" onClick={handleScanAll}>Start Scan</button>} />
+                          </td></tr>
+                        : paginate(sortedFiltered).map((c, i) => {
+                            const epss = c.epssScore > 0 ? epssLabel(c.epssScore) : null;
+                            const tone = sevTone(c.severity);
+                            return (
+                              <tr key={i} className={selected === c ? 'selected' : ''} onClick={() => setSelected(selected === c ? null : c)}>
+                                <td className="td-primary mono t-sm">{c.id}</td>
+                                <td title={c.bduId ? `${c.bduId}${c.bduSeverity ? ` · ${c.bduSeverity}` : ''}` : 'Not found in the FSTEC BDU'}>
+                                  {c.bduId ? <Tag tone="danger" mono>{c.bduId}</Tag> : <span className="t-muted">—</span>}
+                                </td>
+                                <td><SevBadge sev={c.severity?.toUpperCase()} /></td>
+                                <td className={cx('mono t-sm t-strong', tone && `t-${tone}`)}>{c.cvssV3Score > 0 ? c.cvssV3Score.toFixed(1) : '—'}</td>
+                                <td className={cx('mono t-xs', epssTone(c.epssScore) ? `t-${epssTone(c.epssScore)}` : 't-muted')}>{epss?.text || '—'}</td>
+                                <td>{c.riskScore > 0 ? <Tag tone={sevTone(c.riskLabel)} mono>{c.riskScore}</Tag> : <span className="t-muted">—</span>}</td>
+                                <td className="t-sm">{c.pkgName}</td>
+                                <td className="mono t-xs t-muted">{c.pkgVersion}</td>
+                                <td className="mono t-xs t-muted clip clip--sm" title={c._imageName}>{c._imageName || '—'}</td>
+                                <td>{c.inKev ? <span className="t-danger" title="CISA KEV — actively exploited"><Icon name="flame" /></span> : <span className="t-muted">—</span>}</td>
+                                <td>{c.pocs?.length > 0 ? <span className="ic-label t-sm" title={`${c.pocs.length} PoC(s)`}><Icon name="code" />{c.pocs.length}</span> : <span className="t-muted">—</span>}</td>
+                                <td><StatusDot type={c.hasFix ? 'active' : 'error'} label={c.hasFix ? 'Yes' : 'No'} /></td>
+                              </tr>
+                            );
+                          })}
+                    </tbody>
+                  </table>
+                </div>
+                <Pager {...pagerProps} total={sortedFiltered.length} />
               </div>
-              {!deployDrill ? (() => {
-                const filtered = deployRows.filter(r => !q || r.name.toLowerCase().includes(q) || r.ns.includes(q) || r.kind.toLowerCase().includes(q));
-                return (
-                  <>
-                    <div className="table-wrap">
-                      <table className="data-table">
-                        <thead><tr><th>Name</th><th>Controller</th><th>Namespace</th><th>Images</th><th>Total CVEs</th><th style={{ width: 24 }}></th></tr></thead>
-                        <tbody>
-                          {deployRows.length === 0 ? <tr><td colSpan={6}><EmptyState icon="layers" title="No workload data" sub="Sensor must be online to load real workloads from the cluster." /></td></tr>
-                            : paginate(filtered).map((r, i) => {
-                                const [bg, col] = kindColors[r.kind] || kindColors.Deployment;
-                                return (
-                                  <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setDeployDrill(r)}>
+            )}
+
+            {tab === 'Images' && (
+              <VulnImagesTab
+                imageDrill={imageDrill} setImageDrill={setImageDrill}
+                imageRows={imageRows}
+                q={q} results={results} agentOnline={agentOnline} handleScanAll={handleScanAll}
+                paginate={paginate} pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize}
+                setSelected={setSelected} filterInput={filterInput}
+              />
+            )}
+
+            {tab === 'Deployments' && (
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title">
+                    {deployDrill
+                      ? <Crumbs items={[{ label: 'Workloads', onClick: () => setDeployDrill(null) }, { label: deployDrill.name }]} meta={`${deployDrill.images.length} images`} />
+                      : <>Workloads <span className="card-sub">({deployRows.length})</span></>}
+                  </div>
+                  {deployDrill
+                    ? <button type="button" onClick={() => setDeployDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button>
+                    : filterInput}
+                </div>
+                {!deployDrill ? (() => {
+                  const filtered = deployRows.filter(r => !q || r.name.toLowerCase().includes(q) || r.ns.includes(q) || r.kind.toLowerCase().includes(q));
+                  return (
+                    <>
+                      <div className="table-wrap">
+                        <table className="data-table">
+                          <thead><tr><th>Name</th><th>Controller</th><th>Namespace</th><th>Images</th><th>Total CVEs</th><th aria-label="Open" /></tr></thead>
+                          <tbody>
+                            {deployRows.length === 0
+                              ? <tr className="static"><td colSpan={6}><EmptyState icon="layers" title="No workload data" sub="Sensor must be online to load real workloads from the cluster." /></td></tr>
+                              : paginate(filtered).map((r, i) => (
+                                  <tr key={i} onClick={() => setDeployDrill(r)}>
                                     <td className="td-primary">{r.name}</td>
-                                    <td><span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: bg, color: col }}>{r.kind}</span></td>
-                                    <td style={{ fontSize: 12 }}>{r.ns}</td>
-                                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.images.length}</td>
-                                    <td className="mono" style={{ fontSize: 12, color: r.totalCVEs > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{r.totalCVEs || '—'}</td>
-                                    <td style={{ color: 'var(--text-muted)', fontSize: 14 }}>›</td>
+                                    <td><KindBadge kind={r.kind} /></td>
+                                    <td className="t-sm">{r.ns}</td>
+                                    <td className="t-sm t-muted">{r.images.length}</td>
+                                    <td className={cx('mono t-sm', r.totalCVEs > 0 ? 't-danger' : 't-muted')}>{r.totalCVEs || '—'}</td>
+                                    <td className="t-muted"><Icon name="chevron-right" /></td>
                                   </tr>
-                                );
-                              })
-                          }
-                        </tbody>
-                      </table>
-                    </div>
-                    <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={filtered.length} />
-                  </>
-                );
-              })() : (() => {
-                const drillImages = deployDrill.images;
-                return (
+                                ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Pager {...pagerProps} total={filtered.length} />
+                    </>
+                  );
+                })() : (
                   <>
                     <div className="table-wrap">
                       <table className="data-table">
-                        <thead><tr><th>Image</th><th>Severity</th><th>Total CVEs</th><th>Scanned</th><th style={{ width: 24 }}></th></tr></thead>
+                        <thead><tr><th>Image</th><th>Severity</th><th>Total CVEs</th><th>Scanned</th><th aria-label="Open" /></tr></thead>
                         <tbody>
-                          {paginate(drillImages).map((img, i) => {
+                          {paginate(deployDrill.images).map((img, i) => {
                             const res = deployDrill.imageResults.find(r => r.image === img || r.name === img || img.startsWith(r.name));
-                            const age = res?.scannedAt ? Math.round((Date.now() - new Date(res.scannedAt)) / 60000) : null;
                             const topSev = res ? (['critical','high','medium','low'].find(s => res.summary?.[s] > 0) || '').toUpperCase() : null;
                             return (
-                              <tr key={i} style={{ cursor: res ? 'pointer' : 'default', opacity: res ? 1 : 0.5 }} onClick={() => res && (setTab('Images'), setImageDrill(res))}>
-                                <td className="td-primary mono" style={{ fontSize: 11 }}>{img}</td>
-                                <td>{topSev ? <SevBadge sev={topSev} /> : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{res ? 'Clean' : '—'}</span>}</td>
-                                <td className="mono" style={{ fontSize: 12, color: res?.summary?.total > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{res?.summary?.total != null ? res.summary.total : '—'}</td>
-                                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{age !== null ? (age < 60 ? `${age}m ago` : `${Math.round(age / 60)}h ago`) : 'Not scanned'}</td>
-                                <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{res ? '›' : ''}</td>
+                              <tr key={i} className={res ? '' : 'static t-muted'} onClick={() => res && (setTab('Images'), setImageDrill(res))}>
+                                <td className="td-primary mono t-xs">{img}</td>
+                                <td>{topSev ? <SevBadge sev={topSev} /> : <span className="t-muted t-xs">{res ? 'Clean' : '—'}</span>}</td>
+                                <td className={cx('mono t-sm', res?.summary?.total > 0 ? 't-danger' : 't-muted')}>{res?.summary?.total != null ? res.summary.total : '—'}</td>
+                                <td className="t-sm t-muted">{ago(res?.scannedAt) || 'Not scanned'}</td>
+                                <td className="t-muted">{res && <Icon name="chevron-right" />}</td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
                     </div>
-                    <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={drillImages.length} />
+                    <Pager {...pagerProps} total={deployDrill.images.length} />
                   </>
-                );
-              })()}
-            </div>
-          )}
-
-          {}
-          {tab === 'Nodes' && (
-            <div className="card" style={{ marginTop: 16, marginRight: 24 }}>
-              <div className="card-header">
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {nodeDrill ? <><span style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setNodeDrill(null)}>Nodes</span><span style={{ color: 'var(--text-muted)' }}>›</span><span>{nodeDrill.name}</span><span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({nodeDrill.imageResults.length} images)</span></>
-                    : <>Nodes — Image CVE Exposure ({nodeRows.length})</>}
-                </div>
-                {nodeDrill ? <button onClick={() => setNodeDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button> : filterInput}
+                )}
               </div>
-              {!nodeDrill ? (() => {
-                const filtered = nodeRows.filter(n => !q || n.name.includes(q));
-                return (
-                  <>
-                    <div className="table-wrap">
-                      <table className="data-table">
-                        <thead><tr><th>Node</th><th>Images</th><th>Total CVEs</th><th>Live Events</th></tr></thead>
-                        <tbody>
-                          {nodeRows.length === 0 ? <tr><td colSpan={4}><EmptyState icon="server" title="No node data" sub="Nodes are loaded from the sensor. Make sure sensor is deployed." /></td></tr>
-                            : paginate(filtered).map((n, i) => (
-                                <tr key={i} style={{ cursor: 'pointer' }} onClick={() => setNodeDrill(n)}>
-                                  <td className="td-primary mono" style={{ fontSize: 12 }}>{n.name}</td>
-                                  <td style={{ fontSize: 12, color: n.imageCount > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>{n.imageCount || '—'}</td>
-                                  <td className="mono" style={{ fontSize: 12, color: n.total > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{n.total || '—'}</td>
-                                  <td style={{ color: n.events > 0 ? 'var(--accent)' : 'var(--text-muted)', fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{n.events || '—'}</td>
-                                </tr>
-                              ))
-                          }
-                        </tbody>
-                      </table>
-                    </div>
-                    <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={filtered.length} />
-                  </>
-                );
-              })() : (() => {
-                const drillImages = nodeDrill.imageResults;
-                return (
+            )}
+
+            {tab === 'Nodes' && (
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title">
+                    {nodeDrill
+                      ? <Crumbs items={[{ label: 'Nodes', onClick: () => setNodeDrill(null) }, { label: nodeDrill.name }]} meta={`${nodeDrill.imageResults.length} images`} />
+                      : <>Nodes — Image CVE Exposure <span className="card-sub">({nodeRows.length})</span></>}
+                  </div>
+                  {nodeDrill
+                    ? <button type="button" onClick={() => setNodeDrill(null)} className="btn btn-outline btn-sm"><Icon name="arrow-left" /> Back</button>
+                    : filterInput}
+                </div>
+                {!nodeDrill ? (() => {
+                  const filtered = nodeRows.filter(n => !q || n.name.includes(q));
+                  return (
+                    <>
+                      <div className="table-wrap">
+                        <table className="data-table">
+                          <thead><tr><th>Node</th><th>Images</th><th>Total CVEs</th><th>Live Events</th></tr></thead>
+                          <tbody>
+                            {nodeRows.length === 0
+                              ? <tr className="static"><td colSpan={4}><EmptyState icon="server" title="No node data" sub="Nodes are loaded from the sensor. Make sure sensor is deployed." /></td></tr>
+                              : paginate(filtered).map((n, i) => (
+                                  <tr key={i} onClick={() => setNodeDrill(n)}>
+                                    <td className="td-primary mono t-sm">{n.name}</td>
+                                    <td className={cx('t-sm', n.imageCount > 0 ? 't-primary' : 't-muted')}>{n.imageCount || '—'}</td>
+                                    <td className={cx('mono t-sm', n.total > 0 ? 't-danger' : 't-muted')}>{n.total || '—'}</td>
+                                    <td className={cx('mono t-sm', n.events > 0 ? 't-accent' : 't-muted')}>{n.events || '—'}</td>
+                                  </tr>
+                                ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Pager {...pagerProps} total={filtered.length} />
+                    </>
+                  );
+                })() : (
                   <>
                     <div className="table-wrap">
                       <table className="data-table">
                         <thead><tr><th>Image</th><th>Total CVEs</th><th>Fixable</th><th>Scanned</th></tr></thead>
                         <tbody>
-                          {paginate(drillImages).map((r, i) => {
-                            const age = r.scannedAt ? Math.round((Date.now() - new Date(r.scannedAt)) / 60000) : null;
-                            return (
-                              <tr key={i} style={{ cursor: 'pointer' }} onClick={() => { setNodeDrill(null); setTab('Images'); setImageDrill(r); }}>
-                                <td className="td-primary mono" style={{ fontSize: 11 }}>{r.name}</td>
-                                <td className="mono" style={{ fontSize: 12, color: r.summary?.total > 0 ? 'var(--danger)' : 'var(--accent-3)' }}>{r.summary?.total || '—'}</td>
-                                <td style={{ fontSize: 12, color: 'var(--accent-3)' }}>{r.summary?.fixable || '—'}</td>
-                                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{age !== null ? (age < 60 ? `${age}m ago` : `${Math.round(age / 60)}h ago`) : '—'}</td>
-                              </tr>
-                            );
-                          })}
+                          {paginate(nodeDrill.imageResults).map((r, i) => (
+                            <tr key={i} onClick={() => { setNodeDrill(null); setTab('Images'); setImageDrill(r); }}>
+                              <td className="td-primary mono t-xs">{r.name}</td>
+                              <td className={cx('mono t-sm', r.summary?.total > 0 ? 't-danger' : 't-ok')}>{r.summary?.total || '—'}</td>
+                              <td className="t-sm t-ok">{r.summary?.fixable || '—'}</td>
+                              <td className="t-sm t-muted">{ago(r.scannedAt) || '—'}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
-                    <Pager pageSize={pageSize} page={page} setPage={setPage} setPageSize={setPageSize} total={drillImages.length} />
+                    <Pager {...pagerProps} total={nodeDrill.imageResults.length} />
                   </>
-                );
-              })()}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
+
+          <CveDetail item={selected} onClose={() => setSelected(null)} />
         </div>
+      )}
 
-        <CveDetail item={selected} onClose={() => setSelected(null)} />
-      </div>
-
-      {}
       {tab === 'Libs' && (
         <VulnLibsTab
           results={results}

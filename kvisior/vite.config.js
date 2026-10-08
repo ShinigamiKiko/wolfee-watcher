@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const devHub = process.env.KVISIOR_DEV_HUB
+const hubPrefixes = ['/v1/', '/auth/', '/api/', '/sensor/', '/sentry/', '/anomaly/', '/audit/', '/scanner/', '/honey/']
+
 export default defineConfig({
   css: {
     preprocessorOptions: {
@@ -18,7 +21,7 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: {
+    proxy: devHub ? Object.fromEntries(hubPrefixes.map(p => [p, { target: devHub, changeOrigin: true, secure: false, ws: true }])) : {
       '/v1/': {
         target: 'http://localhost:8080',
         changeOrigin: true,

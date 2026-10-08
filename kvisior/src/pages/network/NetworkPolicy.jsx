@@ -177,7 +177,7 @@ export function NetworkRuntime() {
           <span className="net-badge net-badge--info">{policies.length} {policies.length===1?'policy':'policies'}</span>
           <div className="net-topbar-sep"/>
           <NsDropdown nsFilter={nsFilter} setNsFilter={setNsFilter} namespaces={namespaces}/>
-          <div style={{flex:1}}/>
+          <span className="grow"/>
           <button className="np-create-btn" onClick={()=>setShowCreatePolicy(true)}>+ Create Policy</button>
           <div className="net-topbar-sep"/>
           <button className="net-icon-btn" onClick={()=>setScale(s=>Math.min(3,s*1.2))}>+</button>
@@ -236,9 +236,9 @@ export function NetworkRuntime() {
           )}
         </div>
         <div className="net-legend">
-          <span><span style={{color:'var(--accent-3)'}}>——›</span> allow</span>
-          <span><span style={{color:'var(--danger)'}}>--›</span> deny</span>
-          <span style={{color:'var(--text-muted)',fontSize:10}}>click deployment node for details</span>
+          <span><span className="t-ok">——›</span> allow</span>
+          <span><span className="t-danger">--›</span> deny</span>
+          <span className="t-2xs t-muted">click deployment node for details</span>
         </div>
         {showCreatePolicy&&<CreatePolicyModal namespaces={namespaces} onClose={()=>setShowCreatePolicy(false)} onApplied={()=>{setShowCreatePolicy(false);setTimeout(()=>{load();refreshSnapshot();},800);}}/>}
       </>}
@@ -246,14 +246,14 @@ export function NetworkRuntime() {
       {tab==='events'&&<NetworkEventsTab anomalies={anomalies}/>}
 
       {tab==='netpol'&&(
-        <div style={{flex:1,overflow:'hidden',position:'relative',display:'flex'}}>
+        <div className="netpol-split">
           {}
-          <div style={{width:300,flexShrink:0,borderRight:'1px solid var(--border)',overflowY:'auto',display:'flex',flexDirection:'column'}}>
+          <div className="netpol-list">
             <div className="rn-netpol-list-hdr">
               <span>Policies</span>
               <span className="rn-badge-ok">{networkPolicies.length} active</span>
             </div>
-            {networkPolicies.length===0&&<div style={{padding:24,textAlign:'center',color:'var(--text-muted)',fontSize:12}}>No network policies found</div>}
+            {networkPolicies.length===0&&<div className="empty-state empty-state--compact">No network policies found</div>}
             {networkPolicies.map((pol,i)=>{
               const meta=pol.metadata||{}, types=pol.spec?.policyTypes||[];
               return (
@@ -271,7 +271,7 @@ export function NetworkRuntime() {
           </div>
 
           {}
-          <div style={{flex:1,position:'relative'}}>
+          <div className="netpol-detail">
             {selectedPol&&(
               <PolViewerPanel pol={selectedPol} onClose={()=>setSelectedPol(null)}/>
             )}

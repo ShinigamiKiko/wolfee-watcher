@@ -16,7 +16,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 24px;
-  border-bottom: 1px solid var(--border-faint, rgba(255,255,255,.04));
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background .1s;
   font-size: 13px;
@@ -24,9 +24,9 @@
   &:hover    { background: var(--bg-surface); }
   &--sel     { background: rgba(0,200,255,.06) !important; }
 
-  &--danger  { border-left: 2px solid var(--danger); }
-  &--warning { border-left: 2px solid var(--warning); }
-  &--info    { border-left: 2px solid var(--accent-2); }
+  &--danger  { background-image: linear-gradient(90deg, color-mix(in srgb, var(--danger) 16%, transparent), transparent 220px); }
+  &--warning { background-image: linear-gradient(90deg, color-mix(in srgb, var(--warning) 16%, transparent), transparent 220px); }
+  &--info    { background-image: linear-gradient(90deg, color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 220px); }
 }
 
 .al-sev {
@@ -94,7 +94,7 @@
 
 .al-section {
   padding: 8px 16px;
-  & + & { border-top: 1px solid var(--border-faint, rgba(255,255,255,.04)); margin-top: 4px; }
+  & + & { border-top: 1px solid var(--border); margin-top: 4px; }
 }
 
 .al-section-title {
@@ -238,7 +238,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 9px 14px;
-  border-bottom: 1px solid var(--border-faint, rgba(255,255,255,.04));
+  border-bottom: 1px solid var(--border);
 
   &:hover { background: var(--bg-elevated); }
 }
@@ -277,5 +277,14 @@
   &:hover { color: var(--accent); border-color: var(--accent); }
 }
 
-.al-list.dw { margin: 0 16px 16px 24px; padding: 0; align-self: flex-start; }
+.al-stack { flex: 1; min-width: 0; display: flex; flex-direction: column; align-self: flex-start; margin: 0 16px 16px 24px; }
+.al-list.dw { margin: 0; padding: 0; flex: none; }
 .al-list.dw .al-row { padding: 10px 16px; }
+
+.al-legend { display: flex; flex-direction: column; gap: 18px; }
+.al-legend-icon {
+  flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+}

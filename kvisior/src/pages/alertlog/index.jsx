@@ -6,6 +6,7 @@ import { Icon } from '../../components/Icon';
 import { DataWindow } from '../../components/DataWindow';
 import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
+import { PageHeader, Seg, EmptyRow } from '../../components/kit';
 
 const MAX_KEEP   = 5000;
 const POLL_EVERY = 5000;
@@ -89,100 +90,63 @@ export function AlertLog() {
 
   return (
     <div className="page active">
-      <div className="page-header">
-        <div>
-          <div className="page-title">Alert Log</div>
-          <div className="page-subtitle">
-            <span style={{ color: 'var(--accent-3)' }}>{items.length}</span> recent ·
-            {' '}<span style={{ color: 'var(--text-muted)' }}>polling backend every {POLL_EVERY / 1000}s</span>
-            {error && <span style={{ color: 'var(--danger)', marginLeft: 12 }}>· {error}</span>}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {detTypes.map(t => (
-            <button key={t}
-              className={`btn ${detFilter === t ? 'btn-primary' : 'btn-outline'}`}
-              style={{ padding: '4px 10px', fontSize: 11 }}
-              onClick={() => setDetFilter(t)}>{t}</button>
-          ))}
+      <PageHeader
+        title="Alert Log"
+        subtitle={<>
+          <span className="t-ok">{items.length}</span> recent · <span className="t-muted">polling backend every {POLL_EVERY / 1000}s</span>
+          {error && <span className="t-danger"> · {error}</span>}
+        </>}
+        actions={<>
+          <Seg label="Detection type" value={detFilter} onChange={setDetFilter} options={detTypes} />
           {items.length > 0 && (
-            <button
-              className="btn btn-outline"
-              style={{ padding: '4px 10px', fontSize: 11, color: 'var(--danger)', borderColor: 'var(--danger)', marginLeft: 8 }}
-              onClick={() => { if (confirm('Clear the whole alert log?')) clearAll(); }}
-            >Clear all</button>
+            <button type="button" className="btn btn-outline btn-sm btn-tone-danger" title="Hide every alert from this view; nothing is deleted on the server"
+              onClick={() => { if (confirm('Hide every alert from this view? Nothing is deleted on the server.')) clearAll(); }}>Clear view</button>
           )}
-        </div>
-      </div>
+        </>}
+      />
 
       <DataWindow label="Alert log" deps={[detFilter]} footer={<Pager {...pager} noun="alerts" />}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Source</th>
-                <th>Type</th>
-                <th>Severity</th>
-                <th>Rule</th>
-                <th>Namespace / Target</th>
-                <th>Syscall</th>
-                <th>User</th>
-                <th>Action</th>
-                <th style={{ textAlign: 'center' }} title="Delivered to an external webhook">Sent</th>
-                <th></th>
+        <table className="data-table data-table--static">
+          <thead>
+            <tr>
+              <th>Time</th><th>Source</th><th>Type</th><th>Severity</th><th>Rule</th><th>Namespace / Target</th>
+              <th>Syscall</th><th>User</th><th>Action</th>
+              <th className="t-center" title="Delivered to an external webhook">Sent</th>
+              <th aria-label="Hide" />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <EmptyRow cols={11}>
+                {items.length === 0
+                  ? 'No alerts yet — waiting for rule matches (or set the Alert checkbox on a policy).'
+                  : `No alerts matching "${detFilter}".`}
+              </EmptyRow>
+            ) : pageItems.map(a => (
+              <tr key={a.id}>
+                <td className="t-xs t-muted">{fmtTime(a.ts)}</td>
+                <td className="t-sm">{SOURCE_LABEL[a.source] || a.source}</td>
+                <td className="t-sm">{a.detType}</td>
+                <td><SevBadge sev={(a.severity || '').toUpperCase() || 'LOW'} /></td>
+                <td className="td-primary t-sm">{a.ruleName || a.ruleId || '—'}</td>
+                <td className="t-sm"><span className="t-muted">{a.namespace || '—'}</span>{a.target && <> / <span>{a.target}</span></>}</td>
+                <td className="mono t-xs t-accent">{a.syscall || '—'}</td>
+                <td className="t-sm clip clip--md" title={a.user || ''}>{a.user || ''}</td>
+                <td className="t-xs clip clip--lg" title={a.action ?? a.detail}>{(a.action ?? a.detail) || '—'}</td>
+                <td className="t-center">
+                  {a.deliveredAt
+                    ? <span className="t-ok" title={a.deliveredAt}><Icon name="check" /></span>
+                    : <span className="t-muted" title="Pending delivery">·</span>}
+                </td>
+                <td className="row-actions-cell">
+                  <button type="button" className="btn-icon btn-icon--sm" title="Hide from this view" aria-label="Hide from this view" onClick={() => deleteItem(a.id)}>
+                    <Icon name="x" />
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
-                    {items.length === 0
-                      ? 'No alerts yet — waiting for rule matches (or set the Alert checkbox on a policy).'
-                      : `No alerts matching "${detFilter}".`}
-                  </td>
-                </tr>
-              ) : pageItems.map(a => (
-                <tr key={a.id}>
-                  <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    {fmtTime(a.ts)}
-                  </td>
-                  <td style={{ fontSize: 12 }}>{SOURCE_LABEL[a.source] || a.source}</td>
-                  <td style={{ fontSize: 12 }}>{a.detType}</td>
-                  <td><SevBadge sev={(a.severity || '').toUpperCase() || 'LOW'} /></td>
-                  <td className="td-primary" style={{ fontSize: 12 }}>{a.ruleName || a.ruleId || '—'}</td>
-                  <td style={{ fontSize: 12 }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{a.namespace || '—'}</span>
-                    {a.target && <> / <span>{a.target}</span></>}
-                  </td>
-                  <td style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'var(--accent)' }}>
-                    {a.syscall || '—'}
-                  </td>
-                  <td style={{ fontSize: 12, maxWidth: 220,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={a.user || ''}>
-                    {a.user || ''}
-                  </td>
-                  <td style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 320,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={a.action ?? a.detail}>
-                    {(a.action ?? a.detail) || '—'}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    {a.deliveredAt
-                      ? <span style={{ color: 'var(--accent-3)' }} title={a.deliveredAt}><Icon name="check" /></span>
-                      : <span style={{ color: 'var(--text-muted)', fontSize: 13, opacity: 0.3 }} title="Pending delivery">·</span>}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button
-                      title="Delete"
-                      onClick={() => deleteItem(a.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, padding: '0 4px', lineHeight: 1 }}
-                    ><Icon name="x" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
       </DataWindow>
     </div>
   );

@@ -7,7 +7,7 @@ function CollapsiblePolicy({ pol }) {
   return (
     <div className="net-sb-section np-collapsible">
       <button className="np-collapsible-hdr" onClick={()=>setOpen(o=>!o)}>
-        <span className="net-sb-section-title" style={{marginBottom:0}}>{pol.name}</span>
+        <span className="net-sb-section-title mb-0">{pol.name}</span>
         <span className="np-collapsible-chevron"><Icon name={open ? 'chevron-down' : 'chevron-right'} /></span>
       </button>
       {open && (
@@ -34,7 +34,7 @@ function CollapsiblePolicy({ pol }) {
               </div>
             ))}
           </>}
-          <div className="np-sb-rule-hdr" style={{marginTop:10}}>YAML</div>
+          <div className="np-sb-rule-hdr mt-12">YAML</div>
           <pre className="net-yaml">{toYaml(cleanObj(pol.raw)).trimStart()}</pre>
         </div>
       )}
@@ -43,10 +43,10 @@ function CollapsiblePolicy({ pol }) {
 }
 
 const KIND_LABEL = {
-  policy_blocked:    { label:'Policy Blocked',    color:'var(--danger)',  icon:'ban' },
-  unauthorized_flow: { label:'Unauthorized Flow', color:'var(--warning)', icon:'route' },
-  port_scan:         { label:'Port Scan',         color:'var(--danger)',  icon:'scan' },
-  suspicious_port:   { label:'Suspicious Port',   color:'var(--danger)',  icon:'flag' },
+  policy_blocked:    { label:'Policy Blocked',    tone:'t-danger',  icon:'ban' },
+  unauthorized_flow: { label:'Unauthorized Flow', tone:'t-warning', icon:'route' },
+  port_scan:         { label:'Port Scan',         tone:'t-danger',  icon:'scan' },
+  suspicious_port:   { label:'Suspicious Port',   tone:'t-danger',  icon:'flag' },
 };
 const relTime = ts => {
   if (!ts) return '';
@@ -59,13 +59,13 @@ function EventsTab({ events }) {
   const n = v => (v!==undefined&&v!==null&&v!=='') ? v : 'none';
   if (!events.length) return (
     <div className="net-sb-section">
-      <div className="np-muted" style={{fontSize:12,padding:'12px 0'}}>No anomaly events for this deployment</div>
+      <div className="np-muted t-sm empty-pad">No anomaly events for this deployment</div>
     </div>
   );
   return (
     <div className="np-events-list">
       {events.map((ev,i)=>{
-        const meta = KIND_LABEL[ev.kind]||{label:ev.kind||'unknown',color:'var(--text-muted)',icon:'circle-dot'};
+        const meta = KIND_LABEL[ev.kind]||{label:ev.kind||'unknown',tone:'t-muted',icon:'circle-dot'};
         const isOpen = expanded===i;
         const endpoint = ev.dst_service
           ? `${ev.dst_service}${ev.dst_port?':'+ev.dst_port:''}${ev.dst_namespace?' ('+ev.dst_namespace+')':''}`
@@ -73,9 +73,9 @@ function EventsTab({ events }) {
         return (
           <div key={i} className={`np-ev${isOpen?' np-ev--open':''}`} onClick={()=>setExpanded(isOpen?null:i)}>
             <div className="np-ev-header">
-              <span className="np-ev-icon" style={{color:meta.color}}><Icon name={meta.icon} /></span>
+              <span className={`np-ev-icon ${meta.tone}`}><Icon name={meta.icon} /></span>
               <div className="np-ev-summary">
-                <span className="np-ev-kind" style={{color:meta.color}}>{meta.label}</span>
+                <span className={`np-ev-kind ${meta.tone}`}>{meta.label}</span>
                 <span className="np-ev-endpoint">{endpoint}</span>
               </div>
               <span className="np-ev-time">{relTime(ev.ts)}</span>
@@ -226,13 +226,13 @@ function PolicyTab({ node, ingressEdges, egressEdges }) {
 export function EdgeSidebar({ edge, onClose }) {
   const srcLabel = edge.src.split(':').slice(2).join(':')||edge.src;
   const dstLabel = edge.dst.split(':').slice(2).join(':')||edge.dst;
-  const color = edge.effect==='allow'?'var(--accent-3)':'var(--danger)';
+  const tone = edge.effect==='allow'?'t-ok':'t-danger';
   return (
     <>
       <div className="net-sb-header">
         <div>
           <div className="net-sb-title">{edge.pol.name}</div>
-          <div className="net-sb-subtitle">{edge.dir} · <span style={{color}}>{edge.effect}</span></div>
+          <div className="net-sb-subtitle">{edge.dir} · <span className={tone}>{edge.effect}</span></div>
         </div>
         <button className="net-sb-close" onClick={onClose}><Icon name="x" /></button>
       </div>
@@ -242,7 +242,7 @@ export function EdgeSidebar({ edge, onClose }) {
             <div className="np-flow-box">{srcLabel}</div>
             <div className="np-flow-mid">
               {edge.ports.length>0&&<span className="np-flow-ports">{edge.ports.join(' ')}</span>}
-              <span className="np-flow-arrow" style={{color}}>——›</span>
+              <span className={`np-flow-arrow ${tone}`}>——›</span>
             </div>
             <div className="np-flow-box">{dstLabel}</div>
           </div>

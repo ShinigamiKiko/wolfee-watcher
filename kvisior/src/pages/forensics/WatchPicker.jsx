@@ -1,6 +1,6 @@
 export function WatchPicker({ title, captureHint, groups, selected, max = 3, noStore, onToggle }) {
   if (noStore) {
-    return <div className="fns-empty" style={{ marginTop: 32 }}>{title} requires PostgreSQL</div>;
+    return <div className="fns-empty mt-24">{title} requires PostgreSQL</div>;
   }
   return (
     <div className="fns-syscall-watch">

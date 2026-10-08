@@ -1,18 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useScanner } from '../../context/ScannerContext';
 import '../../styles/sbom.scss';
+import { Badge } from '../../components/kit';
+import { sbomLicTone } from '../vuln/vulnUtils';
 import { Icon } from '../../components/Icon';
 import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
 
-function licClass(lic = '') {
-  const l = lic.toLowerCase();
-  if (l.includes('gpl') || l.includes('agpl')) return 'badge-gpl';
-  if (l.includes('apache'))                    return 'badge-apache';
-  if (l.includes('mit'))                       return 'badge-mit';
-  if (l.includes('bsd') || l.includes('isc')) return 'badge-bsd';
-  return 'badge-bsd';
-}
 
 function sevClass(s = '') {
   switch (s.toUpperCase()) {
@@ -114,8 +108,8 @@ export function SBOM() {
       <div className="sbom-page">
         <div className="sbom-empty">
           <Icon name="package" size={32} />
-          <div style={{ fontSize: 15, fontWeight: 600 }}>No scan results</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Run a scan first — SBOM is built from scanner results.</div>
+          <div className="empty-title">No scan results</div>
+          <div className="empty-sub">Run a scan first — SBOM is built from scanner results.</div>
         </div>
       </div>
     );
@@ -201,11 +195,11 @@ export function SBOM() {
                     >
                       <td><span className="pkg-name">{p.name}</span></td>
                       <td className="mono">{p.version}</td>
-                      <td className="mono" style={{ color: 'var(--text-muted)' }}>{p.type}</td>
+                      <td className="mono t-muted">{p.type}</td>
                       <td>
                         {p.license
-                          ? <span className={`badge ${licClass(p.license)}`}>{p.license}</span>
-                          : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                          ? <Badge tone={sbomLicTone(p.license)}>{p.license}</Badge>
+                          : <span className="t-muted">—</span>
                         }
                       </td>
                       <td>
@@ -219,7 +213,7 @@ export function SBOM() {
                 })}
                 {visible.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>
+                    <td colSpan={5} className="empty-cell">
                       No packages match
                     </td>
                   </tr>
@@ -246,7 +240,7 @@ export function SBOM() {
               <div className="dp-section">
                 <div className="dp-section-title">CVEs ({selected.cves.length})</div>
                 {selected.cves.length === 0
-                  ? <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>No known vulnerabilities</div>
+                  ? <div className="t-sm t-muted empty-pad">No known vulnerabilities</div>
                   : selected.cves.map(c => (
                     <div key={c.id} className="cve-card">
                       <div className="cve-card-top">
@@ -277,7 +271,7 @@ export function SBOM() {
                         </div>
                         <div className="score-item">
                           <div className="score-label">Fix</div>
-                          <div className="score-val" style={{ fontSize: 11, color: c.hasFix ? 'var(--success)' : 'var(--text-muted)' }}>
+                          <div className={`score-val t-xs ${c.hasFix ? 't-ok' : 't-muted'}`}>
                             {c.hasFix ? (c.fixedIn || 'Available') : 'None'}
                           </div>
                         </div>

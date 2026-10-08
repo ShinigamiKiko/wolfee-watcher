@@ -76,7 +76,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                 <span className="hp-kv-val">localhost/wolfee-watcher/honeypot:latest</span>
               </div>
 
-              <div className="hp-section-title" style={{ marginTop: 20 }}>Service Ports</div>
+              <div className="hp-section-title mt-24">Service Ports</div>
               <div className="hp-svc-list">
                 {(selected.services || []).map(s => {
                   const svc = svcByName(s);
@@ -158,7 +158,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                       </div>
                       <div className="hp-ep-kv">
                         <span className="hp-ep-k">Service</span>
-                        <span className="hp-ep-v" style={{ color: 'var(--accent-2)' }}>
+                        <span className="hp-ep-v t-violet">
                           {selectedEvent.server?.replace('_server', '')}
                         </span>
                       </div>
@@ -201,10 +201,10 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                         const pod = resolveIP(selectedEvent.src_ip);
                         if (!pod) return (
                           <div className="hp-ep-unresolved">
-                            <div style={{ color: 'var(--warning)', fontWeight: 600, marginBottom: 4 }}>
+                            <div className="t-warning t-strong mb-4">
                               <Icon name="alert" /> IP not in cluster snapshot
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                            <div className="t-xs t-muted">
                               {selectedEvent.src_ip} not found in any pod.
                               May be external or pod already deleted.
                             </div>

@@ -366,7 +366,7 @@ export function Alerts() {
           onClick={() => { setGroupFilter('network'); setKindFilter('all'); }}
           title="Network syscall anomalies"
         >
-          <span className="al-counter-n" style={{ color: networkCount > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>{networkCount}</span>
+          <span className={`al-counter-n ${networkCount > 0 ? 't-warning' : 't-muted'}`}>{networkCount}</span>
           <span className="al-counter-l">Network Syscalls</span>
         </div>
         <div
@@ -374,7 +374,7 @@ export function Alerts() {
           onClick={() => { setGroupFilter('evil'); setKindFilter('all'); }}
           title="Evil / dangerous syscall anomalies"
         >
-          <span className="al-counter-n" style={{ color: evilCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{evilCount}</span>
+          <span className={`al-counter-n ${evilCount > 0 ? 't-danger' : 't-muted'}`}>{evilCount}</span>
           <span className="al-counter-l">Evil Syscalls</span>
         </div>
         <div
@@ -382,7 +382,7 @@ export function Alerts() {
           onClick={() => { setGroupFilter('images'); setKindFilter('all'); }}
           title="Images with digest change in the last hour"
         >
-          <span className="al-counter-n" style={{ color: digestChangedCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{digestChangedCount}</span>
+          <span className={`al-counter-n ${digestChangedCount > 0 ? 't-danger' : 't-muted'}`}>{digestChangedCount}</span>
           <span className="al-counter-l">Digest Changes</span>
         </div>
         <div
@@ -390,7 +390,7 @@ export function Alerts() {
           onClick={() => { setGroupFilter('honeypot'); setKindFilter('all'); }}
           title="Honeypot connection attempts"
         >
-          <span className="al-counter-n" style={{ color: honeypotCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{honeypotCount}</span>
+          <span className={`al-counter-n ${honeypotCount > 0 ? 't-danger' : 't-muted'}`}>{honeypotCount}</span>
           <span className="al-counter-l">Honeypot Hits</span>
         </div>
       </div>

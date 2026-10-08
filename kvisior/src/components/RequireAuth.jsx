@@ -6,7 +6,7 @@ export function RequireAuth({ children }) {
   const location = useLocation();
 
   if (loading) {
-    return <div style={{minHeight:'100vh',background:'var(--bg-base)'}} />;
+    return <div className="auth-wait" />;
   }
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;

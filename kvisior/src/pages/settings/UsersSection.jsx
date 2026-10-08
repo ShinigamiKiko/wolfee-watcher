@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { useApp } from '../../context/AppContext';
 import { apiJSON } from './settingsApi';
-import { RoleBadge, Field, PermissionDeniedHint } from './settingsUi';
+import { RoleBadge, Field, PermissionDeniedHint, SettingsSection, EditorBox, ListState } from './settingsUi';
+import { Field as KitField, Notice } from '../../components/kit';
 import { ROLE_OPTIONS } from './settingsConstants';
 import { Icon } from '../../components/Icon';
 
@@ -30,27 +31,21 @@ function ResetPasswordDialog({ user, onClose, onSuccess }) {
   };
 
   return (
-    <div className="modal">
+    <div className="modal modal--sm" role="dialog" aria-modal="true" aria-labelledby="reset-pw-title">
       <div className="modal-header">
-        <span className="modal-title">Reset password — {user.username}</span>
-        <button className="modal-close" onClick={onClose}><Icon name="x" /></button>
+        <span className="modal-title" id="reset-pw-title">Reset password — {user.username}</span>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
       </div>
-      <form onSubmit={submit} className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
-        <div>
-          <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>New password</label>
-          <input type="password" autoFocus autoComplete="new-password" value={np} onChange={e => setNp(e.target.value)} disabled={busy} className="form-input" />
-        </div>
-        <div>
-          <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>Confirm password</label>
-          <input type="password" autoComplete="new-password" value={conf} onChange={e => setConf(e.target.value)} disabled={busy} className="form-input" />
-        </div>
-        {err && (
-          <div style={{fontSize:12,padding:'8px 10px',borderRadius:6,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',color:'var(--danger)'}}>
-            {err}
-          </div>
-        )}
+      <form onSubmit={submit} className="modal-body">
+        <KitField label="New password" htmlFor="reset-pw-new">
+          <input id="reset-pw-new" type="password" autoFocus autoComplete="new-password" value={np} onChange={e => setNp(e.target.value)} disabled={busy} className="input input--block" />
+        </KitField>
+        <KitField label="Confirm password" htmlFor="reset-pw-confirm">
+          <input id="reset-pw-confirm" type="password" autoComplete="new-password" value={conf} onChange={e => setConf(e.target.value)} disabled={busy} className="input input--block" />
+        </KitField>
+        {err && <Notice tone="danger" className="mb-0">{err}</Notice>}
         <div className="modal-footer">
-          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button>
         </div>
       </form>
@@ -133,71 +128,46 @@ export function UsersSection({ toast }) {
   };
 
   return (
-    <div className="card" style={{padding:24,border:'none'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:3}}>User Permissions</div>
-          <div style={{fontSize:12,color:'var(--text-muted)'}}>
-            Effective role wins between the user's own role and the group role. Admin can do everything;
-            Read-Only can only view — no create, edit or delete.
-          </div>
-        </div>
-        {can('users.create') ? (
-          <button className="btn btn-primary" onClick={startCreate}>+ New user</button>
-        ) : (
-          <span style={{fontSize:11,color:'var(--text-muted)'}}>Read-only — cannot create users</span>
-        )}
-      </div>
-
-      {error && <div style={{fontSize:12,color:'var(--danger)',marginBottom:10}}>Error: {error}</div>}
-
+    <SettingsSection
+      title="User Permissions"
+      desc="Effective role wins between the user's own role and the group role. Admin can do everything; Read-Only can only view — no create, edit or delete."
+      canCreate={can('users.create')}
+      readOnlyText="Read-only — cannot create users"
+      action={<button type="button" className="btn btn-primary" onClick={startCreate}>+ New user</button>}
+      error={error}
+    >
       {editing && (
-        <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8,marginBottom:16,background:'var(--bg-elevated)'}}>
-          <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>{editing.id ? 'Edit user' : 'New user'}</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            {!editing.id && (
-              <Field label="Username *" value={editing.username}
-                onChange={v => setEditing(e => ({...e, username: v}))} />
-            )}
-            <Field label="Full name" value={editing.full_name}
-              onChange={v => setEditing(e => ({...e, full_name: v}))} />
-            <Field label="Email" value={editing.email}
-              onChange={v => setEditing(e => ({...e, email: v}))} />
-            <Field label="Role" type="select" value={editing.role} options={ROLE_OPTIONS}
-              onChange={v => setEditing(e => ({...e, role: v}))} />
-            <Field label="Group" type="select" value={editing.group_id || ''}
-              options={[{value: '', label: '— No group —'}, ...groups.map(g => ({value: g.id, label: `${g.name} (${g.role})`}))]}
-              onChange={v => setEditing(e => ({...e, group_id: v}))} />
-            {!editing.id && (
-              <Field label="Initial password *" type="password" value={editing.password || ''}
-                onChange={v => setEditing(e => ({...e, password: v}))} />
-            )}
-          </div>
-          <div style={{display:'flex',gap:8,marginTop:12}}>
-            <button className="btn btn-primary" onClick={save}>Save</button>
-            <button onClick={() => setEditing(null)} className="btn btn-ghost btn-sm">Cancel</button>
-          </div>
-        </div>
+        <EditorBox title={editing.id ? 'Edit user' : 'New user'} onSave={save} onCancel={() => setEditing(null)}>
+          {!editing.id && <Field label="Username *" value={editing.username} onChange={v => setEditing(e => ({ ...e, username: v }))} />}
+          <Field label="Full name" value={editing.full_name} onChange={v => setEditing(e => ({ ...e, full_name: v }))} />
+          <Field label="Email" value={editing.email} onChange={v => setEditing(e => ({ ...e, email: v }))} />
+          <Field label="Role" type="select" value={editing.role} options={ROLE_OPTIONS} onChange={v => setEditing(e => ({ ...e, role: v }))} />
+          <Field label="Group" type="select" value={editing.group_id || ''}
+            options={[{ value: '', label: '— No group —' }, ...groups.map(g => ({ value: g.id, label: `${g.name} (${g.role})` }))]}
+            onChange={v => setEditing(e => ({ ...e, group_id: v }))} />
+          {!editing.id && <Field label="Initial password *" type="password" value={editing.password || ''} onChange={v => setEditing(e => ({ ...e, password: v }))} />}
+        </EditorBox>
       )}
 
       <div className="table-wrap">
-        <table className="data-table">
-          <thead><tr><th>Username</th><th>Full name</th><th>Email</th><th>Group</th><th>Role</th><th>Effective</th><th/></tr></thead>
+        <table className="data-table data-table--static">
+          <thead><tr><th>Username</th><th>Full name</th><th>Email</th><th>Group</th><th>Role</th><th>Effective</th><th aria-label="Actions" /></tr></thead>
           <tbody>
-            {users == null && <tr><td colSpan={7} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>Loading…</td></tr>}
-            {users != null && users.length === 0 && <tr><td colSpan={7} style={{padding:14,fontSize:12,color:'var(--text-muted)'}}>No users yet</td></tr>}
+            <ListState items={users} cols={7} empty="No users yet" />
             {(users || []).map(u => (
               <tr key={u.id}>
-                <td className="td-primary mono" style={{fontSize:12}}>{u.username}</td>
-                <td style={{fontSize:12,color:'var(--text-muted)'}}>{u.full_name || '—'}</td>
-                <td style={{fontSize:12,color:'var(--text-muted)'}}>{u.email || '—'}</td>
-                <td style={{fontSize:12,color:'var(--text-muted)'}}>{u.group_name || '—'}</td>
-                <td><RoleBadge role={u.role}/></td>
-                <td><RoleBadge role={u.effective_role}/></td>
-                <td style={{display:'flex',gap:6}}>
-                  {can('users.write') && <button onClick={() => startEdit(u)} className="btn btn-ghost btn-sm">Edit</button>}
-                  {can('users.write') && <button onClick={() => resetPassword(u)} className="btn btn-ghost btn-sm">Reset password</button>}
-                  {can('users.delete') && <button onClick={() => remove(u)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>}
+                <td className="td-primary mono t-sm">{u.username}</td>
+                <td className="t-sm t-muted">{u.full_name || '—'}</td>
+                <td className="t-sm t-muted">{u.email || '—'}</td>
+                <td className="t-sm t-muted">{u.group_name || '—'}</td>
+                <td><RoleBadge role={u.role} /></td>
+                <td><RoleBadge role={u.effective_role} /></td>
+                <td className="row-actions-cell">
+                  <span className="row-actions">
+                    {can('users.write') && <button type="button" onClick={() => startEdit(u)} className="btn btn-ghost btn-sm">Edit</button>}
+                    {can('users.write') && <button type="button" onClick={() => resetPassword(u)} className="btn btn-ghost btn-sm">Reset password</button>}
+                    {can('users.delete') && <button type="button" onClick={() => remove(u)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -205,9 +175,7 @@ export function UsersSection({ toast }) {
         </table>
       </div>
 
-      {me && (
-        <PermissionDeniedHint msg={`Signed in as "${me.username}" with effective role "${me.effective_role}".`} />
-      )}
-    </div>
+      {me && <PermissionDeniedHint msg={`Signed in as "${me.username}" with effective role "${me.effective_role}".`} />}
+    </SettingsSection>
   );
 }

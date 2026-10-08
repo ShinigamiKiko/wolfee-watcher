@@ -7,6 +7,9 @@ import { nodeRole, nodeReady, workloadReady, workloadImages, bindingsFor, SYS_NS
 import { ClustersTab, NamespacesTab, NodesTab, WorkloadsTab } from './config/tabs1';
 import { ServiceAccountsTab, RolesTab, SecretsTab, CrdsTab, StaticPodsTab, WebhooksTab } from './config/tabs2';
 import { Icon } from '../components/Icon';
+import { Tabs } from '../components/ui';
+import { PageHeader } from '../components/kit';
+import '../styles/config.scss';
 
 const TABS = ['Clusters','Namespaces','Nodes','Deployments','Service Accounts','Roles','Secrets','CRDs','Static Pods','MWH','VWH'];
 const CONTROLLER_KINDS = new Set(['ReplicaSet','StatefulSet','DaemonSet','Job','CronJob','ReplicationController']);
@@ -74,35 +77,30 @@ export function ConfigMgmt() {
   const sharedProps = { q, search, setSearch, sensorOnline, selected, setSelected };
 
   return (
-    <div className="page active flex-page" id="page-configmgmt" style={{ flexDirection: 'column', padding: 0 }}>
-      <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
-        <div className="page-header" style={{ marginBottom: 14 }}>
-          <div>
-            <div className="page-title">Configuration Management</div>
-            <div className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="page active flex-page split-page" id="page-configmgmt">
+      <div className="split-head">
+        <PageHeader
+          className="mb-12"
+          title="Configuration Management"
+          subtitle={
+            <span className="row row--wrap">
               Kubernetes object configuration and security posture
               <span className={`status-dot status-${connected ? 'active' : 'warn'}`}>{connected ? 'Live data' : 'Bridge offline'}</span>
-              {sensorOnline && <span style={{ fontSize: 11, color: 'var(--accent-3)' }}>● sensor online</span>}
-              {lastUpdated  && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>· {lastUpdated.toLocaleTimeString()}</span>}
-            </div>
-            <button onClick={() => setShowSystem(s => !s)} style={{
-              marginTop: 6, padding: '4px 12px', borderRadius: 7, fontSize: 11, fontWeight: 500,
-              cursor: 'pointer', border: '1px solid var(--border)', fontFamily: 'DM Sans, sans-serif',
-              background: showSystem ? 'rgba(0,200,255,.15)' : 'var(--bg-elevated)',
-              color: showSystem ? 'var(--accent)' : 'var(--text-muted)',
-              transition: 'all .15s',
-            }}>
+              {sensorOnline && <span className="row row--tight t-xs t-ok"><span className="dot dot--ok" /> sensor online</span>}
+              {lastUpdated && <span className="t-xs t-muted">· {lastUpdated.toLocaleTimeString()}</span>}
+            </span>
+          }
+          actions={
+            <button type="button" className="chip" aria-pressed={showSystem} onClick={() => setShowSystem(s => !s)}>
               <Icon name={showSystem ? 'eye' : 'eye-off'} /> System NS: {showSystem ? 'on' : 'off'}
             </button>
-          </div>
-        </div>
-        <div className="tabs">
-          {TABS.map(t => <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => switchTab(t)}>{t}</div>)}
-        </div>
+          }
+        />
+        <Tabs tabs={TABS.map(t => ({ id: t, label: t }))} active={tab} onSwitch={switchTab} />
       </div>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 24px 24px', minWidth: 0 }}>
+      <div className="split-body">
+        <div className="split-main">
           {tab === 'Clusters'         && <ClustersTab         {...sharedProps} nodeRows={nodeRows} nsRows={nsRows} workloadRows={workloadRows} clusterImages={clusterImages} agentInfo={agentInfo} connected={connected} />}
           {tab === 'Namespaces'       && <NamespacesTab       {...sharedProps} nsRows={nsRows} nsDrill={nsDrill} setNsDrill={setNsDrill} />}
           {tab === 'Nodes'            && <NodesTab            {...sharedProps} nodeRows={nodeRows} pods={pods} />}

@@ -5,7 +5,8 @@ import { useBridge }   from '../../context/BridgeContext';
 import { usePerms }    from '../../context/PermissionsContext';
 import { useScanner }  from '../../context/ScannerContext';
 import { useSensor }   from '../../context/SensorContext';
-import { SevBadge }    from '../../components/ui';
+import { SevBadge, Tabs } from '../../components/ui';
+import { PageHeader, SearchInput, SortTh, EmptyRow, ActionBadge, cx } from '../../components/kit';
 import { CheckboxDD }  from '../../components/CheckboxDD';
 import { SyscallDetail } from './SyscallDetail';
 import { BuildDetail }   from './BuildDetail';
@@ -13,7 +14,7 @@ import { DeployDetail }  from './DeployDetail';
 import { AuditDetail }   from './AuditDetail';
 import { evalBuildViolations, evalDeployViolations } from './evaluators';
 
-import { OUTER_TABS, RUNTIME_TABS, KIND_COLOR, ackKey, fpKey } from './violationsConstants';
+import { OUTER_TABS, RUNTIME_TABS, ackKey, fpKey } from './violationsConstants';
 import { Pager } from '../../components/Pager';
 import { usePageSize } from '../../hooks/usePaged';
 import { DataWindow } from '../../components/DataWindow';
@@ -283,12 +284,7 @@ export function Violations() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
   };
-  const sortTh = (col) => (
-    <th key={col.key} onClick={() => toggleSort(col.key)}
-      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-      {col.label}{sortCol === col.key ? <> <Icon name={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} /></> : ''}
-    </th>
-  );
+  const sortTh = col => <SortTh key={col.key} col={col.key} label={col.label} sort={sortCol} dir={sortDir} onSort={toggleSort} />;
   const buildDeployTimeOf = v => v._detectedAt || 0;
   const auditTimeOf = v => v.timestamp ? new Date(v.timestamp).getTime() : 0;
   const buildCols = [
@@ -392,6 +388,22 @@ export function Violations() {
       : 'No runtime policies — create one in Policy Management';
   };
 
+  const pager = total => (
+    <Pager total={total} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />
+  );
+  const rowProps = v => ({ className: selected === v ? 'selected' : '', onClick: () => setSelected(selected === v ? null : v) });
+  const actions = (v, tab) => (
+    <td className="row-actions-cell" onClick={e => e.stopPropagation()}>
+      <span className="row row--tight">
+        <SilentFpButtons onSilent={() => doSilent(v, tab)} onFp={() => doFp(v, tab)} />
+        <DismissBtn onClick={() => dismiss(v, tab)} />
+      </span>
+    </td>
+  );
+  const when = iso => (iso
+    ? <><div>{new Date(iso).toLocaleDateString('ru-RU')}</div><div>{new Date(iso).toLocaleTimeString()}</div></>
+    : '—');
+
   const renderRuntimeTab = (tab, rows, eventLabel) => {
     const timeOf = v => v.ts ? new Date(v.ts).getTime() : (v._detectedAt || 0);
     const cols = [
@@ -406,117 +418,70 @@ export function Violations() {
       { key: 'rule',      label: 'Rule',      val: v => v._matchedRule?.name || v.syscall || '' },
     ];
     return (
-    <div style={{ marginRight: selected ? 0 : 24 }}>
-      <DataWindow label="Runtime violations" deps={[outerTab, showSilenced, !!selected]}
-        footer={<Pager total={rows.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
+      <DataWindow label="Runtime violations" deps={[outerTab, showSilenced, !!selected]} footer={pager(rows.length)}>
         <table className="data-table">
-          <thead>
-            <tr>
-              {cols.map(sortTh)}
-              <th></th>
-            </tr>
-          </thead>
+          <thead><tr>{cols.map(sortTh)}<th aria-label="Actions" /></tr></thead>
           <tbody>
             {rows.length === 0
-              ? <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
-                  {runtimeEmptyText(tab)}
-                </td></tr>
+              ? <EmptyRow cols={10}>{runtimeEmptyText(tab)}</EmptyRow>
               : paginate(sortRows(rows, cols, timeOf)).map((v, i) => (
-                  <tr key={i} className={selected === v ? 'selected' : ''} style={{ cursor: 'pointer' }} onClick={() => setSelected(selected === v ? null : v)}>
-                    <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                      {v.ts ? (<><div>{new Date(v.ts).toLocaleDateString('ru-RU')}</div><div>{new Date(v.ts).toLocaleTimeString()}</div></>) : v.time || '—'}
-                    </td>
-                    <td style={{ fontSize: 12 }}>{v.pod}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.namespace}</td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{v.process || '—'}</td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--accent)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.cmdline || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--text-muted)' }}>{v.uid != null ? v.uid : '—'}</td>
-                    <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--accent)' }}>{v.syscall}</td>
+                  <tr key={i} {...rowProps(v)}>
+                    <td className="t-xs t-muted">{v.ts ? when(v.ts) : v.time || '—'}</td>
+                    <td className="t-sm">{v.pod}</td>
+                    <td className="t-sm t-muted">{v.namespace}</td>
+                    <td className="mono t-xs">{v.process || '—'}</td>
+                    <td className="mono t-xs t-accent clip clip--md">{v.cmdline || <span className="t-muted">—</span>}</td>
+                    <td className="mono t-xs t-muted">{v.uid != null ? v.uid : '—'}</td>
+                    <td className="mono t-xs t-accent">{v.syscall}</td>
                     <td><SevBadge sev={v.sev} /></td>
-                    <td className="td-primary" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{v._matchedRule?.name || v.syscall}</td>
-                    <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                      <SilentFpButtons onSilent={() => doSilent(v,tab)} onFp={() => doFp(v,tab)} />
-                      <DismissBtn onClick={() => dismiss(v,tab)} />
-                    </td>
+                    <td className="td-primary mono t-sm">{v._matchedRule?.name || v.syscall}</td>
+                    {actions(v, tab)}
                   </tr>
-                ))
-            }
+                ))}
           </tbody>
         </table>
       </DataWindow>
-    </div>
     );
   };
 
+  const placeholder = {
+    Syscalls: 'Filter by syscall, pod, process…',
+    Tracepoints: 'Filter by tracepoint, pod, process…',
+    'LSM Hooks': 'Filter by hook, pod, process…',
+    Build: 'Filter by policy, image…',
+    Deploy: 'Filter by policy, workload, namespace…',
+  }[outerTab] || 'Filter by policy, resource, kind, namespace…';
+  const activePolicies = apiRules.filter(r => r.enabled !== false).length;
+  const totalViolations = syscallViolations.length + buildViolations.length + deployViolations.length + auditViolations.length;
+
   return (
-    <div className="page active flex-page" id="page-violations" style={{ flexDirection: 'column', padding: 0 }}>
-      <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
-        <div className="page-header" style={{ marginBottom: 14 }}>
-          <div>
-            <div className="page-title">Violations</div>
-            <div className="page-subtitle">
-              {apiRules.length > 0
-                ? <><span style={{ color: 'var(--accent)' }}>{apiRules.filter(r => r.enabled !== false).length}</span> {apiRules.length === 1 ? 'policy' : 'policies'} active{' · '}<span style={{ color: 'var(--accent-3)' }}>{syscallViolations.length + buildViolations.length + deployViolations.length + auditViolations.length}</span> total violations</>
-                : <span style={{ color: 'var(--text-muted)' }}>No policies configured.{' '}<span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--accent)' }} onClick={() => navigate('/policymgmt')}>Create policy →</span></span>
-              }
-            </div>
-          </div>
-        </div>
+    <div className="page active flex-page split-page" id="page-violations">
+      <div className="split-head">
+        <PageHeader
+          className="mb-12"
+          title="Violations"
+          subtitle={apiRules.length > 0
+            ? <><span className="t-accent">{activePolicies}</span> {apiRules.length === 1 ? 'policy' : 'policies'} active · <span className="t-ok">{totalViolations}</span> total violations</>
+            : <>No policies configured. <button type="button" className="link-btn" onClick={() => navigate('/policymgmt')}>Create policy →</button></>}
+        />
 
-        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid var(--border)' }}>
-          {OUTER_TABS.map(t => (
-            <div key={t} onClick={() => setOuterTab(t)}
-              style={{ padding: '8px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                color: outerTab === t ? 'var(--accent)' : 'var(--text-muted)',
-                borderBottom: outerTab === t ? '2px solid var(--accent)' : '2px solid transparent',
-                marginBottom: -1, transition: 'color .15s', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {t}
-            </div>
-          ))}
-        </div>
+        <Tabs tabs={OUTER_TABS.map(t => ({ id: t, label: t }))} active={outerTab} onSwitch={setOuterTab} />
 
-        <div className="page-search" style={{ marginBottom: 14 }}>
-          <input type="text"
-            placeholder={
-              outerTab === 'Syscalls'      ? 'Filter by syscall, pod, process…'
-              : outerTab === 'Tracepoints' ? 'Filter by tracepoint, pod, process…'
-              : outerTab === 'LSM Hooks'   ? 'Filter by hook, pod, process…'
-              : outerTab === 'Build'       ? 'Filter by policy, image…'
-              : outerTab === 'Deploy'      ? 'Filter by policy, workload, namespace…'
-              :                             'Filter by policy, resource, kind, namespace…'
-            }
-            value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 220 }} />
+        <div className="toolbar">
+          <SearchInput value={search} onChange={setSearch} placeholder={placeholder} />
           <CheckboxDD label="Severity" options={['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']} checked={sevChecked} onChange={toggleSev} />
-          <button
-            onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
-            title={sortDir === 'desc' ? 'Newest first — click for oldest first' : 'Oldest first — click for newest first'}
-            style={{
-              padding: '4px 10px', fontSize: 11, cursor: 'pointer',
-              background: 'var(--color-background-secondary)',
-              border: '0.5px solid var(--color-border-secondary)',
-              borderRadius: 'var(--border-radius-md)',
-              color: 'var(--color-text-secondary)',
-              display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-            }}>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+            title={sortDir === 'desc' ? 'Newest first — click for oldest first' : 'Oldest first — click for newest first'}>
             <Icon name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} /> {sortDir === 'desc' ? 'Newest' : 'Oldest'}
           </button>
-          <button onClick={() => setShowSilenced(s => !s)} style={{
-            padding: '4px 10px', fontSize: 11, cursor: 'pointer',
-            background: showSilenced ? 'rgba(251,191,36,.12)' : silencedCount > 0 ? 'var(--color-background-secondary)' : 'rgba(99,179,237,.06)',
-            border: showSilenced ? '0.5px solid rgba(251,191,36,.4)' : silencedCount > 0 ? '0.5px solid rgba(251,191,36,.4)' : '0.5px solid rgba(99,179,237,.4)',
-            borderRadius: 'var(--border-radius-md)',
-            color: showSilenced ? 'var(--warning)' : silencedCount > 0 ? 'var(--warning)' : 'var(--accent)',
-            display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
-          }}>
-            Silent
+          <button type="button" className={cx('chip', silencedCount > 0 && 'chip--warning')} aria-pressed={showSilenced} onClick={() => setShowSilenced(s => !s)}>
+            Silent{silencedCount > 0 && <span className="mono">{silencedCount}</span>}
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 24px 24px', minWidth: 0 }}>
-
-          {}
+      <div className="split-body">
+        <div className="split-main">
           {showSilenced && (
             <SilencedPanel
               silenced={silenced}
@@ -530,120 +495,80 @@ export function Violations() {
             />
           )}
 
-          {}
           {!showSilenced && outerTab === 'Syscalls'    && renderRuntimeTab('Syscalls',    filteredSyscalls,    'Syscall')}
           {!showSilenced && outerTab === 'Tracepoints' && renderRuntimeTab('Tracepoints', filteredTracepoints, 'Tracepoint')}
           {!showSilenced && outerTab === 'LSM Hooks'   && renderRuntimeTab('LSM Hooks',   filteredLsm,         'LSM Hook')}
 
-          {}
           {!showSilenced && outerTab === 'Build' && (
-            <div style={{ marginRight: selected ? 0 : 24 }}>
-              <DataWindow label="Build violations" deps={[outerTab, showSilenced, !!selected]}
-                footer={<Pager total={filteredBuild.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
-                <table className="data-table">
-                  <thead><tr>{buildCols.map(sortTh)}<th></th></tr></thead>
-                  <tbody>
-                    {filteredBuild.length === 0
-                      ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>{buildRules.length === 0 ? 'No Build policies — create one in Policy Management' : 'No build violations detected in scanned images'}</td></tr>
-                      : paginate(sortRows(filteredBuild, buildCols, buildDeployTimeOf)).map((v, i) => (
-                          <tr key={i} className={selected === v ? 'selected' : ''} style={{ cursor: 'pointer' }} onClick={() => setSelected(selected === v ? null : v)}>
-                            <td className="td-primary">{v.policy}</td>
-                            <td><SevBadge sev={v.sev} /></td>
-                            <td className="mono" style={{ fontSize: 11, color: 'var(--accent)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.image}>{v.image}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.detail}</td>
-                            <td style={{ fontSize: 11, color: 'var(--warning)' }}>{v.action || 'alert'}</td>
-                            <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                              <SilentFpButtons onSilent={() => doSilent(v,'Build')} onFp={() => doFp(v,'Build')} />
-                              <DismissBtn onClick={() => dismiss(v,'Build')} />
-                            </td>
-                          </tr>
-                        ))
-                    }
-                  </tbody>
-                </table>
-              </DataWindow>
-            </div>
+            <DataWindow label="Build violations" deps={[outerTab, showSilenced, !!selected]} footer={pager(filteredBuild.length)}>
+              <table className="data-table">
+                <thead><tr>{buildCols.map(sortTh)}<th aria-label="Actions" /></tr></thead>
+                <tbody>
+                  {filteredBuild.length === 0
+                    ? <EmptyRow cols={6}>{buildRules.length === 0 ? 'No Build policies — create one in Policy Management' : 'No build violations detected in scanned images'}</EmptyRow>
+                    : paginate(sortRows(filteredBuild, buildCols, buildDeployTimeOf)).map((v, i) => (
+                        <tr key={i} {...rowProps(v)}>
+                          <td className="td-primary">{v.policy}</td>
+                          <td><SevBadge sev={v.sev} /></td>
+                          <td className="mono t-xs t-accent clip clip--md" title={v.image}>{v.image}</td>
+                          <td className="t-sm t-muted clip clip--lg">{v.detail}</td>
+                          <td className="t-xs t-warning">{v.action || 'alert'}</td>
+                          {actions(v, 'Build')}
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </DataWindow>
           )}
 
-          {}
           {!showSilenced && outerTab === 'Deploy' && (
-            <div style={{ marginRight: selected ? 0 : 24 }}>
-              <DataWindow label="Deploy violations" deps={[outerTab, showSilenced, !!selected]}
-                footer={<Pager total={filteredDeploy.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
-                <table className="data-table">
-                  <thead><tr>{deployCols.map(sortTh)}<th></th></tr></thead>
-                  <tbody>
-                    {filteredDeploy.length === 0
-                      ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>{deployRules.length === 0 ? 'No Deploy policies — create one in Policy Management' : 'No deploy violations in current workloads'}</td></tr>
-                      : paginate(sortRows(filteredDeploy, deployCols, buildDeployTimeOf)).map((v, i) => (
-                          <tr key={i} className={selected === v ? 'selected' : ''} style={{ cursor: 'pointer' }} onClick={() => setSelected(selected === v ? null : v)}>
-                            <td className="td-primary">{v.policy}</td>
-                            <td><SevBadge sev={v.sev} /></td>
-                            <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12 }}>{v.workload}</td>
-                            <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{v.kind}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.ns}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.detail}</td>
-                            <td style={{ fontSize: 11, color: 'var(--warning)' }}>{v.action || 'alert'}</td>
-                            <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                              <SilentFpButtons onSilent={() => doSilent(v,'Deploy')} onFp={() => doFp(v,'Deploy')} />
-                              <DismissBtn onClick={() => dismiss(v,'Deploy')} />
-                            </td>
-                          </tr>
-                        ))
-                    }
-                  </tbody>
-                </table>
-              </DataWindow>
-            </div>
+            <DataWindow label="Deploy violations" deps={[outerTab, showSilenced, !!selected]} footer={pager(filteredDeploy.length)}>
+              <table className="data-table">
+                <thead><tr>{deployCols.map(sortTh)}<th aria-label="Actions" /></tr></thead>
+                <tbody>
+                  {filteredDeploy.length === 0
+                    ? <EmptyRow cols={8}>{deployRules.length === 0 ? 'No Deploy policies — create one in Policy Management' : 'No deploy violations in current workloads'}</EmptyRow>
+                    : paginate(sortRows(filteredDeploy, deployCols, buildDeployTimeOf)).map((v, i) => (
+                        <tr key={i} {...rowProps(v)}>
+                          <td className="td-primary">{v.policy}</td>
+                          <td><SevBadge sev={v.sev} /></td>
+                          <td className="mono t-sm">{v.workload}</td>
+                          <td className="t-xs t-muted">{v.kind}</td>
+                          <td className="t-sm t-muted">{v.ns}</td>
+                          <td className="t-sm t-muted clip clip--lg">{v.detail}</td>
+                          <td className="t-xs t-warning">{v.action || 'alert'}</td>
+                          {actions(v, 'Deploy')}
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </DataWindow>
           )}
 
-          {}
           {!showSilenced && outerTab === 'Audit' && (
-            <div style={{ marginRight: selected ? 0 : 24 }}>
-              <DataWindow label="Audit violations" deps={[outerTab, showSilenced, !!selected]}
-                footer={<Pager total={filteredAudit.length} pageSize={pageSize} page={page} onPage={setPage2} onPageSize={n => { setPageSize(n); setPage2(1); }} />}>
-                <table className="data-table">
-                  <thead><tr>{auditCols.map(sortTh)}<th></th></tr></thead>
-                  <tbody>
-                    {filteredAudit.length === 0
-                       ? <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
-                          No audit violations. Audit rules are managed in Audit logs, on the Rules tab.
-                        </td></tr>
-                      : paginate(sortRows(filteredAudit, auditCols, auditTimeOf)).map((v, i) => (
-                          <tr key={v._eventId ? `${v._eventId}-${v.check}` : i}
-                            className={selected === v ? 'selected' : ''}
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => setSelected(selected === v ? null : v)}>
-                            <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                              {v.timestamp ? (<><div>{new Date(v.timestamp).toLocaleDateString('ru-RU')}</div><div>{new Date(v.timestamp).toLocaleTimeString()}</div></>) : '—'}
-                            </td>
-                            <td className="td-primary">{v.policy}</td>
-                            <td><SevBadge sev={v.sev} /></td>
-                            <td>
-                              <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5,
-                                background: `${KIND_COLOR[v.kind] || '#94a3b8'}22`,
-                                color: KIND_COLOR[v.kind] || 'var(--text-muted)',
-                                border: `1px solid ${KIND_COLOR[v.kind] || '#94a3b8'}44`,
-                                fontFamily: 'JetBrains Mono,monospace' }}>
-                                {v.kind}
-                               </span>
-                             </td>
-                             <td style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.webhookType || '—'}</td>
-                             <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--accent)' }}>{v.resource}</td>
-                            <td style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.name || '—'}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.ns}</td>
-                            <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.user || '—'}</td>
-                            <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                              <SilentFpButtons onSilent={() => doSilent(v,'Audit')} onFp={() => doFp(v,'Audit')} />
-                              <DismissBtn onClick={() => dismiss(v,'Audit')} />
-                            </td>
-                          </tr>
-                        ))
-                    }
-                  </tbody>
-                </table>
-              </DataWindow>
-            </div>
+            <DataWindow label="Audit violations" deps={[outerTab, showSilenced, !!selected]} footer={pager(filteredAudit.length)}>
+              <table className="data-table">
+                <thead><tr>{auditCols.map(sortTh)}<th aria-label="Actions" /></tr></thead>
+                <tbody>
+                  {filteredAudit.length === 0
+                    ? <EmptyRow cols={10}>No audit violations. Audit rules are managed in Audit logs, on the Rules tab.</EmptyRow>
+                    : paginate(sortRows(filteredAudit, auditCols, auditTimeOf)).map((v, i) => (
+                        <tr key={v._eventId ? `${v._eventId}-${v.check}` : i} {...rowProps(v)}>
+                          <td className="t-xs t-muted">{when(v.timestamp)}</td>
+                          <td className="td-primary">{v.policy}</td>
+                          <td><SevBadge sev={v.sev} /></td>
+                          <td><ActionBadge kind={v.kind} /></td>
+                          <td className="t-xs t-muted clip clip--md">{v.webhookType || '—'}</td>
+                          <td className="mono t-xs t-accent">{v.resource}</td>
+                          <td className="mono t-xs clip clip--md">{v.name || '—'}</td>
+                          <td className="t-sm t-muted">{v.ns}</td>
+                          <td className="t-sm t-muted clip clip--sm">{v.user || '—'}</td>
+                          {actions(v, 'Audit')}
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </DataWindow>
           )}
         </div>
 
@@ -658,17 +583,8 @@ export function Violations() {
 
 function DismissBtn({ onClick }) {
   return (
-    <button
-      onClick={onClick}
-      title="Dismiss"
-      style={{
-        marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer',
-        color: 'var(--text-muted)', fontSize: 15, lineHeight: 1,
-        padding: '1px 4px', borderRadius: 4, verticalAlign: 'middle',
-        transition: 'color .15s',
-      }}
-      onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; }}
-      onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-    >×</button>
+    <button type="button" className="btn-icon btn-icon--sm btn-icon--danger" title="Dismiss" aria-label="Dismiss" onClick={onClick}>
+      <Icon name="x" />
+    </button>
   );
 }

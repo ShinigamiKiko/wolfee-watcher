@@ -3,6 +3,7 @@
   --bg-surface:   #0f1421;
   --bg-elevated:  #141929;
   --bg-card:      #161c2e;
+  --bg-inset:     #0b0f18;
   --sidebar-w:    252px;
 
   --accent:       #00c8ff;
@@ -10,15 +11,53 @@
   --accent-3:     #10b981;
   --danger:       #ef4444;
   --warning:      #f59e0b;
+  --info:         #a5b4fc;
 
   --text-primary:   #e8edf5;
   --text-secondary: #8892a4;
-  --text-muted:     #4a5568;
+  --text-muted:     #6f7a8f;
+  --text-dim:       #7a8599;
+
+  --ok-text:      #34d399;
+  --danger-text:  #ff8585;
+  --warning-text: #f7b955;
+  --violet-text:  #a78bfa;
+
+  --accent-tint:        rgba(0, 200, 255, 0.10);
+  --ok-tint:            rgba(16, 185, 129, 0.12);
+  --danger-tint:        rgba(239, 68, 68, 0.10);
+  --danger-tint-strong: rgba(239, 68, 68, 0.18);
+  --warning-tint:       rgba(245, 158, 11, 0.09);
+  --warning-tint-strong: rgba(245, 158, 11, 0.16);
+  --info-tint:          rgba(99, 102, 241, 0.15);
+  --hover-tint:         rgba(255, 255, 255, 0.03);
 
   --border:        rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-hover:  rgba(255, 255, 255, 0.24);
   --border-active: rgba(0, 200, 255, 0.3);
   --glow:          0 0 20px rgba(0, 200, 255, 0.15);
   --shadow-card:   0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-pop:    0 8px 32px rgba(0, 0, 0, 0.5);
+  --focus-ring:    0 0 0 3px rgba(0, 200, 255, 0.12);
+  --scrollbar:     #2a3350;
+
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  --fs-2xs: 10.5px;
+  --fs-xs:  11px;
+  --fs-sm:  12px;
+  --fs-md:  13px;
+  --fs-lg:  14px;
+  --fs-xl:  16px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   --sidebar-w-collapsed: 56px;
   --sidebar-w-expanded:  252px;

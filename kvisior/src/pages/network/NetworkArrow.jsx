@@ -9,7 +9,7 @@ export function Arrow({ src, dst, effect, ports, selected, onClick }) {
   const mx=(x1+x2)/2, my=(y1+y2)/2-8;
   const color = effect==='allow' ? 'var(--accent-3)' : 'var(--danger)';
   return (
-    <g onClick={onClick} style={{cursor:'pointer'}}>
+    <g onClick={onClick} className="pointer">
       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth="18"/>
       <line x1={x1} y1={y1} x2={x2} y2={y2}
         stroke={color} strokeWidth={selected?2.5:1.5}
@@ -19,7 +19,7 @@ export function Arrow({ src, dst, effect, ports, selected, onClick }) {
       />
       {ports.length>0&&(
         <text x={mx} y={my} textAnchor="middle" fontSize="9"
-          fill="var(--text-muted)" fontFamily="JetBrains Mono,monospace" style={{pointerEvents:'none'}}>
+          fill="var(--text-muted)" fontFamily="JetBrains Mono,monospace" pointerEvents="none">
           {ports.join(' ')}
         </text>
       )}

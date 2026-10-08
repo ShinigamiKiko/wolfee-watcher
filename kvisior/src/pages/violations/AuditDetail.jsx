@@ -1,4 +1,5 @@
 import { SevBadge } from '../../components/ui';
+import { SidePanel, DetailSection, KV, Badge, ActionBadge, actionTone } from '../../components/kit';
 import { Icon } from '../../components/Icon';
 
 const KIND_ICON = {
@@ -8,118 +9,68 @@ const KIND_ICON = {
   create:      'plus',
   update:      'edit',
   delete:      'trash',
-  unknown:     'help',
 };
 
-const KIND_COLOR = {
-  exec:        'rgba(239,68,68,.12)',
-  attach:      'rgba(239,68,68,.12)',
-  portforward: 'rgba(245,158,11,.10)',
-  create:      'rgba(59,130,246,.08)',
-  update:      'rgba(245,158,11,.08)',
-  delete:      'rgba(239,68,68,.10)',
-};
+const NOTICE_TONE = { danger: 'notice--danger', warning: 'notice--warning', ok: 'notice--ok' };
 
 export function AuditDetail({ v, onClose }) {
   if (!v) return null;
 
-  const kv = (label, val) => val ? (
-    <div className="dp-kv" key={label}>
-      <span>{label}</span>
-      <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-all' }}>{val}</span>
-    </div>
-  ) : null;
-
   const ts = v.timestamp ? new Date(v.timestamp).toLocaleString() : '—';
-  const icon  = KIND_ICON[v.kind]  || KIND_ICON.unknown;
-  const bgCol = KIND_COLOR[v.kind] || 'rgba(100,100,100,.06)';
+  const opt = (label, val) => (val ? [label, val] : null);
 
   return (
-    <div className="detail-panel open">
-      <div className="detail-panel-inner">
-        <div className="dp-header">
-          <div style={{ minWidth: 0 }}>
-            <div className="dp-title" style={{ fontSize: 13 }}>
-              {icon} {v.policy}
-            </div>
-            <div className="dp-meta">{v.kind} · {v.webhookType || v.resource} · {v.ns}</div>
-          </div>
-          <button className="dp-close" onClick={onClose}><Icon name="x" /></button>
-        </div>
-
-        {}
-        <div style={{ marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <SevBadge sev={v.sev} />
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-elevated)',
-            padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border)', fontFamily: 'monospace' }}>
-            {v.kind}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-elevated)',
-            padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border)', fontFamily: 'monospace' }}>
-            {v.check}
-          </span>
-        </div>
-
-        {}
-        <div style={{ padding: '10px 12px', background: bgCol,
-          border: `1px solid ${bgCol.replace('.', ',.3').replace('rgba(', 'rgba(')}`,
-          borderRadius: 8, marginBottom: 14, fontSize: 12,
-          color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-           <strong>{v.user || 'unknown'}</strong>
-           {v.serviceAccount ? <> (<strong>{v.serviceAccount}</strong>)</> : null}
-          {v.groups?.length ? <span style={{ color: 'var(--text-muted)' }}> [{v.groups.join(', ')}]</span> : null}
+    <SidePanel
+      title={<span className="row"><Icon name={KIND_ICON[v.kind] || 'help'} /> {v.policy}</span>}
+      meta={`${v.kind} · ${v.webhookType || v.resource} · ${v.ns}`}
+      onClose={onClose}
+      actions={<><SevBadge sev={v.sev} /><ActionBadge kind={v.kind} /><Badge>{v.check}</Badge></>}
+    >
+      <div className={`notice ${NOTICE_TONE[actionTone(v.kind)] || ''} dp-lead`}>
+        <div>
+          <strong>{v.user || 'unknown'}</strong>
+          {v.serviceAccount ? <> (<strong>{v.serviceAccount}</strong>)</> : null}
+          {v.groups?.length ? <span className="t-muted"> [{v.groups.join(', ')}]</span> : null}
           {' performed '}
           <strong>{v.kind}</strong>
           {v.webhookType ? <> on <strong>{v.webhookType}</strong></> : v.resource ? <> on <strong>{v.resource}</strong></> : null}
-          {v.name ? <> · <code style={{ fontSize: 11 }}>{v.name}</code></> : null}
+          {v.name ? <> · <code className="inline">{v.name}</code></> : null}
           {v.ns ? <> in <strong>{v.ns}</strong></> : null}
         </div>
-
-        {}
-        {(v.commands?.length || v.container) && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-              color: 'var(--text-muted)', marginBottom: 6, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-              Exec Details
-            </div>
-            {kv('Container', v.container)}
-            {v.commands?.length ? kv('Command', v.commands.join(' ')) : null}
-          </div>
-        )}
-
-        {}
-        {v.ports?.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-              color: 'var(--text-muted)', marginBottom: 6, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-              Port Forward
-            </div>
-            {kv('Ports', v.ports.join(', '))}
-          </div>
-        )}
-
-        {}
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-          color: 'var(--text-muted)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-          Event Details
-        </div>
-        {kv('Time',      ts)}
-         {kv('User',      v.user)}
-         {kv('ServiceAccount', v.serviceAccount)}
-        {kv('Groups',    v.groups?.join(', '))}
-        {kv('Source IPs', v.sourceIPs?.join(', '))}
-        {kv('Client', v.userAgent)}
-        {kv('Occurrences', v.hits > 1 ? String(v.hits) : '')}
-         {kv('Resource',  v.resource)}
-         {kv('Webhook type', v.webhookType)}
-         {kv('Name',      v.name)}
-         {kv('Namespace', v.ns)}
-         {kv('UID',       v.uid)}
-         {kv('Resource version', v.resourceVersion)}
-         {kv('Source',    v.source)}
-         {kv('Policy',    v.policy)}
-        {kv('Action',    v.action || 'alert')}
       </div>
-    </div>
+
+      {(v.commands?.length || v.container) && (
+        <DetailSection title="Exec details">
+          <KV items={[opt('Container', v.container), opt('Command', v.commands?.join(' '))]} />
+        </DetailSection>
+      )}
+
+      {v.ports?.length > 0 && (
+        <DetailSection title="Port forward">
+          <KV items={[['Ports', v.ports.join(', ')]]} />
+        </DetailSection>
+      )}
+
+      <DetailSection title="Event details">
+        <KV items={[
+          ['Time', ts],
+          opt('User', v.user),
+          opt('ServiceAccount', v.serviceAccount),
+          opt('Groups', v.groups?.join(', ')),
+          opt('Source IPs', v.sourceIPs?.join(', ')),
+          opt('Client', v.userAgent),
+          opt('Occurrences', v.hits > 1 ? String(v.hits) : ''),
+          opt('Resource', v.resource),
+          opt('Webhook type', v.webhookType),
+          opt('Name', v.name),
+          opt('Namespace', v.ns),
+          opt('UID', v.uid),
+          opt('Resource version', v.resourceVersion),
+          opt('Source', v.source),
+          opt('Policy', v.policy),
+          ['Action', v.action || 'alert'],
+        ]} />
+      </DetailSection>
+    </SidePanel>
   );
 }
