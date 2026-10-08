@@ -1,34 +1,16 @@
-import { StatusDot } from '../../components/ui';
+import { SearchInput, KindBadge } from '../../components/kit';
 import { Icon } from '../../components/Icon';
 
-export function FilterInput({ value, onChange }) {
-  return (
-    <input type="text" placeholder="Filter..." value={value} onChange={e => onChange(e.target.value)}
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 7,
-        padding: '5px 10px', fontSize: 12, color: 'var(--text-primary)', outline: 'none', fontFamily: 'DM Sans,sans-serif' }} />
-  );
-}
+export { KindBadge };
 
-export function KindBadge({ kind }) {
-  const colors = {
-    Deployment:         ['rgba(0,200,255,.08)',  'var(--accent)'],
-    StatefulSet:        ['rgba(124,58,237,.12)', '#a78bfa'],
-    DaemonSet:          ['rgba(16,185,129,.1)',  'var(--accent-3)'],
-    ClusterRole:        ['rgba(124,58,237,.12)', '#a78bfa'],
-    Role:               ['rgba(0,200,255,.08)',  'var(--accent)'],
-    ClusterRoleBinding: ['rgba(239,68,68,.1)',   'var(--danger)'],
-    RoleBinding:        ['rgba(251,146,60,.1)',  'var(--warning)'],
-  };
-  const [bg, col] = colors[kind] || ['rgba(0,200,255,.08)', 'var(--accent)'];
-  return <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: bg, color: col }}>{kind}</span>;
+export function FilterInput({ value, onChange }) {
+  return <SearchInput size="sm" value={value} onChange={onChange} placeholder="Filter…" />;
 }
 
 export function EmptyRow({ cols, msg, sensorOnline }) {
   return (
-    <tr>
-      <td colSpan={cols} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
-        {sensorOnline === false ? <><Icon name="alert" /> Sensor offline — no data</> : msg}
-      </td>
+    <tr className="empty-row">
+      <td colSpan={cols}>{sensorOnline === false ? <span className="ic-label"><Icon name="alert" /> Sensor offline — no data</span> : msg}</td>
     </tr>
   );
 }

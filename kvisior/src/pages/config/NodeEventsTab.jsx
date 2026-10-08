@@ -1,18 +1,7 @@
-import { apiFetch } from '../../data/cluster';
 import { useState, useEffect } from 'react';
-import { ST } from './yamlPanelHelpers';
+import { safeFetch } from './yamlPanelHelpers';
+import { Notice } from '../../components/kit';
 import { Icon } from '../../components/Icon';
-
-async function safeFetch(url) {
-  const res = await apiFetch(url, { credentials: 'same-origin' });
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    const preview = text.slice(0, 120).replace(/\s+/g, ' ').trim();
-    return { error: `Server returned non-JSON response: ${preview}` };
-  }
-}
 
 function NodeEventsTab({ item }) {
   const [events,  setEvents]  = useState(null);
@@ -32,64 +21,41 @@ function NodeEventsTab({ item }) {
     finally { setLoading(false); }
   };
 
-  const typeColor = t => t === 'Warning' ? '#fbbf24' : 'var(--accent-3)';
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <div style={{ padding: '10px 0', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button onClick={load} disabled={loading} style={ST.btnLoad}>
+    <>
+      <div className="log-tools">
+        <button type="button" className="btn btn-primary btn-sm" onClick={load} disabled={loading}>
           {loading ? <><Icon name="loader" /> Loading…</> : events ? <><Icon name="refresh" /> Refresh</> : <><Icon name="play" /> Load Events</>}
         </button>
-        {events && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{events.length} events</span>}
+        {events && <span className="t-xs t-muted">{events.length} events</span>}
       </div>
-      {error && <div style={ST.errBox}><Icon name="circle-x" /> {error}</div>}
+      {error && <Notice tone="danger" icon="circle-x"><span className="mono t-sm">{error}</span></Notice>}
       {!events && !error && !loading && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--text-muted)', fontSize: 13, flexDirection: 'column', gap: 10 }}>
-          <Icon name="calendar" size={32} />
-          <span>Click <strong style={{ color: 'var(--accent)' }}>Load Events</strong> to fetch</span>
+        <div className="empty-state fill-center">
+          <Icon name="calendar" size={28} />
+          <span>Click <strong className="t-accent">Load Events</strong> to fetch</span>
         </div>
       )}
-      {events && events.length === 0 && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--text-muted)', fontSize: 13 }}>No events found for this node</div>
-      )}
+      {events && events.length === 0 && <div className="empty-state fill-center">No events found for this node</div>}
       {events && events.length > 0 && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Time','Type','Reason','Message','Count'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '6px 10px', fontSize: 10,
-                    fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase',
-                    color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+        <div className="events-scroll">
+          <table className="data-table data-table--static">
+            <thead><tr><th>Time</th><th>Type</th><th>Reason</th><th>Message</th><th className="num">Count</th></tr></thead>
             <tbody>
               {events.map((e, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}>
-                  <td style={{ padding: '6px 10px', color: 'var(--text-muted)', whiteSpace: 'nowrap',
-                    fontFamily: 'JetBrains Mono,monospace', fontSize: 10 }}>
-                    {e.time ? new Date(e.time).toLocaleString() : '—'}
-                  </td>
-                  <td style={{ padding: '6px 10px', color: typeColor(e.type), fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {e.type || '—'}
-                  </td>
-                  <td style={{ padding: '6px 10px', color: 'var(--text-primary)', whiteSpace: 'nowrap',
-                    fontFamily: 'JetBrains Mono,monospace' }}>{e.reason || '—'}</td>
-                  <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: 240,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={e.message}>{e.message || '—'}</td>
-                  <td style={{ padding: '6px 10px', color: 'var(--text-muted)',
-                    fontFamily: 'JetBrains Mono,monospace', textAlign: 'center' }}>{e.count || 1}</td>
+                <tr key={i}>
+                  <td className="mono t-2xs t-muted">{e.time ? new Date(e.time).toLocaleString() : '—'}</td>
+                  <td className={`t-strong ${e.type === 'Warning' ? 't-warning' : 't-ok'}`}>{e.type || '—'}</td>
+                  <td className="mono t-xs t-primary">{e.reason || '—'}</td>
+                  <td className="t-xs clip clip--md" title={e.message}>{e.message || '—'}</td>
+                  <td className="mono num t-muted">{e.count || 1}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

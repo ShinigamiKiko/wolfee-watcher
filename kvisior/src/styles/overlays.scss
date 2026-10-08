@@ -205,3 +205,7 @@ textarea.cpol-input { height:auto; min-height:80px; padding:8px 12px; line-heigh
 @media (max-width:1100px) {
   .detail-panel.open, .detail-panel-inner, .detail-panel--wide.open, .detail-panel--wide .detail-panel-inner { width:min(480px, 92vw); }
 }
+
+.detail-panel--fill .detail-panel-inner { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
+.detail-panel--fill .dp-header, .detail-panel--fill .dp-actions, .detail-panel--fill .dp-tabs { flex-shrink:0; }
+.dp-fill { flex:1; min-height:0; display:flex; flex-direction:column; padding-bottom:16px; }

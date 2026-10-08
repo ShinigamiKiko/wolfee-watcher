@@ -266,15 +266,16 @@ export function Metrics({ items, cols, className }) {
   );
 }
 
-export function SidePanel({ title, meta, onClose, actions, tabs, label, width, children }) {
+export function SidePanel({ title, meta, onClose, actions, tools, tabs, label, width, fill, children }) {
   return (
-    <aside className={cx('detail-panel open', width && `detail-panel--${width}`)} aria-label={label || (typeof title === 'string' ? title : undefined)}>
+    <aside className={cx('detail-panel open', width && `detail-panel--${width}`, fill && 'detail-panel--fill')} aria-label={label || (typeof title === 'string' ? title : undefined)}>
       <div className="detail-panel-inner">
         <div className="dp-header">
           <div className="grow">
             <div className="dp-title">{title}</div>
             {meta && <div className="dp-meta">{meta}</div>}
           </div>
+          {tools && <div className="row shrink-0">{tools}</div>}
           <button type="button" className="dp-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
         </div>
         {actions && <div className="dp-actions">{actions}</div>}

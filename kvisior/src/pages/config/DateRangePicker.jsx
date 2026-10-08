@@ -1,25 +1,20 @@
-import { useState } from 'react';
-import { ST } from './yamlPanelHelpers';
 import { Icon } from '../../components/Icon';
 
 function DateRangePicker({ fromVal, toVal, onFromChange, onToChange }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
-      <div>
-        <span style={ST.dtLabel}>From</span>
-        <input type="datetime-local" value={fromVal} onChange={e => onFromChange(e.target.value)}
-          style={ST.dtInput} />
+    <div className="dt-range">
+      <div className="dt-field">
+        <label htmlFor="log-from">From</label>
+        <input id="log-from" className="input" type="datetime-local" value={fromVal} onChange={e => onFromChange(e.target.value)} />
       </div>
-      <div style={{ color: 'var(--text-muted)', fontSize: 14, paddingBottom: 4 }}>→</div>
-      <div>
-        <span style={ST.dtLabel}>To</span>
-        <input type="datetime-local" value={toVal} onChange={e => onToChange(e.target.value)}
-          style={ST.dtInput} />
+      <span className="dt-arrow" aria-hidden="true">→</span>
+      <div className="dt-field">
+        <label htmlFor="log-to">To</label>
+        <input id="log-to" className="input" type="datetime-local" value={toVal} onChange={e => onToChange(e.target.value)} />
       </div>
       {(fromVal || toVal) && (
-        <button onClick={() => { onFromChange(''); onToChange(''); }}
-          style={{ ...ST.btnCopy, paddingBottom: 4, fontSize: 11, alignSelf: 'flex-end' }}
-          title="Clear range"><Icon name="x" /></button>
+        <button type="button" className="btn-icon" title="Clear range" aria-label="Clear range"
+          onClick={() => { onFromChange(''); onToChange(''); }}><Icon name="x" /></button>
       )}
     </div>
   );

@@ -1,26 +1,14 @@
-import { apiFetch } from '../../data/cluster';
 import { useState, useRef, useEffect } from 'react';
-import { getContainers, colorizeLog, ST } from './yamlPanelHelpers';
+import { getContainers, colorizeLog, safeFetch } from './yamlPanelHelpers';
+import { Notice } from '../../components/kit';
 import { DateRangePicker, applyToFilter } from './DateRangePicker';
 import { Icon } from '../../components/Icon';
 
-async function safeFetch(url) {
-  const res = await apiFetch(url, { credentials: 'same-origin' });
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    const preview = text.slice(0, 120).replace(/\s+/g, ' ').trim();
-    return { error: `Server returned non-JSON response: ${preview}` };
-  }
-}
-
 function EmptyLogState() {
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'var(--text-muted)', fontSize: 13, flexDirection: 'column', gap: 10 }}>
-      <Icon name="clipboard" size={32} />
-      <span>Set a time range and click <strong style={{ color: 'var(--accent)' }}>Load Logs</strong></span>
+    <div className="empty-state fill-center">
+      <Icon name="clipboard" size={28} />
+      <span>Set a time range and click <strong className="t-accent">Load Logs</strong></span>
     </div>
   );
 }
@@ -100,58 +88,46 @@ function PodLogsTab({ item }) {
   const visibleLines = applyToFilter(lines, toVal);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 }}>
-      {}
-      {containers.length > 1 && (
-        <div style={{ paddingTop: 8, paddingBottom: 4, flexShrink: 0 }}>
-          <select value={container} onChange={e => setContainer(e.target.value)}
-            style={{ ...ST.dtInput, fontSize: 12 }}>
+    <>
+      <div className="log-tools">
+        {containers.length > 1 && (
+          <select className="input input--sm" aria-label="Container" value={container} onChange={e => setContainer(e.target.value)}>
             {containers.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-        </div>
-      )}
-
-      {}
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8,
-        padding: '8px 0 10px', flexWrap: 'wrap', flexShrink: 0 }}>
-        <DateRangePicker fromVal={fromVal} toVal={toVal}
-          onFromChange={setFromVal} onToChange={setToVal} />
-
-        <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button onClick={loadLogs} disabled={loading} style={ST.btnLoad}>
-            {loading ? <><Icon name="loader" /> Loading…</> : <><Icon name="play" /> Load Logs</>}
+        )}
+        <DateRangePicker fromVal={fromVal} toVal={toVal} onFromChange={setFromVal} onToChange={setToVal} />
+        <button type="button" className="btn btn-primary btn-sm" onClick={loadLogs} disabled={loading}>
+          {loading ? <><Icon name="loader" /> Loading…</> : <><Icon name="play" /> Load Logs</>}
+        </button>
+        {lastFetchAt && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={pullNew} disabled={pulling}>
+            {pulling ? <><Icon name="loader" /> Pulling…</> : <><Icon name="download" /> Pull New</>}
           </button>
-          {lastFetchAt && (
-            <button onClick={pullNew} disabled={pulling} style={ST.btnPull}>
-              {pulling ? <><Icon name="loader" /> Pulling…</> : <><Icon name="download" /> Pull New</>}
-            </button>
-          )}
-          {lines.length > 0 && (
-            <button onClick={copy} style={ST.btnCopy}>
-              {copied ? <><Icon name="check" /> Copied</> : <><Icon name="copy" /> Copy</>}
-            </button>
-          )}
-          {lines.length > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
-              {newCount > 0 && <span style={{ color: 'var(--accent-3)', fontWeight: 600 }}>+{newCount} new</span>}
-              {toVal && visibleLines.length !== lines.length
-                ? <span>{visibleLines.length} <span style={{ color: 'var(--text-muted)' }}>/ {lines.length} lines</span></span>
-                : <span>{lines.length} lines</span>
-              }
-            </span>
-          )}
-        </div>
+        )}
+        {lines.length > 0 && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={copy}>
+            {copied ? <><Icon name="check" /> Copied</> : <><Icon name="copy" /> Copy</>}
+          </button>
+        )}
+        {lines.length > 0 && (
+          <span className="row t-xs t-muted">
+            {newCount > 0 && <span className="t-ok t-strong">+{newCount} new</span>}
+            {toVal && visibleLines.length !== lines.length
+              ? <span>{visibleLines.length} / {lines.length} lines</span>
+              : <span>{lines.length} lines</span>}
+          </span>
+        )}
       </div>
 
-      {error && <div style={ST.errBox}><Icon name="circle-x" /> {error}</div>}
+      {error && <Notice tone="danger" icon="circle-x"><span className="mono t-sm">{error}</span></Notice>}
       {!lines.length && !error && !loading && <EmptyLogState />}
       {lines.length > 0 && (
-        <div style={ST.logBox}>
+        <div className="log-box">
           {colorizeLog(visibleLines.join('\n'))}
           <div ref={bottomRef} />
         </div>
       )}
-    </div>
+    </>
   );
 }
 
