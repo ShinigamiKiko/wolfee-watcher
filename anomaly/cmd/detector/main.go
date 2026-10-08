@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"hash/fnv"
 	"log"
 	"log/slog"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"github.com/wolfee-watcher/anomaly-detector/internal/server"
 	"github.com/wolfee-watcher/pkg/env"
 	"github.com/wolfee-watcher/pkg/logging"
+	"github.com/wolfee-watcher/pkg/mtls"
 )
 
 const defaultConsumerLockID int64 = 642596272900103939
@@ -154,6 +156,7 @@ func runConsumerWithAdvisoryLock(ctx context.Context, pool *pgxpool.Pool, cons *
 	slog.Info("consumer_lock_enabled",
 		"component", "anomaly-detector/main",
 		"lock_id", lockID,
+		"cluster", mtls.ClusterID(),
 		"identity", identity)
 
 	for ctx.Err() == nil {
@@ -259,9 +262,10 @@ func waitOrDone(ctx context.Context, d time.Duration) {
 }
 
 func consumerLockID() int64 {
+	fallback := clusterConsumerLockID(mtls.ClusterID())
 	v := strings.TrimSpace(os.Getenv("ANOMALY_CONSUMER_LOCK_ID"))
 	if v == "" {
-		return defaultConsumerLockID
+		return fallback
 	}
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n == 0 {
@@ -269,10 +273,20 @@ func consumerLockID() int64 {
 			"component", "anomaly-detector/main",
 			"key", "ANOMALY_CONSUMER_LOCK_ID",
 			"value", v,
-			"default", defaultConsumerLockID)
-		return defaultConsumerLockID
+			"default", fallback)
+		return fallback
 	}
 	return n
+}
+
+func clusterConsumerLockID(cluster string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(cluster))
+	id := defaultConsumerLockID ^ int64(h.Sum64())
+	if id == 0 {
+		return defaultConsumerLockID
+	}
+	return id
 }
 
 func podIdentity() string {
