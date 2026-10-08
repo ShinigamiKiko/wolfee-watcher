@@ -35,10 +35,11 @@ const (
 )
 
 type Store struct {
-	pool      *pgxpool.Pool
-	router    *Router
-	tables    sync.Map
-	userCache sync.Map
+	pool         *pgxpool.Pool
+	router       *Router
+	tables       sync.Map
+	userCache    sync.Map
+	clusterNames alertspkg.ClusterNameCache
 }
 
 type execer interface {
