@@ -4,6 +4,7 @@ import { usePerms, actingHeaders } from '../../context/PermissionsContext';
 import { INTEGRATION_DEFS } from './settingsConstants';
 import { AuditLogSourceCard } from './AuditLogSourceCard';
 import { AuditRetentionCard } from './AuditRetentionCard';
+import { Field, Switch, Notice } from '../../components/kit';
 
 function mergeWithStored(def, values, record) {
   const out = {};
@@ -38,16 +39,6 @@ function IntegrationCard({ def, record, onSaved, toast }) {
     setValues(initial());
     setEnabled(!!record?.enabled);
   }, [record?.updated_at, record?.enabled]);
-
-  const buildConfig = () => {
-    const out = {};
-    for (const f of def.fields) {
-      const v = (values[f.key] ?? '').trim();
-      if (v === '' || v === '***') continue;
-      out[f.key] = v;
-    }
-    return out;
-  };
 
   const validateRequired = () => {
     for (const f of def.fields) {
@@ -125,64 +116,46 @@ function IntegrationCard({ def, record, onSaved, toast }) {
 
   const isConfigured = !!record;
   const statusLabel = !isConfigured ? 'Not configured' : enabled ? 'Enabled' : 'Disabled';
-  const statusColor = !isConfigured ? 'var(--text-muted)' : enabled ? 'var(--accent-3)' : 'var(--warning)';
+  const statusTone = !isConfigured ? 't-muted' : enabled ? 't-ok' : 't-warning';
   const writable = can('integrations.write');
-
-  void buildConfig;
+  const wide = key => key === 'webhook_url' || key === 'url';
 
   return (
-    <div className="card" style={{padding:24,border:'none',marginBottom:16}}>
-      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16,gap:16}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--text-primary)',marginBottom:3}}>{def.label}</div>
-          <div style={{fontSize:12,color:'var(--text-muted)',maxWidth:560}}>{def.desc}</div>
+    <section className="pane settings-section">
+      <div className="pane-head">
+        <div className="grow">
+          <div className="pane-title">{def.label}</div>
+          <div className="pane-sub">{def.desc}</div>
         </div>
-        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:statusColor,whiteSpace:'nowrap'}}>
-          <input type="checkbox" checked={enabled} disabled={!writable} onChange={e => setEnabled(e.target.checked)} />
+        <span className={`row t-sm ${statusTone}`}>
+          <Switch checked={enabled} disabled={!writable} onChange={setEnabled} label={`${def.label} enabled`} />
           {statusLabel}
-        </label>
+        </span>
       </div>
-
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
-        {def.fields.map(f => (
-          <div key={f.key} style={f.key === 'webhook_url' || f.key === 'url' ? {gridColumn:'span 2'} : null}>
-            <label style={{display:'block',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em',color:'var(--text-muted)',marginBottom:6}}>
-              {f.label}{f.required && <span style={{color:'var(--danger)'}}> *</span>}
-            </label>
-            <input
-              type={f.secret ? 'password' : 'text'}
-              placeholder={f.placeholder || ''}
-              value={values[f.key] ?? ''}
-              disabled={!writable}
-              onChange={e => setValues(v => ({...v, [f.key]: e.target.value}))}
-              className="form-input"
-            />
-          </div>
-        ))}
-      </div>
-
-      <div style={{display:'flex',gap:8,alignItems:'center'}}>
-        {writable && (
-          <button className="btn btn-primary" disabled={!!busy} onClick={save}>
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
-        )}
-        <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={test} >
-          {busy === 'test' ? 'Testing…' : 'Test connection'}
-        </button>
-        {isConfigured && writable && (
-          <button disabled={!!busy} onClick={remove} className="btn btn-ghost btn-sm btn-tone-danger" style={{marginLeft:'auto'}}>
-            {busy === 'del' ? 'Removing…' : 'Remove'}
-          </button>
-        )}
-      </div>
-
-      {record?.updated_at && (
-        <div style={{marginTop:10,fontSize:11,color:'var(--text-muted)'}}>
-          Last updated {new Date(record.updated_at).toLocaleString()}
+      <div className="pane-body">
+        <div className="fields fields--2">
+          {def.fields.map(f => (
+            <Field key={f.key} className={wide(f.key) ? 'span-2' : undefined} htmlFor={`int-${def.kind}-${f.key}`}
+              label={<>{f.label}{f.required && <span className="t-danger"> *</span>}</>}>
+              <input id={`int-${def.kind}-${f.key}`} type={f.secret ? 'password' : 'text'} placeholder={f.placeholder || ''}
+                value={values[f.key] ?? ''} disabled={!writable} className="input input--block"
+                onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+            </Field>
+          ))}
         </div>
-      )}
-    </div>
+        <div className="row">
+          {writable && (
+            <button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
+          )}
+          <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={test}>{busy === 'test' ? 'Testing…' : 'Test connection'}</button>
+          <span className="grow" />
+          {isConfigured && writable && (
+            <button type="button" disabled={!!busy} onClick={remove} className="btn btn-ghost btn-tone-danger">{busy === 'del' ? 'Removing…' : 'Remove'}</button>
+          )}
+        </div>
+        {record?.updated_at && <div className="field-hint mt-8">Last updated {new Date(record.updated_at).toLocaleString()}</div>}
+      </div>
+    </section>
   );
 }
 
@@ -211,15 +184,15 @@ export function IntegrationsSection({ toast }) {
       <div>
         <AuditLogSourceCard toast={toast} />
         <AuditRetentionCard toast={toast} />
-        <div className="card" style={{padding:24,border:'none'}}>
-          <div style={{fontSize:13,color:'var(--danger)'}}>Failed to load integrations: {error}</div>
-          <button className="btn btn-ghost btn-sm" onClick={reload}  style={{marginTop:12}}>Retry</button>
-        </div>
+        <Notice tone="danger" className="settings-section">
+          <div>Failed to load integrations: {error}</div>
+          <button type="button" className="btn btn-ghost btn-sm mt-8" onClick={reload}>Retry</button>
+        </Notice>
       </div>
     );
   }
   if (items == null) {
-    return <div className="card" style={{padding:24,border:'none',color:'var(--text-muted)',fontSize:13}}>Loading integrations…</div>;
+    return <div className="pane empty-state empty-state--compact">Loading integrations…</div>;
   }
 
   return (

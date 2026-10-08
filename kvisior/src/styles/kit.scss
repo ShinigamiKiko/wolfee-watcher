@@ -378,3 +378,36 @@ mark.hit { background: rgba(245, 158, 11, 0.3); color: var(--warning-text); bord
 .risk-cell { min-width: 140px; .meter { flex: 1; } }
 .cve-id { min-width: 120px; }
 .link-card { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; font: inherit; color: var(--accent); cursor: pointer; }
+
+.fields--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.span-2 { grid-column: 1 / -1; }
+@media (max-width: 720px) { .fields--2 { grid-template-columns: minmax(0, 1fr); } }
+
+.side-nav { list-style: none; margin: 0; padding: 6px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); align-self: start; }
+.side-nav button {
+  display: block; width: 100%; text-align: left; padding: 9px 12px; margin-bottom: 2px; border-radius: var(--radius-sm);
+  background: none; border: 0; font: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--text-primary); cursor: pointer;
+  &:hover { background: var(--hover-tint); }
+  &[aria-current="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+}
+.side-nav-desc { font-size: var(--fs-xs); color: var(--text-dim); font-weight: 400; margin-top: 2px; }
+.nav-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; max-width: 1200px; align-items: start; }
+@media (max-width: 900px) { .nav-layout { grid-template-columns: minmax(0, 1fr); } }
+
+.settings-section + .settings-section { margin-top: 16px; }
+.secret-box { font-family: var(--font-mono); font-size: var(--fs-sm); padding: 8px 10px; background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow-wrap: anywhere; color: var(--text-primary); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.measure { max-width: 640px; }
+.check--top { align-items: flex-start; input { margin-top: 2px; } }
+.disclosure { font-size: var(--fs-sm); color: var(--text-secondary);
+  summary { cursor: pointer; text-underline-offset: 3px; }
+  summary:hover { text-decoration: underline; }
+}
+
+.avatar {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #fff; font-size: 10px; font-weight: 600;
+}
+.avatar--lg { width: 56px; height: 56px; font-size: 20px; font-weight: 700; }
+.profile-grid { max-width: 960px; align-items: start; }
