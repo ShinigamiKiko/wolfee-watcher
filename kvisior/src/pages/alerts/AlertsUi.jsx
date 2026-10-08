@@ -50,7 +50,7 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
               <div key={ev.id} className="al-bucket-item">
                 <div className="al-bucket-item-main">
                   <div className="al-bucket-summary">{ev.src_pod || ev.src_deployment || ev.kind}</div>
-                  <div className="al-bucket-sub" style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 10 }}>
+                  <div className="al-bucket-sub mono t-2xs">
                     {ev.kind}{ev.syscall ? ` · ${ev.syscall}` : ''}{ev.dst_ip ? ` → ${ev.dst_ip}${ev.dst_port ? ':'+ev.dst_port : ''}` : ''}
                   </div>
                   <div className="al-bucket-sub">{fmtTs(ev.ts)}</div>
@@ -69,7 +69,7 @@ function BucketsPanel({ buckets, silentEvents = [], tab, setTab, onClose, onRest
                 <div className="al-bucket-item-main">
                   <div className="al-bucket-summary">{it.summary}</div>
                   <div className="al-bucket-sub">
-                    <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 10 }}>{it.pattern}</span>
+                    <span className="mono t-2xs">{it.pattern}</span>
                   </div>
                   <div className="al-bucket-sub">
                     {it.count > 0 ? `${it.count}× since open · last ${fmtTs(it.lastTs)}` : `since ${fmtTs(it.createdAt)}`}
@@ -120,36 +120,25 @@ function KindReference({ onClose }) {
         <button className="al-detail-close" onClick={onClose}><Icon name="x" /></button>
       </div>
 
-      <div className="al-detail-body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="al-detail-body al-legend">
         {GROUP_ORDER.map(g => {
           const meta  = GROUP_META[g];
           const kinds = Object.entries(KIND_META).filter(([, m]) => m.group === g);
           if (!meta || kinds.length === 0) return null;
           return (
             <div key={g}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                {meta.label}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '3px 0 10px', lineHeight: 1.5 }}>
-                {meta.desc}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="section-label mb-4">{meta.label}</div>
+              <div className="t-xs t-muted mb-8">{meta.desc}</div>
+              <div className="stack">
                 {kinds.map(([k, m]) => (
-                  <div key={k} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-                    <span style={{
-                      flexShrink: 0, width: 18, height: 18, borderRadius: 4,
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, marginTop: 1,
-                      color: REF_COLOR[m.color] || 'var(--text-muted)',
-                      background: `color-mix(in srgb, ${REF_COLOR[m.color] || 'var(--text-muted)'} 14%, transparent)`,
-                      border: `1px solid color-mix(in srgb, ${REF_COLOR[m.color] || 'var(--text-muted)'} 35%, transparent)`,
-                    }}><Icon name={m.icon} /></span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <div key={k} className="row row--top">
+                    <span className="al-legend-icon" style={{ '--tone': REF_COLOR[m.color] || 'var(--text-muted)' }}><Icon name={m.icon} /></span>
+                    <div className="grow">
+                      <div className="row row--wrap t-sm t-strong t-primary">
                         {m.label}
-                        <code style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>{k}</code>
+                        <code className="mono t-2xs t-muted">{k}</code>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 2 }}>{m.desc}</div>
+                      <div className="t-xs t-secondary mt-4">{m.desc}</div>
                     </div>
                   </div>
                 ))}

@@ -280,3 +280,11 @@
 .al-stack { flex: 1; min-width: 0; display: flex; flex-direction: column; align-self: flex-start; margin: 0 16px 16px 24px; }
 .al-list.dw { margin: 0; padding: 0; flex: none; }
 .al-list.dw .al-row { padding: 10px 16px; }
+
+.al-legend { display: flex; flex-direction: column; gap: 18px; }
+.al-legend-icon {
+  flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+}
