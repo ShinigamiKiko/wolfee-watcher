@@ -48,9 +48,9 @@ function BenchDetail({ run, onBack, onSelect }) {
                 {ctrl.node_type && <span className="au-ctrl__node">{ctrl.node_type}</span>}
                 <span className="au-ctrl__text">{ctrl.text}</span>
                 <div className="au-ctrl__counts">
-                  {ctrl.fail>0 && <span className="ic-label" style={{color:'var(--danger)'}}><Icon name="x" />{ctrl.fail}</span>}
-                  {ctrl.warn>0 && <span className="ic-label" style={{color:'var(--warning)'}}><Icon name="alert" />{ctrl.warn}</span>}
-                  {ctrl.pass>0 && <span className="ic-label" style={{color:'var(--accent-3)'}}><Icon name="check" />{ctrl.pass}</span>}
+                  {ctrl.fail>0 && <span className="ic-label t-danger"><Icon name="x" />{ctrl.fail}</span>}
+                  {ctrl.warn>0 && <span className="ic-label t-warning"><Icon name="alert" />{ctrl.warn}</span>}
+                  {ctrl.pass>0 && <span className="ic-label t-ok"><Icon name="check" />{ctrl.pass}</span>}
                 </div>
                 <span className="au-chev"><Icon name={isOpen ? 'chevron-down' : 'chevron-right'} /></span>
               </div>
@@ -63,7 +63,7 @@ function BenchDetail({ run, onBack, onSelect }) {
                       </span>
                       <span className="au-test__num">{t.number}</span>
                       <span className="au-test__desc">{t.desc}</span>
-                      {t.remediation && <span title="Has remediation" style={{opacity:.6}}><Icon name="wrench" /></span>}
+                      {t.remediation && <span title="Has remediation" className="t-muted"><Icon name="wrench" /></span>}
                       <span className="au-row-arrow">›</span>
                     </div>
                   ))}

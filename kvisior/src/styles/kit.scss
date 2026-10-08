@@ -433,3 +433,18 @@ mark.hit { background: rgba(245, 158, 11, 0.3); color: var(--warning-text); bord
 }
 .fwin-body:has(> .fwin-flush) { padding: 0; display: flex; flex-direction: column; }
 .fwin-flush { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.menu-check { justify-content: flex-start; cursor: pointer; user-select: none;
+  input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  &:has(input:checked) { color: var(--text-primary); }
+}
+.ml-auto { margin-left: auto; }
+.data-table th.col-xs { width: 28px; }
+.data-table th.col-sev { width: 110px; }
+.data-table td.empty-cell { padding: 28px 16px; text-align: center; color: var(--text-dim); white-space: normal; }
+.auth-wait { min-height: 100vh; background: var(--bg-base); }
+.logo-version { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-dim); letter-spacing: 0.04em; margin-left: 6px; }
+.nav-list { list-style: none; padding: 0; margin: 0; flex: 1; li { list-style: none; } }
+.fns-col-head--sort { cursor: pointer; user-select: none; }
+.fns-btn--danger { color: var(--danger-text); border-color: rgba(239, 68, 68, 0.45); }
+.fns-btn--danger:hover:not(:disabled) { background: var(--danger-tint); }

@@ -16,7 +16,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 24px;
-  border-bottom: 1px solid var(--border-faint, rgba(255,255,255,.04));
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background .1s;
   font-size: 13px;
@@ -94,7 +94,7 @@
 
 .al-section {
   padding: 8px 16px;
-  & + & { border-top: 1px solid var(--border-faint, rgba(255,255,255,.04)); margin-top: 4px; }
+  & + & { border-top: 1px solid var(--border); margin-top: 4px; }
 }
 
 .al-section-title {
@@ -238,7 +238,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 9px 14px;
-  border-bottom: 1px solid var(--border-faint, rgba(255,255,255,.04));
+  border-bottom: 1px solid var(--border);
 
   &:hover { background: var(--bg-elevated); }
 }

@@ -46,7 +46,7 @@ export function Topbar() {
         <div className="logo-icon" role="img" aria-label="wolfee-watcher" />
         <div className="logo-text">wolfee<span>-watcher</span></div>
         {version && (
-          <span style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',letterSpacing:'.04em',marginLeft:6,opacity:.6}}>v{version}</span>
+          <span className="logo-version">v{version}</span>
         )}
       </div>
       <div className="topbar-divider" />
@@ -56,7 +56,7 @@ export function Topbar() {
           <div className="user-btn" onClick={() => setMenuOpen(v => !v)}>
             <div className="user-avatar">{initials}</div>
             <span className="user-name">{username}@cluster</span>
-            <Icon name="chevron-down" style={{ color: 'var(--text-muted)' }} />
+            <Icon name="chevron-down" className="t-muted" />
           </div>
           <div className={`dropdown-menu ${menuOpen ? 'open' : ''}`}>
             <div className="dropdown-user-info">
@@ -67,7 +67,7 @@ export function Topbar() {
             <div className="dropdown-divider" />
             <div className="dropdown-item" onClick={() => { navigate('/profile'); setMenuOpen(false); }}><Icon name="user" /> My profile</div>
             <div className="dropdown-divider" />
-            <div className="dropdown-item" style={{color:'var(--danger)'}} onClick={handleLogout}><Icon name="escape" /> Log out</div>
+            <div className="dropdown-item t-danger" onClick={handleLogout}><Icon name="escape" /> Log out</div>
           </div>
         </div>
       </div>

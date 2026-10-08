@@ -624,9 +624,9 @@
   gap: 8px;
   padding: 7px 12px;
   font-size: 12px;
-  border-bottom: 1px solid var(--border-faint, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--border);
   &:last-child { border-bottom: none; }
-  &--hdr { background: var(--bg-2); font-weight: 600; color: var(--text-muted); font-size: 11px; }
+  &--hdr { background: var(--bg-elevated); font-weight: 600; color: var(--text-muted); font-size: 11px; }
   &--added    { background: rgba(16,185,129,0.04); }
   &--modified { background: rgba(234,179,8,0.04); }
   &--deleted  { background: rgba(239,68,68,0.04); }
@@ -636,7 +636,7 @@
   font-weight: 700;
   font-size: 10px;
   text-transform: uppercase;
-  &--added    { color: var(--success, #10b981); }
+  &--added    { color: var(--ok-text); }
   &--modified { color: var(--warning); }
   &--deleted  { color: var(--danger); }
 }

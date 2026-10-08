@@ -100,8 +100,8 @@
   &--critical.active { color: var(--danger);  background: rgba(239,68,68,.15); }
   &--high.active     { color: var(--warning); background: rgba(249,115,22,.15); }
   &--medium.active   { color: #fbbf24;        background: rgba(251,191,36,.15); }
-  &--low.active      { color: var(--text-secondary); background: var(--bg-hover); }
-  &:not(.active):hover { color: var(--text-secondary); background: var(--bg-hover); }
+  &--low.active      { color: var(--text-secondary); background: var(--hover-tint); }
+  &:not(.active):hover { color: var(--text-secondary); background: var(--hover-tint); }
 }
 
 .fns-modal-tab-cnt {

@@ -404,11 +404,11 @@ export function RBAC() {
             <table className="rbac-table">
               <thead>
                 <tr>
-                  <th style={{ width: 28 }} />
+                  <th className="col-xs" aria-label="Expand" />
                   <th>Role / ClusterRole</th>
                   <th>Kind</th>
                   <th>Subjects</th>
-                  <th style={{ width: 110 }}>Severity</th>
+                  <th className="col-sev">Severity</th>
                   <th>Violations</th>
                 </tr>
               </thead>

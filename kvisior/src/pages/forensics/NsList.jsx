@@ -11,7 +11,7 @@ export function NsList({ namespaces, pods, eventSummary = [], anomalyEvents = []
           <div className="fns-page-title">Forensics</div>
           <div className="fns-page-sub">Select namespace to explore pod runtime-event history</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="row">
           <button className="fns-btn" onClick={onSeverityOpen}><Icon name="gear" /> Severity</button>
         </div>
       </div>

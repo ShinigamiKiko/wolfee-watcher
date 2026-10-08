@@ -85,7 +85,7 @@ export function BinaryFilter({ filterSev, onSevChange, filterBins, onBinsChange 
               <button className="fns-btn fns-btn--accent" onClick={addBin}>+ Add</button>
             </div>
             {filterBins.size > 0 && (
-              <div className="fns-fdrop-calls" style={{ marginTop: 6 }}>
+              <div className="fns-fdrop-calls mt-8">
                 {[...filterBins].map(b => (
                   <div key={b} className="fns-chip fns-chip--active fns-chip--bin"
                     onClick={() => removeBin(b)}>{b} <Icon name="x" /></div>
