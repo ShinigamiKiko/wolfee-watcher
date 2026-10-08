@@ -109,6 +109,13 @@ spec:
     {{- end }}
     {{- if hasPrefix "postgres" ($control | default "") }}
     {{- include "kvisior.np.urlEgress" (dict "url" $control "port" "5432") | trim | nindent 4 }}
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: {{ regexFind ":[0-9]+$" (urlParse $control).host | trimPrefix ":" | default "5432" | quote }}
+              protocol: TCP
     {{- end }}
 {{- end }}
 {{- $integrationPorts := dig "cilium" "integrations" "ports" (list) $np }}

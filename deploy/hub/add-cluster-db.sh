@@ -4,7 +4,8 @@ set -euo pipefail
 usage() {
   echo "usage: $0 <cluster-id> <db-ip> <db-port> <allowed-source> [allowed-source ...]" >&2
   echo "  allowed-source: the hub address, edge node addresses and the edge pod CIDR (a.b.c.d or a.b.c.d/n)" >&2
-  echo "  ROTATE=1 issues new passwords instead of reusing the ones already generated for the cluster" >&2
+  echo "  ROTATE=1 issues new service passwords; the owner password stays, the running database was created with it" >&2
+  echo "  HUB_DB_HOST is the hub database address edges use for accounts (default: the first allowed source)" >&2
   exit 1
 }
 [ $# -ge 4 ] || usage
@@ -21,6 +22,8 @@ done
 [ -f "$HUB_DIR/hub.env" ] || { echo "$HUB_DIR/hub.env not found, set HUB_DIR" >&2; exit 1; }
 
 set -a; . "$HUB_DIR/hub.env"; set +a
+HUB_UI_PASSWORD="$PG_UI_PASSWORD"
+HUB_DB_HOST="${HUB_DB_HOST:-${1%%/*}}"
 DATA="${WOLFEE_DATA:-/srv/wolfee}"
 PKI="$DATA/pki"
 [ -f "$PKI/ca.key" ] || { echo "$PKI/ca.key not found, run pki.sh first" >&2; exit 1; }
@@ -32,15 +35,19 @@ umask 077
 BUNDLE="$DATA/dbs/$CID"
 mkdir -p "$BUNDLE/tls"
 
-if [ -f "$BUNDLE/db.env" ] && [ "${ROTATE:-0}" != "1" ]; then
+if [ -f "$BUNDLE/db.env" ]; then
   set -a; . "$BUNDLE/db.env"; set +a
-  log "passwords: reusing $BUNDLE/db.env"
-else
+fi
+if [ ! -f "$BUNDLE/db.env" ]; then
   PG_OWNER_PASSWORD=$(openssl rand -hex 24)
+fi
+if [ ! -f "$BUNDLE/db.env" ] || [ "${ROTATE:-0}" = "1" ]; then
   PG_UI_PASSWORD=$(openssl rand -hex 24)
   PG_TRACEE_BRIDGE_PASSWORD=$(openssl rand -hex 24)
   PG_ANOMALY_PASSWORD=$(openssl rand -hex 24)
-  log "passwords: generated"
+  log "passwords: generated service passwords; apply them with the migrate service on the database host"
+else
+  log "passwords: reusing $BUNDLE/db.env"
 fi
 cat > "$BUNDLE/db.env" <<ENV
 CLUSTER_ID=$CID
@@ -108,3 +115,4 @@ out PG_CA "$(cat "$PKI/ca.crt")"
 out PG_UI_PASSWORD "$PG_UI_PASSWORD"
 out PG_TRACEE_BRIDGE_PASSWORD "$PG_TRACEE_BRIDGE_PASSWORD"
 out PG_ANOMALY_PASSWORD "$PG_ANOMALY_PASSWORD"
+out PG_CONTROL_DSN "postgres://ww_ui:$HUB_UI_PASSWORD@$HUB_DB_HOST:5432/wolfee-watcher?sslmode=verify-ca&sslrootcert=/etc/wolfee-watcher/pg-ca/ca.crt"

@@ -154,7 +154,9 @@ podman-compose --env-file db.env run --rm migrate
 PG_PORT=<db-port> ./pg-firewall.sh <hub-ip> <edge-ip> <pod-cidr>
 ```
 
-On the edge, point the chart at that database and its passwords:
+On the edge, point the chart at that database and its passwords, and keep
+accounts, sessions and API tokens in the hub database so that one login works
+on the hub and on the edge's own UI:
 
 ```yaml
 postgres:
@@ -165,7 +167,18 @@ postgres:
     ui: { user: ww_ui, password: <WW_PG_UI_PASSWORD> }
     traceeBridge: { user: ww_tracee_bridge, password: <WW_PG_TRACEE_BRIDGE_PASSWORD> }
     anomaly: { user: ww_anomaly, password: <WW_PG_ANOMALY_PASSWORD> }
+ui:
+  controlPlaneDSN: <WW_PG_CONTROL_DSN>
 ```
+
+The edge's kvisior then also needs to reach the hub database: run
+`add-edge.sh --db <cluster-id> <edge-ip>` for it as well. Without
+`controlPlaneDSN` the edge UI uses the accounts of the cluster database, whose
+admin gets a one-time random password printed once by its first migration.
+
+`ROTATE=1 ./add-cluster-db.sh …` issues new service passwords. Copy the new
+`db.env` to the database host and run the migrate service there to apply them,
+then update the edge values; the hub picks up its new route within 15 s.
 
 Data already written into the hub database for that cluster stays there and
 is no longer shown; delete it or keep it as an archive.
