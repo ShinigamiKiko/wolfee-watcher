@@ -24,9 +24,9 @@
   &:hover    { background: var(--bg-surface); }
   &--sel     { background: rgba(0,200,255,.06) !important; }
 
-  &--danger  { border-left: 2px solid var(--danger); }
-  &--warning { border-left: 2px solid var(--warning); }
-  &--info    { border-left: 2px solid var(--accent-2); }
+  &--danger  { background-image: linear-gradient(90deg, color-mix(in srgb, var(--danger) 16%, transparent), transparent 220px); }
+  &--warning { background-image: linear-gradient(90deg, color-mix(in srgb, var(--warning) 16%, transparent), transparent 220px); }
+  &--info    { background-image: linear-gradient(90deg, color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 220px); }
 }
 
 .al-sev {

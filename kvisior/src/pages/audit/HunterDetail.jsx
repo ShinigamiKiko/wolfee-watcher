@@ -77,7 +77,6 @@ function HunterDetail({ run, onBack, onSelect }) {
           const st = sev(v?.severity);
           return (
             <div key={(v?.id||'')+i} className="au-vuln-card"
-              style={{borderLeftColor:st.border}}
               onClick={()=>onSelect(v,'hunter')}>
               <div className="au-vuln-card__top">
                 <span className="au-vuln-card__sev" style={{color:st.color,background:st.bg,border:`1px solid ${st.border}`}}>

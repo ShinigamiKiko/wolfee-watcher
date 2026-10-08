@@ -89,8 +89,8 @@
   font-size: 11px;
   align-items: center;
   &:hover { background: var(--bg-elevated, #1e2330); }
-  &.selected { background: rgba(251,191,36,.06); border-left: 2px solid #fbbf24; }
-  &.selected.blocked { background: rgba(248,113,113,.06); border-left-color: #f87171; }
+  &.selected { background: var(--warning-tint-strong); }
+  &.selected.blocked { background: var(--danger-tint-strong); }
 }
 .rn-mono  { font-family: monospace; }
 .rn-muted { color: var(--text-muted); }

@@ -438,13 +438,13 @@
   &:last-child { border-bottom: none; }
   &:hover { background: var(--bg-elevated); }
 
-  &--critical { border-left: 2px solid var(--danger); padding-left: 12px; }
-  &--high     { border-left: 2px solid var(--warning); padding-left: 12px; }
-  &--medium   { border-left: 2px solid #fbbf24; padding-left: 12px; }
-  &--low      { border-left: 2px solid var(--text-muted); padding-left: 12px; }
-  &--anomaly  { border-left: 2px solid #22d3ee; padding-left: 12px; }
-  &--lsm      { border-left: 2px solid #f472b6; padding-left: 12px; }
-  &--tracepoint { border-left: 2px solid #2dd4bf; padding-left: 12px; }
+  &--critical { background-image: linear-gradient(90deg, color-mix(in srgb, var(--danger) 16%, transparent), transparent 220px); }
+  &--high     { background-image: linear-gradient(90deg, color-mix(in srgb, var(--warning) 16%, transparent), transparent 220px); }
+  &--medium   { background-image: linear-gradient(90deg, color-mix(in srgb, var(--info) 16%, transparent), transparent 220px); }
+  &--low      { background-image: linear-gradient(90deg, color-mix(in srgb, var(--text-muted) 16%, transparent), transparent 220px); }
+  &--anomaly  { background-image: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 220px); }
+  &--lsm      { background-image: linear-gradient(90deg, color-mix(in srgb, var(--violet-text) 16%, transparent), transparent 220px); }
+  &--tracepoint { background-image: linear-gradient(90deg, color-mix(in srgb, var(--ok-text) 16%, transparent), transparent 220px); }
 }
 
 .fns-cell {
