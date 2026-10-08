@@ -97,6 +97,7 @@ data:
     offsets.topic.replication.factor={{ .Values.kafka.replicationFactor | default 3 }}
     transaction.state.log.replication.factor={{ .Values.kafka.replicationFactor | default 3 }}
     transaction.state.log.min.isr={{ .Values.kafka.minIsr | default 2 }}
+    min.insync.replicas={{ .Values.kafka.minIsr | default 2 }}
     log.retention.hours={{ .Values.kafka.retentionHours | default 48 }}
     log.segment.bytes=1073741824
     message.max.bytes=10485760

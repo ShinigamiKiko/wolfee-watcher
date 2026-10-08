@@ -42,7 +42,7 @@ func (h *Hub) Broadcast(ev *mapper.UIEvent) {
 		return
 	}
 
-	h.producer.Produce(context.Background(), &kgo.Record{Value: data, Key: []byte(ev.Namespace + "/" + ev.Pod)}, func(_ *kgo.Record, err error) {
+	h.producer.TryProduce(context.Background(), &kgo.Record{Value: data, Key: []byte(ev.Namespace + "/" + ev.Pod)}, func(_ *kgo.Record, err error) {
 		if err != nil {
 			dropped := h.cntDropped.Add(1)
 			if shouldLogKafkaProduceError() {

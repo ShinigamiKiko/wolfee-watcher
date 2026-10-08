@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -99,6 +100,47 @@ func TestArgsFingerprint_StableAcrossMapOrder(t *testing.T) {
 	}
 	if argsFingerprint(nil) != 0 {
 		t.Fatal("empty args must fingerprint to 0")
+	}
+}
+
+func TestKafkaDeliveryTimeout_OutlastsBrokerFailover(t *testing.T) {
+	t.Setenv("HUB_KAFKA_DELIVERY_TIMEOUT_SEC", "")
+	if got := kafkaDeliveryTimeout(); got < time.Minute {
+		t.Fatalf("default delivery timeout %s drops records during a broker restart", got)
+	}
+	t.Setenv("HUB_KAFKA_DELIVERY_TIMEOUT_SEC", "30")
+	if got := kafkaDeliveryTimeout(); got != 30*time.Second {
+		t.Fatalf("delivery timeout from env = %s, want 30s", got)
+	}
+}
+
+func TestBroadcast_FullProducerBufferDropsWithoutBlocking(t *testing.T) {
+	producer, err := newProducer([]string{"127.0.0.1:1"}, "tracee-events", time.Minute, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	h := newTestHub()
+	h.producer = producer
+	h.ctx = context.Background()
+
+	h.Broadcast(&mapper.UIEvent{Pod: "pod-1", Syscall: "execve", Execpath: "/bin/a"})
+	done := make(chan struct{})
+	go func() {
+		h.Broadcast(&mapper.UIEvent{Pod: "pod-1", Syscall: "execve", Execpath: "/bin/b"})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Broadcast blocked on a full producer buffer")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for h.cntDropped.Load() != 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := h.cntDropped.Load(); got != 1 {
+		t.Fatalf("cntDropped = %d, want 1: the buffered record waits for Kafka, the overflow is counted", got)
 	}
 }
 

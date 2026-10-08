@@ -333,18 +333,18 @@ ui:
 
 kafka:
   enabled: true
-  replicaCount: 2
+  replicaCount: 3
   heapOpts: "-Xmx512m -Xms512m"
 
-  brokers: "kafka-0.kafka-headless.wolfee-watcher.svc.cluster.local:9092,kafka-1.kafka-headless.wolfee-watcher.svc.cluster.local:9092"
+  brokers: "kafka-0.kafka-headless.wolfee-watcher.svc.cluster.local:9092,kafka-1.kafka-headless.wolfee-watcher.svc.cluster.local:9092,kafka-2.kafka-headless.wolfee-watcher.svc.cluster.local:9092"
 
   topic: "tracee-events"
 
   partitions: 12
 
-  replicationFactor: 2
+  replicationFactor: 3
 
-  minIsr: 1
+  minIsr: 2
 
   retentionHours: 24
 

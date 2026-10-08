@@ -24,6 +24,9 @@ const (
 	defaultMaxDrops        = int32(256)
 	pgOpTimeout            = 3 * time.Second
 	defaultHistoryBackfill = 5_000
+
+	defaultKafkaDeliveryTimeout = 2 * time.Minute
+	defaultKafkaMaxBuffered     = 20_000
 )
 
 var alwaysPass = map[string]bool{
@@ -170,6 +173,21 @@ func (h *Hub) Close(timeout time.Duration) {
 	}
 }
 
+func kafkaDeliveryTimeout() time.Duration {
+	return time.Duration(envInt("HUB_KAFKA_DELIVERY_TIMEOUT_SEC", int(defaultKafkaDeliveryTimeout.Seconds()))) * time.Second
+}
+
+func newProducer(brokers []string, topic string, deliveryTimeout time.Duration, maxBuffered int) (*kgo.Client, error) {
+	return kgo.NewClient(
+		kgo.SeedBrokers(brokers...),
+		kgo.DefaultProduceTopic(topic),
+		kgo.ProducerBatchMaxBytes(1_000_000),
+		kgo.RecordDeliveryTimeout(deliveryTimeout),
+		kgo.MaxBufferedRecords(maxBuffered),
+		kgo.RequiredAcks(kgo.AllISRAcks()),
+	)
+}
+
 func New(ctx context.Context, brokers []string, topic string, pgDSN string) *Hub {
 	if ctx == nil {
 		ctx = context.Background()
@@ -195,13 +213,9 @@ func New(ctx context.Context, brokers []string, topic string, pgDSN string) *Hub
 		"max_entries", h.dedupMaxEntries,
 		"exempt_syscalls", len(neverDedup))
 
-	producer, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		kgo.DefaultProduceTopic(topic),
-		kgo.ProducerBatchMaxBytes(1_000_000),
-		kgo.RecordDeliveryTimeout(5*time.Second),
-		kgo.RequiredAcks(kgo.AllISRAcks()),
-	)
+	deliveryTimeout := kafkaDeliveryTimeout()
+	maxBuffered := envInt("HUB_KAFKA_MAX_BUFFERED_RECORDS", defaultKafkaMaxBuffered)
+	producer, err := newProducer(brokers, topic, deliveryTimeout, maxBuffered)
 	if err != nil {
 		log.Fatalf("[hub] kafka producer init: %v", err)
 	}
@@ -210,7 +224,9 @@ func New(ctx context.Context, brokers []string, topic string, pgDSN string) *Hub
 		"component", "tracee-bridge/hub",
 		"brokers", brokers,
 		"topic", topic,
-		"required_acks", "all_isr")
+		"required_acks", "all_isr",
+		"delivery_timeout", deliveryTimeout.String(),
+		"max_buffered_records", maxBuffered)
 
 	go func() {
 		ctxC, cancel := context.WithTimeout(ctx, 10*time.Second)
