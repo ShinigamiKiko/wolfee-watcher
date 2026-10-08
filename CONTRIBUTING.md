@@ -18,7 +18,7 @@ Thanks for taking the time. This is a Go + React monorepo deployed via Helm.
 cd <service> && go build ./... && go test ./...
 
 # images (single-node dev import into containerd)
-./1.sh
+deploy/build-images.sh
 ```
 
 If you add or move a shared package, update each consumer's `go.mod`

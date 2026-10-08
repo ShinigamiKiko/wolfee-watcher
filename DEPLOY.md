@@ -3,7 +3,7 @@
 This guide describes how to stand up the full platform on a fresh cluster.
 
 The deployment is built for a **single-node cluster running containerd**: the
-`1.sh` script builds every image with `podman` and imports it straight into
+`deploy/build-images.sh` script builds every image with `podman` or `docker` and imports it straight into
 containerd (`ctr -n k8s.io images import`), and the Helm chart references those
 images as `localhost/wolfee-watcher/*:latest` with `pullPolicy: Never`.
 
@@ -20,7 +20,7 @@ images as `localhost/wolfee-watcher/*:latest` with `pullPolicy: Never`.
 
 ```bash
 cd /path/to/evil-watcher
-./1.sh        # builds 12 localhost/wolfee-watcher/*:latest images and imports them into containerd
+deploy/build-images.sh   # builds 12 localhost/wolfee-watcher/*:latest images and imports them into containerd
 ```
 
 > Multi-node note: `pullPolicy: Never` means the images must exist on every node.
@@ -37,7 +37,7 @@ depends on it through `require … pkg/mtls` + `replace => ../pkg/mtls`, mirrori
 
 Because the binaries import `../pkg/mtls`, their **Docker build context is the
 repo root** (not the service directory): each `Dockerfile` copies `<svc>/` plus
-`pkg/` and a `go.work.docker` workspace file. `1.sh` already passes the repo
+`pkg/` and a `go.work.docker` workspace file. `deploy/build-images.sh` already passes the repo
 root as the context — keep that if you add or re-wire a service.
 
 ## 2. mTLS / CA
@@ -195,7 +195,7 @@ Full description in [`docs/multicluster.md`](docs/multicluster.md).
 ## Minimal happy-path (k3s, own CA)
 
 ```bash
-./1.sh
+deploy/build-images.sh
 cd pkg/certgen && go run . -out ../../deploy/certs -namespace wolfee-watcher && cd ../..
 kubectl create ns wolfee-watcher
 kubectl apply -f deploy/certs/00-ca-key-secret.yaml -n wolfee-watcher
