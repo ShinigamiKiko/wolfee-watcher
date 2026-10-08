@@ -1,11 +1,6 @@
 import { useBridge } from '../../context/BridgeContext';
 import { Sparkline } from '../../components/Sparkline';
-
-const GREEN  = 'var(--accent-3,#3ecf8e)';
-const ORANGE = 'var(--warn,#f5a623)';
-const RED    = 'var(--danger,#e25c5c)';
-const BLUE   = '#5b8dee';
-const MUTED  = 'var(--text-muted)';
+import { Stat, Metrics, Notice, cx } from '../../components/kit';
 
 function fmtBytes(n) {
   if (!n) return '0 B';
@@ -15,183 +10,116 @@ function fmtBytes(n) {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function StatCell({ label, value, color, sub }) {
-  return (
-    <div style={{ padding: '14px 20px', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }}>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.07em', color: MUTED, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 300, fontFamily: 'JetBrains Mono,monospace', color: color || 'var(--accent)' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{sub}</div>}
-    </div>
-  );
-}
+const toPoints = list => (list || []).map((p, i) => ({ ts: i, value: p.y }));
+const lastY = list => (list || []).length ? (list[list.length - 1]?.y ?? 0) : 0;
+const num = v => (v ?? 0).toLocaleString();
+const ts = v => (v ? v.slice(0, 19).replace('T', ' ') : '—');
 
 function NoData({ msg }) {
-  return (
-    <div style={{ padding: 24, color: MUTED, fontSize: 13, textAlign: 'center' }}>
-      {msg || 'No data — Kafka admin API unavailable or still loading.'}
-    </div>
-  );
+  return <div className="empty-state empty-state--compact">{msg}</div>;
 }
 
 export function EvilKafka() {
   const { stats, kafkaStats, kafkaSeries } = useBridge();
 
-  const k          = kafkaStats?.kafka     || {};
-  const pg         = kafkaStats?.postgres  || { enabled: false };
-  const partitions = k.partitions          || [];
+  const k          = kafkaStats?.kafka    || {};
+  const pg         = kafkaStats?.postgres || { enabled: false };
+  const partitions = k.partitions         || [];
+  const lag        = k.total_lag || 0;
+  const queuePct   = stats?.ingest_queue_pct || 0;
 
   const lagSeries = kafkaSeries?.totalLag         || [];
   const msgSeries = kafkaSeries?.totalMessages    || [];
   const bufSeries = kafkaSeries?.producerBuffered || [];
+  const missingTopic = k.error && /UNKNOWN_TOPIC_OR_PARTITION/i.test(k.error);
 
   return (
     <>
-      {}
-      <div className="health-grid">
-        <div className="health-widget">
-          <div className="health-label">Brokers</div>
-          <div className="health-value" style={{ color: (k.broker_count || 0) > 0 ? GREEN : RED }}>{k.broker_count ?? '—'}</div>
-          <div className="health-sub">{k.controller_id !== undefined ? `controller: ${k.controller_id}` : 'no metadata'}</div>
-        </div>
-        <div className="health-widget">
-          <div className="health-label">Partitions</div>
-          <div className="health-value" style={{ color: (k.partition_count || 0) > 0 ? GREEN : MUTED }}>{k.partition_count ?? '—'}</div>
-          <div className="health-sub">{k.topic ? `topic: ${k.topic}` : '—'}</div>
-        </div>
-        <div className="health-widget">
-          <div className="health-label">Total Lag</div>
-          <div className="health-value" style={{ color: (k.total_lag || 0) > 100000 ? RED : (k.total_lag || 0) > 1000 ? ORANGE : GREEN }}>
-            {(k.total_lag ?? '—').toLocaleString?.() ?? '—'}
-          </div>
-          <div className="health-sub">{`group: ${k.sink_group || '—'}`}</div>
-        </div>
-        <div className="health-widget">
-          <div className="health-label">Under-Replicated</div>
-          <div className="health-value" style={{ color: (k.under_replicated || 0) === 0 ? GREEN : RED }}>
-            {k.under_replicated ?? '—'}
-          </div>
-          <div className="health-sub">partitions with ISR &lt; replicas</div>
-        </div>
-        <div className="health-widget">
-          <div className="health-label">Consumer Group</div>
-          <div className="health-value" style={{ color: k.sink_group_state === 'Stable' ? GREEN : k.sink_group_state ? ORANGE : RED }}>
-            {k.sink_group_state || '—'}
-          </div>
-          <div className="health-sub">{k.sink_group_members ?? '—'} members · {k.sink_group || '—'}</div>
-        </div>
+      <div className="stats-grid stats-grid--5">
+        <Stat label="Brokers" value={k.broker_count ?? '—'} tone={(k.broker_count || 0) > 0 ? 'ok' : 'danger'}
+          sub={k.controller_id !== undefined ? `controller: ${k.controller_id}` : 'no metadata'} />
+        <Stat label="Partitions" value={k.partition_count ?? '—'} tone={(k.partition_count || 0) > 0 ? 'ok' : undefined}
+          sub={k.topic ? `topic: ${k.topic}` : '—'} />
+        <Stat label="Total Lag" value={k.total_lag != null ? num(k.total_lag) : '—'} tone={lag > 100000 ? 'danger' : lag > 1000 ? 'warning' : 'ok'}
+          sub={`group: ${k.sink_group || '—'}`} />
+        <Stat label="Under-Replicated" value={k.under_replicated ?? '—'} tone={(k.under_replicated || 0) === 0 ? 'ok' : 'danger'}
+          sub="partitions with ISR < replicas" />
+        <Stat label="Consumer Group" value={k.sink_group_state || '—'} tone={k.sink_group_state === 'Stable' ? 'ok' : k.sink_group_state ? 'warning' : 'danger'}
+          sub={`${k.sink_group_members ?? '—'} members · ${k.sink_group || '—'}`} />
       </div>
 
-      {}
-      {(k.total_lag || 0) > 0 && (k.sink_group_members || 0) === 0 && (
-        <div className="card" style={{ marginBottom: 16, borderColor: RED }}>
-          <div style={{ padding: '12px 16px', color: RED, fontSize: 12, fontWeight: 600 }}>
-            Dead consumer group — lag {(k.total_lag || 0).toLocaleString()} and 0 active members. Events are accumulating unprocessed.
-          </div>
-        </div>
+      {lag > 0 && (k.sink_group_members || 0) === 0 && (
+        <Notice tone="danger">
+          <span className="t-strong">Dead consumer group</span> — lag {num(lag)} and 0 active members. Events are accumulating unprocessed.
+        </Notice>
       )}
 
-      {k.error && (() => {
-        const isMissingTopic = /UNKNOWN_TOPIC_OR_PARTITION/i.test(k.error);
-        return (
-          <div className="card" style={{ marginBottom: 16, borderColor: isMissingTopic ? ORANGE : RED }}>
-            <div style={{ padding: '12px 16px', color: isMissingTopic ? ORANGE : RED, fontSize: 12 }}>
-              {isMissingTopic
-                ? `Kafka topic "${k.topic || 'tracee-events'}" not yet created — waiting for the bridge to ensure it (auto-creates on first produce). Stats will populate once the topic exists.`
-                : `Kafka admin error: ${k.error}`}
-            </div>
-          </div>
-        );
-      })()}
+      {k.error && (
+        <Notice tone={missingTopic ? 'warning' : 'danger'}>
+          {missingTopic
+            ? `Kafka topic "${k.topic || 'tracee-events'}" not yet created — waiting for the bridge to ensure it (auto-creates on first produce). Stats will populate once the topic exists.`
+            : `Kafka admin error: ${k.error}`}
+        </Notice>
+      )}
 
-      {}
       {stats && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card">
           <div className="card-header">
             <div className="card-title">
-              Kafka Pipeline (Bridge)
-              {stats.kafka_topic && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: MUTED, fontFamily: 'JetBrains Mono,monospace' }}>
-                  topic: {stats.kafka_topic}
-                </span>
-              )}
+              Kafka Pipeline <span className="card-sub">bridge</span>
+              {stats.kafka_topic && <span className="card-sub mono">topic: {stats.kafka_topic}</span>}
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
-            <StatCell label="Ingest Queue"
-              value={`${stats.ingest_queue_len || 0}/${stats.ingest_queue_cap || 0}`}
-              sub={`${(stats.ingest_queue_pct || 0).toFixed(1)}% full`}
-              color={(stats.ingest_queue_pct || 0) > 80 ? RED : (stats.ingest_queue_pct || 0) > 50 ? ORANGE : GREEN} />
-            <StatCell label="Prod. Buffered" value={stats.kafka_buffered_records || 0} sub={fmtBytes(stats.kafka_buffered_bytes || 0)} />
-            <StatCell label="Pushed to Kafka" value={(stats.hub_passed || 0).toLocaleString()} sub="passed filter + dedup" color={GREEN} />
-            <StatCell label="Filter Rejected" value={(stats.hub_dropped || 0).toLocaleString()} sub="empty execpath/cmdline or kafka error" color={(stats.hub_dropped || 0) > 0 ? ORANGE : GREEN} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
-            <StatCell label="Dedup Skipped"   value={(stats.dedup_skipped    || 0).toLocaleString()} />
-            <StatCell label="Queue Dropped"   value={(stats.events_dropped   || 0).toLocaleString()} color={(stats.events_dropped || 0) > 0 ? RED : undefined} />
-            <StatCell label="SSE Clients"     value={stats.clients || 0} />
-            <StatCell label="SSE Drops"       value={stats.sse_drops || 0} color={(stats.sse_drops || 0) > 0 ? RED : undefined} />
-          </div>
+          <Metrics items={[
+            { label: 'Ingest Queue', value: `${stats.ingest_queue_len || 0}/${stats.ingest_queue_cap || 0}`, sub: `${queuePct.toFixed(1)}% full`,
+              tone: queuePct > 80 ? 'danger' : queuePct > 50 ? 'warning' : 'ok' },
+            { label: 'Prod. Buffered', value: stats.kafka_buffered_records || 0, sub: fmtBytes(stats.kafka_buffered_bytes || 0) },
+            { label: 'Pushed to Kafka', value: num(stats.hub_passed), sub: 'passed filter + dedup', tone: 'ok' },
+            { label: 'Filter Rejected', value: num(stats.hub_dropped), sub: 'empty execpath/cmdline or kafka error', tone: (stats.hub_dropped || 0) > 0 ? 'warning' : 'ok' },
+            { label: 'Dedup Skipped', value: num(stats.dedup_skipped) },
+            { label: 'Queue Dropped', value: num(stats.events_dropped), tone: (stats.events_dropped || 0) > 0 ? 'danger' : undefined },
+            { label: 'SSE Clients', value: stats.clients || 0 },
+            { label: 'SSE Drops', value: stats.sse_drops || 0, tone: (stats.sse_drops || 0) > 0 ? 'danger' : undefined },
+          ]} />
         </div>
       )}
 
-      {}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header"><div className="card-title">Kafka Trend (10 min rolling)</div></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 0 }}>
-          {[
-            { label: 'MESSAGES (TOTAL)', points: msgSeries, color: 'var(--accent)', fmt: v => v.toLocaleString() },
-            { label: 'CONSUMER LAG',     points: lagSeries, color: ORANGE,           fmt: v => v.toLocaleString() },
-            { label: 'PRODUCER BUFFERED',points: bufSeries, color: BLUE,             fmt: v => String(v) },
-          ].map(({ label, points, color, fmt }, i) => (
-            <div key={label} style={{ padding: '14px 20px', borderRight: i < 2 ? '1px solid var(--border)' : 'none', borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 10, color: MUTED, marginBottom: 6, letterSpacing: '.06em' }}>{label}</div>
-              <Sparkline
-                points={(points || []).map((p, idx) => ({ ts: idx, value: p.y }))}
-                color={color} height={72} width={300} fill
-                label={fmt((points || []).length ? (points[points.length - 1]?.y ?? 0) : 0)}
-              />
-            </div>
-          ))}
-        </div>
+      <div className="card">
+        <div className="card-header"><div className="card-title">Kafka Trend <span className="card-sub">10 min rolling</span></div></div>
+        <Metrics cols={3} items={[
+          { label: 'Messages (total)', children: <Sparkline fluid points={toPoints(msgSeries)} color="var(--accent)" height={72} width={300} label={num(lastY(msgSeries))} /> },
+          { label: 'Consumer lag', children: <Sparkline fluid points={toPoints(lagSeries)} color="var(--warning)" height={72} width={300} label={num(lastY(lagSeries))} /> },
+          { label: 'Producer buffered', children: <Sparkline fluid points={toPoints(bufSeries)} color="var(--violet-text)" height={72} width={300} label={String(lastY(bufSeries))} /> },
+        ]} />
       </div>
 
-      {}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card">
         <div className="card-header">
           <div className="card-title">Partitions</div>
           {partitions.length > 0 && (
-            <div style={{ fontSize: 11, color: MUTED }}>
-              {partitions.length} partitions · {(k.total_messages || 0).toLocaleString()} messages · lag {k.total_lag || 0}
-            </div>
+            <span className="card-sub">{partitions.length} partitions · {num(k.total_messages)} messages · lag {lag}</span>
           )}
         </div>
         {partitions.length === 0 ? (
           <NoData msg="No partition metadata — Kafka not reachable or topic not found." />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', color: MUTED, fontSize: 11, textAlign: 'right' }}>
-                  {['#', 'Leader', 'ISR/Rep', 'Log Start', 'Log End', 'Messages', 'Group Offset', 'Lag'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: h === '#' || h === 'Leader' ? 'center' : 'right' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
+          <div className="table-wrap">
+            <table className="data-table data-table--static mono">
+              <thead><tr>
+                <th className="t-center">#</th><th className="t-center">Leader</th><th className="num">ISR/Rep</th><th className="num">Log Start</th>
+                <th className="num">Log End</th><th className="num">Messages</th><th className="num">Group Offset</th><th className="num">Lag</th>
+              </tr></thead>
               <tbody>
                 {[...partitions].sort((a, b) => a.partition - b.partition).map(p => (
-                  <tr key={p.partition} style={{ borderBottom: '1px solid var(--border)', fontFamily: 'JetBrains Mono,monospace' }}>
-                    <td style={{ padding: '8px 14px', textAlign: 'center' }}>{p.partition}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'center' }}>{p.leader}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right', color: p.isr < p.replicas ? RED : 'var(--text-primary)' }}>
-                      {p.isr} / {p.replicas}
-                    </td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right', color: MUTED }}>{p.log_start}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right' }}>{p.log_end}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right' }}>{p.messages}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right', color: MUTED }}>{p.group_offset}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right', color: p.lag > 1000 ? ORANGE : 'var(--text-secondary)' }}>
-                      {p.lag}
-                    </td>
+                  <tr key={p.partition}>
+                    <td className="t-center">{p.partition}</td>
+                    <td className="t-center">{p.leader}</td>
+                    <td className={cx('num', p.isr < p.replicas ? 't-danger' : 't-primary')}>{p.isr} / {p.replicas}</td>
+                    <td className="num t-muted">{p.log_start}</td>
+                    <td className="num">{p.log_end}</td>
+                    <td className="num">{p.messages}</td>
+                    <td className="num t-muted">{p.group_offset}</td>
+                    <td className={cx('num', p.lag > 1000 && 't-warning')}>{p.lag}</td>
                   </tr>
                 ))}
               </tbody>
@@ -200,31 +128,26 @@ export function EvilKafka() {
         )}
       </div>
 
-      {}
       <div className="card">
         <div className="card-header">
           <div className="card-title">PostgreSQL — Event Store</div>
-          {!pg.enabled && <span style={{ fontSize: 11, color: MUTED }}>PG disabled · in-memory mode</span>}
+          {!pg.enabled && <span className="card-sub">PG disabled · in-memory mode</span>}
         </div>
         {!pg.enabled ? (
           <NoData msg="PostgreSQL not connected — running in-memory mode." />
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
-              <StatCell label="Ping"        value={`${(pg.ping_ms || 0).toFixed(2)} ms`}  color={GREEN} />
-              <StatCell label="Connections" value={`${pg.active_conns || 0} / ${pg.total_conns || 0} / ${pg.max_conns || 0}`} sub="active / total / max" />
-              <StatCell label="Events (24h)" value={(pg.events_last_24h  || 0).toLocaleString()} color={GREEN} />
-              <StatCell label="Events (1h)"  value={(pg.events_last_hour || 0).toLocaleString()} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
-              <StatCell label="Table Size"  value={fmtBytes(pg.table_size_bytes || 0)} />
-              <StatCell label="Idle Conns"  value={pg.idle_conns || 0} />
-              <StatCell label="Oldest Event" value={pg.oldest_event_ts ? pg.oldest_event_ts.slice(0, 19).replace('T', ' ') : '—'} />
-              <StatCell label="Newest Event" value={pg.newest_event_ts ? pg.newest_event_ts.slice(0, 19).replace('T', ' ') : '—'} />
-            </div>
-            {pg.error && (
-              <div style={{ padding: '10px 16px', color: RED, fontSize: 12 }}>PG error: {pg.error}</div>
-            )}
+            <Metrics items={[
+              { label: 'Ping', value: `${(pg.ping_ms || 0).toFixed(2)} ms`, tone: 'ok' },
+              { label: 'Connections', value: `${pg.active_conns || 0} / ${pg.total_conns || 0} / ${pg.max_conns || 0}`, sub: 'active / total / max' },
+              { label: 'Events (24h)', value: num(pg.events_last_24h), tone: 'ok' },
+              { label: 'Events (1h)', value: num(pg.events_last_hour) },
+              { label: 'Table Size', value: fmtBytes(pg.table_size_bytes || 0) },
+              { label: 'Idle Conns', value: pg.idle_conns || 0 },
+              { label: 'Oldest Event', value: ts(pg.oldest_event_ts) },
+              { label: 'Newest Event', value: ts(pg.newest_event_ts) },
+            ]} />
+            {pg.error && <Notice tone="danger" className="mb-0">PG error: {pg.error}</Notice>}
           </>
         )}
       </div>

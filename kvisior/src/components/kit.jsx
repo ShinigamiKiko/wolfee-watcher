@@ -239,3 +239,18 @@ export function Meter({ value, max = 100, color, label, showValue = true }) {
     </div>
   );
 }
+
+export function Metrics({ items, cols, className }) {
+  return (
+    <div className={cx('metrics', cols && cols !== 4 && `metrics--${cols}`, className)}>
+      {items.filter(Boolean).map(it => (
+        <div key={it.label} className="metric">
+          <div className="metric-label">{it.label}</div>
+          {it.value !== undefined && <div className={cx('metric-value', it.tone && `t-${it.tone}`)}>{it.value}</div>}
+          {it.children}
+          {it.sub != null && <div className="metric-sub">{it.sub}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}

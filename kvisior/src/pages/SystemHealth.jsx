@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { Tabs } from '../components/ui';
+import { PageHeader } from '../components/kit';
 import { EvilComponents } from './systemhealth/EvilComponents';
 import { EvilStats }      from './systemhealth/EvilStats';
 import { EvilKafka }      from './systemhealth/EvilKafka';
+import '../styles/systemhealth.scss';
 
 const TABS = [
   { id: 'components', label: 'EvilComponents' },
@@ -9,50 +12,18 @@ const TABS = [
   { id: 'kafka',      label: 'EvilKafka' },
 ];
 
-function TabBar({ active, onChange }) {
-  return (
-    <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
-      {TABS.map(t => (
-        <button
-          key={t.id}
-          onClick={() => onChange(t.id)}
-          style={{
-            background: 'none',
-            border: 'none',
-            borderBottom: active === t.id ? '2px solid var(--accent)' : '2px solid transparent',
-            color: active === t.id ? 'var(--accent)' : 'var(--text-muted)',
-            padding: '8px 18px',
-            fontSize: 13,
-            fontWeight: active === t.id ? 600 : 400,
-            cursor: 'pointer',
-            fontFamily: 'DM Sans, sans-serif',
-            transition: 'color .15s, border-color .15s',
-            marginBottom: -1,
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function SystemHealth() {
   const [tab, setTab] = useState('components');
 
   return (
     <div className="page active" id="page-syshealth">
-      <div className="page-header">
-        <div>
-          <div className="page-title">System Health</div>
-          <div className="page-subtitle">Platform component health, K8s metrics and Kafka internals</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span className="live-dot">Live</span>
-        </div>
-      </div>
+      <PageHeader
+        title="System Health"
+        subtitle="Platform component health, K8s metrics and Kafka internals"
+        actions={<span className="live-dot">Live</span>}
+      />
 
-      <TabBar active={tab} onChange={setTab} />
+      <Tabs tabs={TABS} active={tab} onSwitch={setTab} />
 
       {tab === 'components' && <EvilComponents />}
       {tab === 'stats'      && <EvilStats />}
