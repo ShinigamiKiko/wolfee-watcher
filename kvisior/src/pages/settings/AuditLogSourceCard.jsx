@@ -2,6 +2,7 @@ import { apiFetch } from '../../data/cluster';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePerms, actingHeaders } from '../../context/PermissionsContext';
 import { Field, Switch, SectionLabel, CodeBlock, EmptyRow } from '../../components/kit';
+import { SettingsRow, SettingsActions, SettingsToggle } from './settingsUi';
 
 const REFRESH_MS = 15000;
 const STALE_MS = 30000;
@@ -179,9 +180,10 @@ export function AuditLogSourceCard({ toast }) {
 
   if (!view || !form) {
     return (
-      <div className={`pane empty-state empty-state--compact settings-section ${error ? 't-danger' : ''}`}>
-        {error ? `Failed to load the audit log source: ${error}` : 'Loading the audit log source…'}
-      </div>
+      <SettingsRow icon="nav-auditlogs" title="Audit log reader" desc="Reads the kube-apiserver audit log on every control-plane node."
+        status={error ? 'Unavailable' : 'Loading…'} tone={error ? 'danger' : 'muted'}>
+        <p className={`set-lead ${error ? 't-danger' : ''}`}>{error ? `Failed to load the audit log source: ${error}` : 'Loading the audit log source…'}</p>
+      </SettingsRow>
     );
   }
 
@@ -197,23 +199,24 @@ export function AuditLogSourceCard({ toast }) {
     : applied ? `Applied ${ago(settings.appliedAt)}`
     : 'Applying, takes up to a minute';
   const statusTone = settings.applyError ? 't-danger' : applied ? 't-ok' : 't-muted';
+  const [rowStatus, rowTone] = !managed ? ['Chart values', 'muted']
+    : settings.applyError ? ['Error', 'danger']
+    : !settings.enabled ? ['Off', 'muted']
+    : applied ? ['Reading', 'ok'] : ['Applying', 'muted'];
+  const nodeCount = `${nodes.length} control-plane ${nodes.length === 1 ? 'node' : 'nodes'}`;
+  const proxyList = (view.trustedProxies || '').split(',').map(x => x.trim()).filter(Boolean);
   const proxiesUnchanged = proxies === (view.trustedProxies || '') && !!headersSanitized === !!view.forwardedHeadersSanitized;
 
   return (
-    <section className="pane settings-section">
-      <div className="pane-head">
-        <div className="grow">
-          <div className="pane-title">Kubernetes audit log</div>
-          <div className="pane-sub">
-            Reads the kube-apiserver audit log file on every control-plane node. It adds source IP, client and response code to audit events and makes read actions visible. Each API server writes its own file, so every node is read separately.
-          </div>
-        </div>
-        <span className={`row t-sm ${form.enabled ? 't-ok' : 't-muted'}`}>
+    <>
+    <SettingsRow icon="nav-auditlogs" title="Audit log reader" desc="Reads the kube-apiserver audit log on every control-plane node."
+      summary={nodeCount} status={rowStatus} tone={rowTone}>
+        <p className="set-lead">
+          Adds source IP, client and response code to audit events and makes read actions visible. Each API server writes its own file, so every node is read separately.
+        </p>
+        <SettingsToggle label="Read the audit log" hint={form.enabled === !!settings.enabled ? null : 'Takes effect after Save'}>
           <Switch checked={form.enabled} disabled={!isAdmin} label="Read the audit log" onChange={v => setForm(f => ({ ...f, enabled: v }))} />
-          {form.enabled ? 'Reading enabled' : 'Reading disabled'}
-        </span>
-      </div>
-      <div className="pane-body">
+        </SettingsToggle>
         <Field label="Log file path on the node" htmlFor="audit-log-path" className="measure"
           hint={detected.length
             ? 'Leave empty to use the path found in each API server\'s --audit-log-path flag.'
@@ -222,10 +225,11 @@ export function AuditLogSourceCard({ toast }) {
             placeholder={detected[0] || DEFAULT_PATH} onChange={e => setForm(f => ({ ...f, path: e.target.value }))} />
         </Field>
 
-        <div className="table-wrap mb-12">
+        <SectionLabel>Control-plane nodes</SectionLabel>
+        <div className="table-wrap set-table mb-16">
           <table className="data-table data-table--static">
             <thead>
-              <tr><th>Control-plane node</th><th>API server audit</th><th>Path in use</th><th>Reader</th><th>Last record</th><th>Backlog</th><th>Connection</th></tr>
+              <tr><th>Node</th><th>API server audit</th><th>Path in use</th><th>Reader</th><th>Last record</th><th>Backlog</th><th>Connection</th></tr>
             </thead>
             <tbody>
               {nodes.length === 0 && (
@@ -262,9 +266,9 @@ export function AuditLogSourceCard({ toast }) {
         </div>
 
         {queues.length > 0 && (
-          <div className="mb-12">
+          <div className="mb-16">
             <SectionLabel>Admission delivery queue</SectionLabel>
-            <div className="table-wrap">
+            <div className="table-wrap set-table">
               <table className="data-table data-table--static">
                 <thead><tr><th>sentry-audit pod</th><th>State</th><th>Queue</th><th>Lost since start</th><th>Updated</th></tr></thead>
                 <tbody>
@@ -303,29 +307,34 @@ export function AuditLogSourceCard({ toast }) {
           </details>
         )}
 
-        <div className="row row--loose">
+        <SettingsActions aside={<span className={`set-actions-note ${statusTone}`}>{statusText}</span>}>
           {isAdmin && <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>}
-          <span className={`t-sm ${statusTone}`}>{statusText}</span>
-        </div>
+        </SettingsActions>
+    </SettingsRow>
 
-        <div className="divider" />
+    <SettingsRow icon="globe" title="Trusted proxies" desc="Client address behind a proxy in front of the API server."
+      summary={proxyList.length ? proxyList.join(', ') : 'none'}
+      status={proxyList.length && view.forwardedHeadersSanitized ? 'Forwarded addresses' : 'Connection address'}
+      tone={proxyList.length && view.forwardedHeadersSanitized ? 'ok' : 'muted'}>
         <div className="measure">
-          <Field label="Trusted proxies in front of the API server" htmlFor="audit-trusted-proxies"
+          <Field label="Proxy addresses or networks" htmlFor="audit-trusted-proxies"
             hint="By default, source IP rules use the address of the connection to the API server. To use a client address behind a proxy, list its addresses or networks here, separated by commas. Enable forwarded addresses only after verifying that the proxy removes or overwrites client-supplied X-Real-IP and builds X-Forwarded-For from the actual connection. Adding X-Forwarded-For alone is insufficient.">
             <input id="audit-trusted-proxies" className="input input--block input--mono" value={proxies ?? ''} disabled={!isAdmin}
               placeholder="none: use the address the API server saw" onChange={e => setProxies(e.target.value)} />
           </Field>
-          <label className="check check--top t-sm mb-12">
+          <label className="check check--top t-sm">
             <input type="checkbox" checked={!!headersSanitized} disabled={!isAdmin} onChange={e => setHeadersSanitized(e.target.checked)} />
             Use forwarded client addresses: the proxy sanitizes both X-Forwarded-For and X-Real-IP
           </label>
+        </div>
+        <SettingsActions>
           {isAdmin && (
-            <button type="button" className="btn btn-ghost btn-sm" disabled={savingProxies || proxiesUnchanged} onClick={saveProxies}>
-              {savingProxies ? 'Saving…' : 'Save trusted proxies'}
+            <button type="button" className="btn btn-primary" disabled={savingProxies || proxiesUnchanged} onClick={saveProxies}>
+              {savingProxies ? 'Saving…' : 'Save'}
             </button>
           )}
-        </div>
-      </div>
-    </section>
+        </SettingsActions>
+    </SettingsRow>
+    </>
   );
 }

@@ -100,7 +100,7 @@ body {
   .sidebar .nav-item { justify-content: center; padding: 0; }
   .sb-collapse { display: none; }
   .topbar { padding: 0 16px; }
-  .user-name, .role-pill { display: none; }
+  .user-name, .role-pill, .cluster-picker-label { display: none; }
 }
 
 .live-dot { color:var(--accent-3); font-size:8px; flex-shrink:0; }

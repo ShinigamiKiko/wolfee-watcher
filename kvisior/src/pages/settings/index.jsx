@@ -6,6 +6,7 @@ import { TokensSection } from './TokensSection';
 import { UsersSection } from './UsersSection';
 import { IntegrationsSection } from './IntegrationsSection';
 import { PageHeader } from '../../components/kit';
+import '../../styles/settings.scss';
 
 export function Settings() {
   const { toast } = useApp();
