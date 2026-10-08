@@ -58,6 +58,7 @@ func (s *Store) EnqueueAudit(ctx context.Context, cluster, kind string, records 
 	if !ValidClusterID(cluster) || (kind != "events" && kind != "log") {
 		return fmt.Errorf("invalid audit batch identity")
 	}
+	s = s.forCluster(cluster)
 	payload, err := json.Marshal(records)
 	if err != nil {
 		return err
@@ -126,6 +127,9 @@ func (s *Store) ProcessAuditBatch(ctx context.Context, process func(context.Cont
 		return false, err
 	}
 	for _, cluster := range clusters {
+		if s.Routed(cluster) {
+			continue
+		}
 		worked, err := s.processAuditCluster(ctx, cluster, process)
 		if err != nil || worked {
 			return worked, err

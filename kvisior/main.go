@@ -245,6 +245,7 @@ func main() {
 	if clusterctx.Hub() && st == nil {
 		log.Fatalf("[kvisior] hub mode needs the database: set POSTGRES_DSN and run central-migrate first")
 	}
+	defer startClusterDatabases(ctx, st)()
 
 	auditEng := auditengine.New(st, uiBus)
 	if st != nil {

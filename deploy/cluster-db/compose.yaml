@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: always
+    network_mode: host
+    environment:
+      POSTGRES_DB: wolfee-watcher
+      POSTGRES_USER: wolfee-watcher
+      POSTGRES_PASSWORD: ${PG_OWNER_PASSWORD:?set PG_OWNER_PASSWORD in db.env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command:
+      - postgres
+      - -c
+      - port=${DB_PORT:-5432}
+      - -c
+      - listen_addresses=*
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/wolfee/pg-tls/server.crt
+      - -c
+      - ssl_key_file=/etc/wolfee/pg-tls/server.key
+      - -c
+      - hba_file=/etc/wolfee/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - max_connections=150
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - wal_compression=on
+      - -c
+      - autovacuum_max_workers=4
+      - -c
+      - autovacuum_naptime=15s
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - ${DB_DATA:?set DB_DATA in db.env}/pg:/var/lib/postgresql/data
+      - ./tls:/etc/wolfee/pg-tls:ro
+      - ./pg_hba.conf:/etc/wolfee/pg_hba.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${DB_PORT:-5432} -U wolfee-watcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: ${MIGRATE_IMAGE:-localhost/wolfee-watcher/central-migrate:latest}
+    restart: "no"
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DSN: postgres://wolfee-watcher:${PG_OWNER_PASSWORD}@127.0.0.1:${DB_PORT:-5432}/wolfee-watcher?sslmode=disable
+      SERVICE_DB_PASSWORD_UI: ${PG_UI_PASSWORD:?set PG_UI_PASSWORD in db.env}
+      SERVICE_DB_PASSWORD_TRACEE_BRIDGE: ${PG_TRACEE_BRIDGE_PASSWORD:?set PG_TRACEE_BRIDGE_PASSWORD in db.env}
+      SERVICE_DB_PASSWORD_ANOMALY: ${PG_ANOMALY_PASSWORD:?set PG_ANOMALY_PASSWORD in db.env}

@@ -316,12 +316,19 @@ type AuditPendingKey struct {
 }
 
 func (s *Store) StaleAuditPending(ctx context.Context, cluster string, grace time.Duration, limit int) ([]AuditPendingKey, error) {
+	elsewhere := []string{}
+	if cluster != "" {
+		s = s.forCluster(cluster)
+	} else {
+		elsewhere = append(elsewhere, s.router.Clusters()...)
+	}
 	rows, err := s.pool.Query(ctx,
 		`SELECT cluster_id, event_key FROM audit_ingest_state
 		  WHERE NOT admitted AND pending IS NOT NULL AND jsonb_typeof(pending->'Event') = 'object'
 		    AND created_at < clock_timestamp() - $1::interval AND ($3 = '' OR cluster_id = $3)
+		    AND NOT (cluster_id = ANY($4))
 		  ORDER BY created_at LIMIT $2`,
-		fmt.Sprintf("%d milliseconds", grace.Milliseconds()), limit, cluster)
+		fmt.Sprintf("%d milliseconds", grace.Milliseconds()), limit, cluster, elsewhere)
 	if err != nil {
 		return nil, err
 	}
