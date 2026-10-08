@@ -7,7 +7,7 @@ export function PolViewer({ pol }) {
 
   if (!pol) return (
     <div className="rn-netpol-empty">
-      <div style={{opacity:.3,fontSize:28}}><Icon name="hexagon" /></div>
+      <Icon name="hexagon" size={28} className="t-muted" />
       <span>Select a policy to inspect</span>
     </div>
   );
@@ -31,8 +31,8 @@ export function PolViewer({ pol }) {
       <div className="rn-policy-view-hdr">
         <span className="rn-policy-name">{meta.name}</span>
         {types.map(t=><span key={t} className={`rn-pol-tag rn-pol-tag--${t.toLowerCase()}`}>{t}</span>)}
-        <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:'var(--text-muted)'}}>{meta.namespace}</span>
+        <span className="grow" />
+        <span className="t-xs t-muted">{meta.namespace}</span>
       </div>
 
       <div className="rn-policy-body">
@@ -41,7 +41,7 @@ export function PolViewer({ pol }) {
           <div className="rn-kv"><span>Name</span><span>{meta.name}</span></div>
           <div className="rn-kv"><span>Namespace</span><span>{meta.namespace}</span></div>
           <div className="rn-kv"><span>Policy types</span>
-            <span style={{display:'flex',gap:4}}>
+            <span className="row row--tight">
               {types.map(t=><span key={t} className={`rn-pol-tag rn-pol-tag--${t.toLowerCase()}`}>{t}</span>)}
             </span>
           </div>
@@ -51,13 +51,13 @@ export function PolViewer({ pol }) {
           <div className="rn-pol-section-title">Pod Selector</div>
           <div className="rn-ep-card">
             <div className="rn-ep-icon rn-ep-icon--src"><Icon name="hexagon" /></div>
-            <div style={{flex:1,minWidth:0}}>
+            <div className="grow">
               <div className="rn-kv"><span>Namespace</span><span>{meta.namespace}</span></div>
               {Object.entries(sel).length>0
                 ? Object.entries(sel).map(([k,v])=>(
-                    <div key={k} className="rn-kv"><span>Label</span><span style={{color:'var(--accent)'}}>{k}={v}</span></div>
+                    <div key={k} className="rn-kv"><span>Label</span><span className="t-accent">{k}={v}</span></div>
                   ))
-                : <div className="rn-kv"><span>Selector</span><span style={{color:'var(--text-muted)'}}>{'{}'} (all pods)</span></div>
+                : <div className="rn-kv"><span>Selector</span><span className="t-muted">{'{}'} (all pods)</span></div>
               }
             </div>
           </div>
@@ -85,26 +85,18 @@ export function PolViewer({ pol }) {
 
         <div className="rn-pol-section">
           <button className={`rn-yaml-toggle${yamlOpen?' open':''}`} onClick={()=>setYamlOpen(o=>!o)}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-            </svg>
+            <Icon name="code" />
             {yamlOpen?'Hide YAML':'Show YAML'}
-            <span style={{marginLeft:'auto',fontSize:10,color:'var(--text-muted)'}}>networking.k8s.io/v1</span>
+            <span className="grow" />
+            <span className="t-2xs t-muted">networking.k8s.io/v1</span>
           </button>
           {yamlOpen&&<pre className="rn-yaml-box">{yaml}</pre>}
         </div>
       </div>
 
       <div className="rn-policy-actions">
-        <button className="rn-btn"
-          onClick={()=>alert(`kubectl apply --dry-run=server\n\nnetworkpolicy.networking.k8s.io "${meta.name}" configured (dry run)`)}>
-          Dry run
-        </button>
-        <button className="rn-btn rn-btn--copy" onClick={()=>navigator.clipboard?.writeText(yaml)}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-          </svg>
-          Copy YAML
+        <button type="button" className="btn btn-outline btn-sm" onClick={()=>navigator.clipboard?.writeText(yaml)}>
+          <Icon name="copy" /> Copy YAML
         </button>
       </div>
     </div>

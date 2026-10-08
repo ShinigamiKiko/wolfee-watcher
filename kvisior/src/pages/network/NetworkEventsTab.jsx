@@ -28,7 +28,7 @@ export function NetworkEventsTab({ anomalies }) {
         <div className="rn-ev-hdr">
           <span>Time</span><span>Source</span><span>Destination</span><span>Port</span><span>Type</span><span>Action</span>
         </div>
-        {filtered.length===0&&<div style={{padding:40,textAlign:'center',color:'var(--text-muted)',fontSize:12}}>No events</div>}
+        {filtered.length===0&&<div className="empty-state empty-state--compact">No events</div>}
         {pageEvents.map((ev,i)=>{
           const isBlocked = ev.kind==='blocked'||ev.kind==='policy_blocked'||ev.action==='deny';
           return (

@@ -52,7 +52,7 @@ export function PolPicker({ ev, anchor, onClose }) {
   if (addIngress) yaml+=`\n  ingress:\n    - from:\n        - podSelector:\n            matchLabels:\n              app: ${pod}\n      ports:\n        - protocol: TCP\n          port: ${port}`;
 
   return (
-    <div ref={ref} className="rn-picker" style={{left:pos.x,top:pos.y,display:'flex',flexDirection:'column'}}>
+    <div ref={ref} className="rn-picker" style={{left:pos.x,top:pos.y}}>
       <div className="rn-picker-title" onMouseDown={onDragStart}>
         <span>Create NetworkPolicy</span>
         <span className="rn-picker-hint">drag · corner to resize</span>
@@ -72,8 +72,8 @@ export function PolPicker({ ev, anchor, onClose }) {
       </label>
       <div className="rn-picker-sep"/>
       <button className="rn-yaml-toggle-sm" onClick={()=>setYamlOpen(o=>!o)}><Icon name={yamlOpen ? 'chevron-down' : 'chevron-right'} /> YAML Preview</button>
-      {yamlOpen&&<pre className="rn-picker-yaml" style={{flex:1,maxHeight:'none',minHeight:80,overflow:'auto'}}>{yaml}</pre>}
-      <div className="rn-picker-actions" style={{flexShrink:0}}>
+      {yamlOpen&&<pre className="rn-picker-yaml rn-picker-yaml--fill">{yaml}</pre>}
+      <div className="rn-picker-actions">
         <button className="rn-btn rn-btn--copy" onClick={()=>navigator.clipboard?.writeText(yaml)}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>

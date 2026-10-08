@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 
 export const cx = (...parts) => parts.filter(Boolean).join(' ');
@@ -305,4 +306,39 @@ export function SubTabs({ tabs, active, onChange }) {
       </button>
     );
   });
+}
+
+export function SelectMenu({ value, options, onChange, label, placeholder, size }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const opts = options.map(o => (typeof o === 'object' ? o : { value: o, label: o }));
+  const current = opts.find(o => o.value === value);
+  return (
+    <div ref={ref} className="menu-select">
+      <button type="button" className={cx('btn btn-outline', size === 'sm' && 'btn-sm', current && current.value !== opts[0]?.value && 'is-set')}
+        aria-haspopup="listbox" aria-expanded={open} aria-label={label} onClick={() => setOpen(o => !o)}>
+        <span className="clip">{current ? current.label : placeholder}</span>
+        <Icon name="chevron-down" className={open ? 'rot-180' : undefined} />
+      </button>
+      {open && (
+        <div className="menu" role="listbox" aria-label={label}>
+          {opts.map(o => (
+            <button key={o.value} type="button" role="option" aria-selected={o.value === value} className="menu-item"
+              onClick={() => { onChange(o.value); setOpen(false); }}>
+              <span className="clip">{o.label}</span>
+              {o.value === value && <Icon name="check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
