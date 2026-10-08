@@ -158,7 +158,9 @@ kubectl logs -n wolfee-watcher deploy/kvisior-ui      # mTLS enabled, push endpo
 
 ## 5. Access the UI
 
-Via the Ingress (`kvisior8.<...>.nip.io` — edit the host in the chart) or directly:
+On a standalone cluster, via the Ingress (`--set ui.ingress.enabled=true` and
+`ui.ingress.host`) or directly. A cluster connected to a hub has no UI of its
+own: open the hub instead.
 
 ```bash
 kubectl port-forward -n wolfee-watcher svc/kvisior-ui 8080:80

@@ -57,7 +57,7 @@ func (s *Store) Cluster(id string) *Scoped {
 	if id == "" {
 		id = DefaultCluster
 	}
-	return &Scoped{s: s, id: id}
+	return &Scoped{s: s.forCluster(id), id: id}
 }
 
 func (c *Scoped) ID() string { return c.id }

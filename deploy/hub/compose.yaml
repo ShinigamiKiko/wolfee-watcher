@@ -78,6 +78,8 @@ services:
       KVISIOR_FEDERATION_CA_FILE: /etc/wolfee/ca.crt
       KVISIOR_AUDIT_RETENTION_HOURS: ${AUDIT_RETENTION_HOURS:-336}
       POSTGRES_DSN: postgres://ww_ui:${PG_UI_PASSWORD}@127.0.0.1:5432/wolfee-watcher?sslmode=disable
+      KVISIOR_CLUSTER_DATABASES: /etc/wolfee/clusters/databases.conf
     volumes:
       - ${WOLFEE_DATA:-/srv/wolfee}/pki/hub:/etc/wolfee/hub-tls:ro
       - ${WOLFEE_DATA:-/srv/wolfee}/pki/ca.crt:/etc/wolfee/ca.crt:ro
+      - ./clusters:/etc/wolfee/clusters:ro

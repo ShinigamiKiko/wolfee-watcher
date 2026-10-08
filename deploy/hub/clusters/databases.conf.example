@@ -1,0 +1,1 @@
+k8s-prod postgres://ww_ui:PG_UI_PASSWORD@10.20.0.5:5432/wolfee-watcher?sslmode=verify-ca&sslrootcert=/etc/wolfee/ca.crt

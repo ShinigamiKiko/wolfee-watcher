@@ -104,3 +104,81 @@ single node `kafka.replicaCount: 1`, `kafka.replicationFactor: 1` with
 
 The edge writes its address into the hub's `clusters` table on start; it shows
 up in the UI switcher without any registration step.
+
+## A dedicated database per cluster
+
+By default every edge writes into the hub's database. A cluster can instead
+keep its data in a PostgreSQL of its own, on any host, while users still work
+in the one hub UI:
+
+```
+hub host                                   db host (per cluster)
+  kvisior hub ── accounts, cluster list,     postgres :<port>
+  │              policies, audit rules         ▲ all data of cluster A
+  │              ─────────────────────────────►│ (alerts, audit, forensics, …)
+  └ hub postgres                              │
+                                       cluster A: agents + kvisior edge
+```
+
+- The hub opens one connection pool per routed cluster and serves that
+  cluster's pages from its database. Clusters that are not routed stay in the
+  hub database, so clusters can be moved one at a time.
+- Policies, audit rules and platform settings (audit retention) are edited on
+  the hub and copied into every cluster database within 15 s. Integrations
+  (Discord, Mattermost, Jira, Harbor) live in each cluster's database and are
+  configured per cluster.
+- The edge needs no new settings: its services simply point at the cluster
+  database instead of the hub's. The hub learns the edge's federation endpoint
+  from that database.
+- Routes are read from `clusters/databases.conf` (`<cluster-id> <dsn>` per
+  line) and reloaded every 15 s; no restart is needed to add or move a cluster.
+
+On the hub host:
+
+```bash
+./add-cluster-db.sh <cluster-id> <db-ip> <db-port> <hub-ip> <edge-ip> <pod-cidr> > /root/<cluster-id>.db.creds
+```
+
+It issues the database's TLS certificate from the hub CA, generates the
+database passwords (reused on later runs; `ROTATE=1` issues new ones), writes
+a bundle to `$WOLFEE_DATA/dbs/<cluster-id>` (`db.env`, `tls/`, `pg_hba.conf`),
+adds the route to `clusters/databases.conf` and prints the edge credentials as
+`WW_*` lines.
+
+On the database host, with `deploy/cluster-db/compose.yaml` and the bundle in a
+directory named `wolfee-db-<cluster-id>` (the compose project takes its name):
+
+```bash
+podman-compose --env-file db.env up -d postgres
+podman-compose --env-file db.env run --rm migrate
+PG_PORT=<db-port> ./pg-firewall.sh <hub-ip> <edge-ip> <pod-cidr>
+```
+
+On the edge, point the chart at that database and its passwords, and keep
+accounts, sessions and API tokens in the hub database so that one login works
+on the hub and on the edge's own UI:
+
+```yaml
+postgres:
+  external:
+    host: <db-ip>
+    port: <db-port>
+  serviceCredentials:
+    ui: { user: ww_ui, password: <WW_PG_UI_PASSWORD> }
+    traceeBridge: { user: ww_tracee_bridge, password: <WW_PG_TRACEE_BRIDGE_PASSWORD> }
+    anomaly: { user: ww_anomaly, password: <WW_PG_ANOMALY_PASSWORD> }
+ui:
+  controlPlaneDSN: <WW_PG_CONTROL_DSN>
+```
+
+The edge's kvisior then also needs to reach the hub database: run
+`add-edge.sh --db <cluster-id> <edge-ip>` for it as well. Without
+`controlPlaneDSN` the edge UI uses the accounts of the cluster database, whose
+admin gets a one-time random password printed once by its first migration.
+
+`ROTATE=1 ./add-cluster-db.sh …` issues new service passwords. Copy the new
+`db.env` to the database host and run the migrate service there to apply them,
+then update the edge values; the hub picks up its new route within 15 s.
+
+Data already written into the hub database for that cluster stays there and
+is no longer shown; delete it or keep it as an archive.

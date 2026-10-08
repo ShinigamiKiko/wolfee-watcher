@@ -36,6 +36,7 @@ const (
 
 type Store struct {
 	pool      *pgxpool.Pool
+	router    *Router
 	tables    sync.Map
 	userCache sync.Map
 }
