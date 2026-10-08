@@ -318,7 +318,7 @@ ui:
   servicePort: 80
   secureCookie: "true"
   ingress:
-    enabled: true
+    enabled: false
     className: nginx
     host: kvisior.example.com
     annotations: {}

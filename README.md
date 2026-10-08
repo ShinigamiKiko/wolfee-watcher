@@ -59,7 +59,7 @@ kubectl apply -f deploy/certs/00-ca-key-secret.yaml -n wolfee-watcher
 helm install wolfee-watcher ./helm -n wolfee-watcher \
   --set namespace.create=false \
   --set global.internalPushSecret="$(openssl rand -hex 32)" \
-  --set ui.ingress.host=kvisior8.127.0.0.1.nip.io \
+  --set ui.ingress.enabled=true   --set ui.ingress.host=kvisior8.127.0.0.1.nip.io \
   --set ui.ingress.denyInternalPaths=true \
   --set networkPolicy.nodeCIDRs="{10.0.0.0/8}"
 ```
@@ -70,7 +70,9 @@ The initial admin password is printed once in the migrate Job log:
 kubectl logs -n wolfee-watcher job/central-migrate
 ```
 
-Open the UI at the `ui.ingress.host` you set.
+Open the UI at the `ui.ingress.host` you set. The ingress is off by default:
+a cluster connected to a hub serves no UI of its own and is viewed from the
+hub, so enable it only for a standalone cluster.
 
 ## Production notes
 
