@@ -117,13 +117,13 @@
   padding: 5px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--bg-base);
-  background: var(--accent);
+  color: #fff;
+  background: var(--accent-solid);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   flex-shrink: 0;
   transition: opacity 0.15s, background 0.15s;
-  &:hover { background: #00e0ff; }
+  &:hover { background: var(--accent-solid-hover); }
 }
 

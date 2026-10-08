@@ -425,18 +425,18 @@
   transition: all 0.12s;
 
   .hp-svc-option--selected & {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #000;
+    background: var(--accent-solid);
+    border-color: var(--accent-solid);
+    color: #fff;
   }
 }
 
 .hp-btn-primary {
-  padding: 8px 20px;
-  background: var(--accent);
-  color: #000;
+  padding: 8px 18px;
+  background: var(--accent-solid);
+  color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;

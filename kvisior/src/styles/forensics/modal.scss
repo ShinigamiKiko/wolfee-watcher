@@ -35,7 +35,7 @@
 }
 
 .fns-modal-title {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 700;
 }
@@ -58,8 +58,8 @@
 }
 
 .fns-modal-tab {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
   padding: 10px 16px;
   cursor: pointer;
@@ -84,8 +84,8 @@
 }
 
 .fns-modal-subtab {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   font-weight: 500;
   padding: 4px 10px;
   border-radius: 4px;
@@ -111,7 +111,7 @@
   min-width: 16px;
   height: 14px;
   border-radius: 3px;
-  font-size: 9px;
+  font-size: 11px;
   padding: 0 3px;
   background: var(--bg-card);
   color: var(--text-muted);
@@ -193,8 +193,8 @@
 }
 
 .fns-modal-error {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   color: var(--danger);
   width: 100%;
 }
@@ -232,8 +232,8 @@
 }
 
 .fns-modal-drop-empty {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   padding: 12px;
   color: var(--text-muted);
   text-align: center;
@@ -260,7 +260,7 @@
     &:hover { background: rgba(234,179,8,0.2); }
   }
   .fns-watch-x {
-    font-size: 10px;
+    font-size: 11.5px;
     opacity: 0.7;
     &:hover { opacity: 1; }
   }

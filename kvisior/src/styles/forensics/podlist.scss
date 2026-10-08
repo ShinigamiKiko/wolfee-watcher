@@ -12,14 +12,14 @@
 }
 
 .fns-podlist-title {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 700;
 }
 
 .fns-podlist-count {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   color: var(--text-muted);
 }
 
@@ -27,10 +27,11 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 10px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  height: 34px;
+  padding: 0 12px;
   margin-left: auto;
 
   input {
@@ -38,9 +39,9 @@
     border: none;
     outline: none;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    width: 160px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-md);
+    width: 180px;
 
     &::placeholder { color: var(--text-muted); }
   }
@@ -53,18 +54,18 @@
   border-collapse: collapse;
 
   th {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9px;
-    font-weight: 700;
+    font-family: var(--font-sans);
+    font-size: 11.5px;
+    font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--text-muted);
-    padding: 8px 12px;
+    color: var(--text-secondary);
+    padding: 10px 14px;
     text-align: left;
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    background: var(--bg-base);
+    background: var(--bg-inset);
     z-index: 1;
   }
 }
@@ -101,8 +102,8 @@
 }
 
 .fns-gone-badge {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
+  font-family: var(--font-sans);
+  font-size: 11px;
   padding: 1px 5px;
   border-radius: 3px;
   color: var(--text-muted);
@@ -118,7 +119,7 @@
 
 .fns-pod-ip {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11.5px;
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -127,7 +128,7 @@
 
 .fns-cpill {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
+  font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
   background: var(--bg-card);
@@ -145,8 +146,8 @@
 }
 
 .fns-crit-badge {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   color: var(--danger);
 }
 

@@ -145,6 +145,7 @@ export function Tag({ tone, mono, outline, children, title, className }) {
 }
 
 export function Badge({ tone, children, title }) {
+  if (children == null || children === '') return null;
   return <span className={cx('badge', tone && `badge--${tone}`)} title={title}>{children}</span>;
 }
 

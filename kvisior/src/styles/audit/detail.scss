@@ -145,8 +145,8 @@
   }
   &__run {
     padding: 7px 18px; font-size: 12px; font-weight: 600;
-    background: var(--accent); color: var(--bg-base); border: none; border-radius: 6px; cursor: pointer;
-    &:hover    { opacity: 0.85; }
+    background: var(--accent-solid); color: #fff; border: none; border-radius: var(--radius-md); cursor: pointer;
+    &:hover    { background: var(--accent-solid-hover); }
     &:disabled { opacity: 0.4; cursor: default; }
   }
 }

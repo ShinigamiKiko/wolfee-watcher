@@ -236,9 +236,9 @@
     &:hover { border-color: var(--accent); color: var(--accent); }
   }
   &--primary {
-    background: var(--accent);
-    color: var(--bg-base);
-    &:hover { background: #00e0ff; }
+    background: var(--accent-solid);
+    color: #fff;
+    &:hover { background: var(--accent-solid-hover); }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   }
   &--danger {
