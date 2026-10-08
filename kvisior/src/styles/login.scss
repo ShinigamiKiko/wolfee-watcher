@@ -25,7 +25,7 @@
     radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, .75), transparent),
     radial-gradient(1.2px 1.2px at 26% 68%, rgba(120, 210, 255, .70), transparent),
     radial-gradient(1px 1px at 41% 12%, rgba(255, 255, 255, .55), transparent),
-    radial-gradient(1.6px 1.6px at 58% 78%, rgba(0, 200, 255, .65), transparent),
+    radial-gradient(1.6px 1.6px at 58% 78%, rgba(59, 130, 246, .65), transparent),
     radial-gradient(1px 1px at 67% 34%, rgba(255, 255, 255, .50), transparent),
     radial-gradient(1.3px 1.3px at 82% 58%, rgba(160, 220, 255, .60), transparent),
     radial-gradient(1px 1px at 91% 26%, rgba(255, 255, 255, .45), transparent),
@@ -39,8 +39,8 @@
 
 .login__grid {
   background-image:
-    linear-gradient(rgba(0, 200, 255, .05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 200, 255, .05) 1px, transparent 1px);
+    linear-gradient(rgba(59, 130, 246, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, .05) 1px, transparent 1px);
   background-size: 64px 64px;
   mask-image: radial-gradient(760px 560px at 50% 50%, transparent 38%, #000 88%);
   -webkit-mask-image: radial-gradient(760px 560px at 50% 50%, transparent 38%, #000 88%);
@@ -156,9 +156,9 @@
   &:hover:not(:disabled) { border-color: rgba(120, 180, 240, .28); }
 
   &:focus {
-    border-color: rgba(34, 211, 238, .55);
+    border-color: rgba(59, 130, 246, .7);
     background: rgba(8, 16, 30, .78);
-    box-shadow: 0 0 0 3px rgba(34, 211, 238, .12);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, .25);
   }
 
   &:disabled { opacity: .55; cursor: not-allowed; }
@@ -179,7 +179,7 @@
   cursor: pointer;
   transition: color .16s, background .16s;
 
-  &:hover { color: #22d3ee; background: rgba(34, 211, 238, .08); }
+  &:hover { color: #6aa5fb; background: rgba(59, 130, 246, .1); }
 }
 
 .login__remember {
@@ -206,10 +206,10 @@
   position: relative;
   transition: border-color .16s, background .16s;
 
-  &:hover { border-color: rgba(34, 211, 238, .55); }
+  &:hover { border-color: rgba(59, 130, 246, .7); }
 
   &:checked {
-    background: linear-gradient(135deg, #2563eb, #22d3ee);
+    background: #2563eb;
     border-color: transparent;
 
     &::after {
@@ -238,26 +238,23 @@
 
 .login__btn {
   width: 100%;
-  height: 56px;
+  height: 48px;
   border: 0;
-  border-radius: 12px;
-  background: linear-gradient(100deg, #1d7fe8 0%, #22d3ee 100%);
-  color: #04121f;
-  font-size: 15.5px;
-  font-weight: 700;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
   font-family: inherit;
   letter-spacing: .01em;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(20, 140, 230, .34);
-  transition: transform .16s, box-shadow .16s, filter .16s;
+  box-shadow: 0 10px 30px rgba(37, 99, 235, .28);
+  transition: background-color .16s, box-shadow .16s;
 
   &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    filter: brightness(1.07);
-    box-shadow: 0 14px 38px rgba(20, 140, 230, .46);
+    background: #1d4ed8;
+    box-shadow: 0 12px 34px rgba(37, 99, 235, .36);
   }
-
-  &:active:not(:disabled) { transform: translateY(0); }
 
   &:disabled { opacity: .6; cursor: wait; box-shadow: none; }
 }

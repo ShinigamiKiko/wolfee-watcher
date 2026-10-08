@@ -87,9 +87,9 @@
   font-family: monospace;
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(0,200,255,0.08);
+  background: rgba(59, 130, 246, 0.08);
   color: var(--accent);
-  border: 1px solid rgba(0,200,255,0.15);
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
 .net-yaml {
@@ -116,7 +116,7 @@
   white-space: nowrap;
   flex-shrink: 0;
 
-  &--info    { background: rgba(0,200,255,0.1);  color: var(--accent);   border: 1px solid rgba(0,200,255,0.2); }
+  &--info    { background: rgba(59, 130, 246, 0.1);  color: var(--accent);   border: 1px solid rgba(59, 130, 246, 0.2); }
   &--success { background: rgba(16,185,129,0.1); color: var(--accent-3); border: 1px solid rgba(16,185,129,0.2); }
   &--danger  { background: rgba(239,68,68,0.1);  color: var(--danger);   border: 1px solid rgba(239,68,68,0.2); }
   &--warn    { background: rgba(245,158,11,0.1); color: var(--warning);  border: 1px solid rgba(245,158,11,0.2); }
@@ -191,7 +191,7 @@
 
   .np-node:hover &, .np-node--selected & {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(0,200,255,0.15);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
   }
   .np-node--virtual & { color: var(--text-muted); border-style: dashed; }
 }
@@ -339,7 +339,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   color: var(--accent);
-  background: rgba(0,200,255,0.07);
+  background: rgba(59, 130, 246, 0.07);
   padding: 1px 5px;
   border-radius: 3px;
 }
@@ -489,19 +489,19 @@
   user-select: none;
 
   background: var(--bg-surface);
-  border: 1.5px solid rgba(0, 200, 255, 0.18);
+  border: 1.5px solid rgba(59, 130, 246, 0.18);
   border-radius: 10px;
   cursor: grab;
   transition: border-color 0.15s, box-shadow 0.15s;
 
   &:hover {
-    border-color: rgba(0, 200, 255, 0.45);
-    box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.07);
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.07);
   }
 
   &--selected {
     border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.18) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;
   }
 
   &--clickable:hover {
@@ -548,13 +548,13 @@
   flex-shrink: 0;
 
   &:hover { color: var(--text-primary); border-color: var(--accent); }
-  &.active { color: var(--accent); border-color: var(--accent); background: rgba(0,200,255,0.07); }
+  &.active { color: var(--accent); border-color: var(--accent); background: rgba(59, 130, 246, 0.07); }
 }
 
 .np-all-policies-count {
   font-size: 10px;
   font-weight: 700;
-  background: rgba(0,200,255,0.12);
+  background: rgba(59, 130, 246, 0.12);
   color: var(--accent);
   border-radius: 8px;
   padding: 1px 6px;

@@ -26,8 +26,8 @@
   width: 24px;
   height: 24px;
   border-radius: 5px;
-  background: rgba(0, 200, 255, 0.1);
-  border: 1px solid rgba(0, 200, 255, 0.2);
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   color: var(--accent);
   font-size: 15px;
   cursor: pointer;
@@ -39,7 +39,7 @@
   padding: 0;
 
   &:hover {
-    background: rgba(0, 200, 255, 0.18);
+    background: rgba(59, 130, 246, 0.18);
   }
 }
 
@@ -58,8 +58,8 @@
   }
 
   &--active {
-    border-color: rgba(0, 200, 255, 0.4);
-    background: rgba(0, 200, 255, 0.04);
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.04);
   }
 
   &--alert {

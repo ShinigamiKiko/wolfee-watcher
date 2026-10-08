@@ -24,10 +24,10 @@
 }
 .pb-export-btn {
   margin-left: auto;
-  background: rgba(0,200,255,.1); border: 1px solid rgba(0,200,255,.3);
+  background: rgba(59, 130, 246, .1); border: 1px solid rgba(59, 130, 246, .3);
   color: var(--accent); border-radius: 6px; padding: 5px 12px;
   font-size: 12px; cursor: pointer; white-space: nowrap; transition: all .12s;
-  &:hover { background: rgba(0,200,255,.18); }
+  &:hover { background: rgba(59, 130, 246, .18); }
 }
 .pb-th-chk { width: 36px; }
 .pb-td-chk { width: 36px; text-align: center; input { accent-color: var(--accent); cursor: pointer; } }
@@ -45,7 +45,7 @@
 .pb-arg-add {
   margin-left: auto; background: transparent; border: 1px solid var(--border);
   color: var(--text-muted); border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer;
-  &:hover { border-color: rgba(0,200,255,.4); color: var(--accent); }
+  &:hover { border-color: rgba(59, 130, 246, .4); color: var(--accent); }
 }
 .pb-arg-empty { font-size: 11px; color: var(--text-muted); font-style: italic; padding: 2px 0; }
 
@@ -60,7 +60,7 @@
 .pb-frow-btn {
   background: transparent; border: 1px solid var(--border); border-radius: 5px;
   color: var(--text-muted); padding: 4px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;
-  &:hover { border-color: rgba(0,200,255,.4); color: var(--accent); }
+  &:hover { border-color: rgba(59, 130, 246, .4); color: var(--accent); }
   &.danger:hover { border-color: rgba(239,68,68,.5); color: var(--danger); }
 }
 .pb-preset-wrap { position: relative; }
@@ -80,7 +80,7 @@
   background: transparent; border: none; border-radius: 4px;
   padding: 4px 6px; font-size: 11px; font-family: 'JetBrains Mono', monospace;
   color: var(--text-secondary); cursor: pointer;
-  &:hover { background: rgba(0,200,255,.1); color: var(--accent); }
+  &:hover { background: rgba(59, 130, 246, .1); color: var(--accent); }
 }
 .pb-rule-preview, .pb-yaml-body {
   font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.55;
@@ -91,13 +91,13 @@
 .pb-chip {
   font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1;
   padding: 3px 7px; border-radius: 4px;
-  background: rgba(0,200,255,.07); border: 1px solid rgba(0,200,255,.18); color: var(--accent);
+  background: rgba(59, 130, 246, .07); border: 1px solid rgba(59, 130, 246, .18); color: var(--accent);
   white-space: nowrap;
 }
 .pb-kv { display: flex; align-items: baseline; gap: 10px; padding-top: 6px; }
 .pb-picker { width: 260px; }
 .pb-preset-item.sel {
-  background: rgba(0,200,255,.16); color: var(--accent);
+  background: rgba(59, 130, 246, .16); color: var(--accent);
 }
 .pb-picker-custom {
   width: 100%; box-sizing: border-box; margin: 4px 0 6px;
@@ -109,17 +109,17 @@
 }
 .pb-picker-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 2px; }
 .pb-picker-ok {
-  background: rgba(0,200,255,.12); border: 1px solid rgba(0,200,255,.35);
+  background: rgba(59, 130, 246, .12); border: 1px solid rgba(59, 130, 246, .35);
   color: var(--accent); border-radius: 5px; padding: 4px 14px; font-size: 11px;
   font-weight: 600; cursor: pointer;
-  &:hover:not(:disabled) { background: rgba(0,200,255,.2); }
+  &:hover:not(:disabled) { background: rgba(59, 130, 246, .2); }
   &:disabled { opacity: .4; cursor: default; }
 }
 .pb-path-chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1;
   padding: 3px 5px 3px 7px; border-radius: 4px; white-space: nowrap;
-  background: rgba(0,200,255,.12); border: 1px solid rgba(0,200,255,.35); color: var(--accent);
+  background: rgba(59, 130, 246, .12); border: 1px solid rgba(59, 130, 246, .35); color: var(--accent);
 }
 .pb-chip-x {
   background: transparent; border: none; padding: 0; line-height: 1;
@@ -160,16 +160,16 @@
 }
 .pb-canvas-count {
   font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
-  color: var(--accent); background: rgba(0,200,255,.1); border: 1px solid rgba(0,200,255,.25);
+  color: var(--accent); background: rgba(59, 130, 246, .1); border: 1px solid rgba(59, 130, 246, .25);
   border-radius: 20px; padding: 1px 9px; min-width: 22px; text-align: center;
 }
 .pb-canvas-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .pb-add-wrap { position: relative; }
 .pb-add-btn {
-  background: rgba(0,200,255,.12); border: 1px solid rgba(0,200,255,.35);
+  background: rgba(59, 130, 246, .12); border: 1px solid rgba(59, 130, 246, .35);
   color: var(--accent); border-radius: 7px; padding: 6px 14px;
   font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all .12s;
-  &:hover { background: rgba(0,200,255,.2); }
+  &:hover { background: rgba(59, 130, 246, .2); }
 }
 .pb-add-backdrop { position: fixed; inset: 0; z-index: 40; }
 .pb-add-menu {
@@ -191,7 +191,7 @@
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   background: transparent; border: 1px solid transparent; border-radius: 7px;
   padding: 6px 8px; cursor: pointer; transition: all .1s; color: var(--text-secondary);
-  &:hover:not(:disabled) { background: rgba(0,200,255,.08); border-color: rgba(0,200,255,.25); }
+  &:hover:not(:disabled) { background: rgba(59, 130, 246, .08); border-color: rgba(59, 130, 246, .25); }
   &.added { opacity: .5; cursor: default; }
 }
 .pb-add-name {
@@ -267,13 +267,13 @@
   b { color: var(--text-secondary); }
 }
 .pb-arg-add-path {
-  background: rgba(0,200,255,.12); border-color: rgba(0,200,255,.35);
+  background: rgba(59, 130, 246, .12); border-color: rgba(59, 130, 246, .35);
   color: var(--accent); font-weight: 600;
-  &:hover { background: rgba(0,200,255,.2); border-color: rgba(0,200,255,.5); color: var(--accent); }
+  &:hover { background: rgba(59, 130, 246, .2); border-color: rgba(59, 130, 246, .5); color: var(--accent); }
 }
 .pb-add-path-tag {
   flex-shrink: 0; font-size: 9px; font-family: 'JetBrains Mono', monospace;
   text-transform: uppercase; letter-spacing: .05em; line-height: 1;
   padding: 2px 5px; border-radius: 4px;
-  background: rgba(0,200,255,.08); border: 1px solid rgba(0,200,255,.22); color: var(--accent);
+  background: rgba(59, 130, 246, .08); border: 1px solid rgba(59, 130, 246, .22); color: var(--accent);
 }

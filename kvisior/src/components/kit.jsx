@@ -3,16 +3,19 @@ import { Icon } from './Icon';
 
 export const cx = (...parts) => parts.filter(Boolean).join(' ');
 
-const SEV_TONE = { CRITICAL: 'danger', HIGH: 'warning', MEDIUM: 'info', LOW: 'ok' };
+const SEV_TONE = { CRITICAL: 'danger', HIGH: 'orange', MEDIUM: 'warning', LOW: 'low' };
 
 export const sevTone = sev => SEV_TONE[String(sev || '').toUpperCase()];
 
 const STAT_TONE = { danger: 'danger', warning: 'warn', ok: 'success', accent: 'info' };
 
-export function Stat({ label, value, sub, tone, onClick, active, title }) {
+export function Stat({ label, value, sub, tone, icon, onClick, active, title }) {
   const body = (
     <>
-      <div className="stat-label">{label}</div>
+      <div className="stat-top">
+        <div className="stat-label">{label}</div>
+        {icon && <span className="stat-icon"><Icon name={icon} /></span>}
+      </div>
       <div className={cx('stat-value', STAT_TONE[tone])}>{value}</div>
       {sub != null && <div className="stat-delta">{sub}</div>}
     </>
@@ -66,7 +69,7 @@ export function PageHeader({ title, subtitle, actions, children, className }) {
   return (
     <div className={cx('page-header', className)}>
       <div className="page-heading">
-        <div className="page-title">{title}</div>
+        {title && <h2 className="sr-only">{title}</h2>}
         {subtitle && <div className="page-subtitle">{subtitle}</div>}
       </div>
       {children}
@@ -165,11 +168,12 @@ export function KindBadge({ kind }) {
   return <Badge tone={KIND_TONE[kind] || 'accent'}>{kind}</Badge>;
 }
 
-export function Pane({ title, sub, tools, footer, flush, className, bodyClassName, children }) {
+export function Pane({ title, sub, icon, accent, tools, footer, flush, className, bodyClassName, children }) {
   return (
-    <section className={cx('pane', className)}>
+    <section className={cx('pane', accent && `pane--${accent === true ? 'accent' : accent}`, className)}>
       {(title || tools) && (
         <div className={cx('pane-head', flush && 'pane-head--flush')}>
+          {icon && <span className={cx('pane-icon', accent === 'danger' && 'pane-icon--danger')}><Icon name={icon} /></span>}
           <div className="grow">
             {title && <div className="pane-title">{title}</div>}
             {sub && <div className="pane-sub">{sub}</div>}
@@ -268,22 +272,39 @@ export function Metrics({ items, cols, className }) {
 }
 
 export function SidePanel({ title, meta, onClose, actions, tools, tabs, label, width, fill, children }) {
+  const [wide, setWide] = useState(false);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const esc = e => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (document.querySelector('.modal-backdrop, .fwin')) return;
+      closeRef.current?.();
+    };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, []);
   return (
-    <aside className={cx('detail-panel open', width && `detail-panel--${width}`, fill && 'detail-panel--fill')} aria-label={label || (typeof title === 'string' ? title : undefined)}>
-      <div className="detail-panel-inner">
-        <div className="dp-header">
-          <div className="grow">
-            <div className="dp-title">{title}</div>
-            {meta && <div className="dp-meta">{meta}</div>}
+    <>
+      <div className="detail-backdrop" onClick={onClose} aria-hidden="true" />
+      <aside className={cx('detail-panel open', width && `detail-panel--${width}`, wide && 'detail-panel--expanded', fill && 'detail-panel--fill')}
+        role="dialog" aria-label={label || (typeof title === 'string' ? title : undefined)}>
+        <div className="detail-panel-inner">
+          <div className="dp-header">
+            <div className="grow">
+              <div className="dp-title">{title}</div>
+              {meta && <div className="dp-meta">{meta}</div>}
+            </div>
+            {tools && <div className="row shrink-0">{tools}</div>}
+            <button type="button" className="btn-icon" aria-label={wide ? 'Shrink panel' : 'Expand panel'} aria-pressed={wide} onClick={() => setWide(w => !w)}><Icon name="maximize" /></button>
+            <button type="button" className="btn-icon dp-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
           </div>
-          {tools && <div className="row shrink-0">{tools}</div>}
-          <button type="button" className="dp-close" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
+          {actions && <div className="dp-actions">{actions}</div>}
+          {tabs && <div className="subtabs dp-tabs" role="tablist">{tabs}</div>}
+          {children}
         </div>
-        {actions && <div className="dp-actions">{actions}</div>}
-        {tabs && <div className="subtabs dp-tabs" role="tablist">{tabs}</div>}
-        {children}
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -340,5 +361,37 @@ export function SelectMenu({ value, options, onChange, label, placeholder, size 
         </div>
       )}
     </div>
+  );
+}
+
+const RING_TONE = { ok: 'var(--accent-3)', warning: 'var(--warning)', danger: 'var(--danger)', accent: '#3b82f6' };
+
+export function Ring({ pct, tone = 'accent', size = 58 }) {
+  const r = (size - 10) / 2;
+  const c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(100, pct || 0));
+  return (
+    <div className="ring" style={{ width: size, height: size }} role="img" aria-label={`${v}%`}>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-inset)" strokeWidth="5" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={RING_TONE[tone] || tone} strokeWidth="5"
+          strokeLinecap="round" strokeDasharray={`${(c * v) / 100} ${c}`} />
+      </svg>
+      <span>{v}%</span>
+    </div>
+  );
+}
+
+export function SevBar({ counts }) {
+  const total = counts.reduce((a, [, n]) => a + n, 0);
+  return (
+    <>
+      <div className="sevbar" role="img" aria-label={counts.map(([k, n]) => `${k} ${n}`).join(', ')}>
+        {total > 0 && counts.map(([k, n, color]) => n > 0 && <i key={k} style={{ width: `${(n / total) * 100}%`, background: color }} />)}
+      </div>
+      <div className="legend">
+        {counts.map(([k, n, color]) => <span key={k} style={{ '--c': color }}>{k} {n.toLocaleString()}</span>)}
+      </div>
+    </>
   );
 }

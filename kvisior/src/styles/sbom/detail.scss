@@ -17,7 +17,7 @@
 .dp-close {
   background: none; border: 1px solid var(--border); border-radius: 5px;
   padding: 2px 8px; color: var(--text-muted); cursor: pointer; font-size: 14px; transition: all .12s;
-  &:hover { border-color: rgba(0,200,255,.4); color: var(--text-primary); }
+  &:hover { border-color: rgba(59, 130, 246, .4); color: var(--text-primary); }
 }
 .dp-body    { padding: 14px 16px; flex: 1; overflow-y: auto; }
 .dp-section { margin-bottom: 20px; }

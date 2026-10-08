@@ -98,7 +98,7 @@ export const SEV_ORDER = { critical: 4, high: 3, medium: 2, low: 1, unknown: 0 }
 
 const SEV_COLOR = {
   critical: 'var(--danger)',
-  high:     'var(--warning)',
-  medium:   '#a78bfa',
-  low:      'var(--accent-3)',
+  high:     'var(--orange)',
+  medium:   'var(--warning)',
+  low:      'var(--text-muted)',
 };

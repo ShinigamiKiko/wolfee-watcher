@@ -319,7 +319,6 @@ export function Alerts() {
       {}
       <div className="al-topbar">
         <div className="al-topbar-left">
-          <span className="al-title">Anomaly</span>
           <span className={`al-live-dot al-live-dot--${status}`} />
           <span className="al-live-label">
             {status === 'live'       ? 'Live'

@@ -10,7 +10,7 @@ import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
 
 const SEV_LABEL  = s => s>=8?'CRITICAL':s>=6?'HIGH':s>=4?'MEDIUM':'LOW';
-const RING_COLOR = { danger: 'var(--danger)', warning: 'var(--warning)', info: 'var(--info)', ok: 'var(--ok-text)' };
+const RING_COLOR = { danger: 'var(--danger)', orange: 'var(--orange)', warning: 'var(--warning)', low: 'var(--text-muted)', info: 'var(--info)', ok: 'var(--ok-text)' };
 
 const SYS_NS = new Set(['kube-system','kube-public','kube-node-lease',
   'metallb-system','calico-system','cert-manager','wolfee-watcher']);

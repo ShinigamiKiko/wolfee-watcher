@@ -81,7 +81,7 @@
   background: transparent; color: var(--text-muted);
   cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap;
   &:hover { border-color: rgba(255,255,255,.15); color: var(--text-secondary); }
-  &.on { background: rgba(0,200,255,.1); border-color: rgba(0,200,255,.3); color: var(--accent); }
+  &.on { background: rgba(59, 130, 246, .1); border-color: rgba(59, 130, 246, .3); color: var(--accent); }
 }
 .probes-tbl-wrap {
   flex: 1; overflow-y: auto; min-height: 0;
@@ -107,7 +107,7 @@
     cursor: pointer; transition: background .1s;
     &:last-child td { border-bottom: none; }
     &:hover td { background: rgba(255,255,255,.025); }
-    &.selected td { background: rgba(0,200,255,.06) !important; }
+    &.selected td { background: rgba(59, 130, 246, .06) !important; }
     &.selected td:first-child { border-left: 2px solid var(--accent); }
   }
 }
@@ -136,7 +136,7 @@
 .probes-dp-close {
   background: none; border: 1px solid var(--border); border-radius: 5px;
   padding: 2px 8px; color: var(--text-muted); cursor: pointer; font-size: 14px; transition: all .12s;
-  &:hover { border-color: rgba(0,200,255,.4); color: var(--text-primary); }
+  &:hover { border-color: rgba(59, 130, 246, .4); color: var(--text-primary); }
 }
 .probes-dp-body { padding: 14px 16px; flex: 1; overflow-y: auto; }
 .probes-dp-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 16px; }

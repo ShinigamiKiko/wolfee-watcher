@@ -122,7 +122,7 @@ function AuditInner() {
           {detail ? (
             <button className="au-back-btn" onClick={()=>setDetail(null)}><Icon name="arrow-left" /> Audits</button>
           ) : (
-            <><span className="au-title">Audit</span><span className="au-sep">·</span><span className="au-sub">kube-bench · kube-hunter</span></>
+            <span className="au-sub">kube-bench · kube-hunter</span>
           )}
         </div>
         {!detail && (

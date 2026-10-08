@@ -108,7 +108,7 @@
   &__loc  { font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
   &__remedy {
     font-size: 11px; color: var(--text-secondary);
-    background: rgba(0,200,255,0.04); border-radius: 4px; padding: 6px 8px; line-height: 1.5;
+    background: rgba(59, 130, 246, 0.04); border-radius: 4px; padding: 6px 8px; line-height: 1.5;
     b { color: var(--accent); margin-right: 6px; }
   }
 }
@@ -165,7 +165,7 @@
 
   &__id {
     font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
-    background: rgba(0,200,255,0.08); padding: 1px 6px; border-radius: 3px;
+    background: rgba(59, 130, 246, 0.08); padding: 1px 6px; border-radius: 3px;
   }
 
   &__sev {
@@ -226,7 +226,7 @@
   }
 
   &--hl {
-    background: rgba(0,200,255,0.04); border: 1px solid rgba(0,200,255,0.12);
+    background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.12);
     border-radius: 6px; padding: 10px 12px;
     .au-field__label { color: var(--accent); }
   }

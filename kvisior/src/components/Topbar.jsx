@@ -1,26 +1,16 @@
-import { apiFetch } from '../data/cluster';
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePerms } from '../context/PermissionsContext';
 import { ClusterPicker } from './ClusterPicker';
-import '../assets/logo/logo.scss';
+import { pageTitle } from './Sidebar';
 import { Icon } from './Icon';
 
 export function Topbar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { me, signOut } = usePerms();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [version, setVersion] = useState('');
   const ref = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch('/v1/version', { credentials: 'same-origin' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled && d?.version) setVersion(d.version); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   const handleLogout = async () => {
     setMenuOpen(false);
@@ -30,8 +20,10 @@ export function Topbar() {
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setMenuOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', esc); };
   }, []);
 
   const username = me?.username || 'admin';
@@ -42,34 +34,26 @@ export function Topbar() {
 
   return (
     <header className="topbar">
-      <div className="logo" onClick={() => navigate('/')}>
-        <div className="logo-icon" role="img" aria-label="wolfee-watcher" />
-        <div className="logo-text">wolfee<span>-watcher</span></div>
-        {version && (
-          <span className="logo-version">v{version}</span>
-        )}
-      </div>
-      <div className="topbar-divider" />
-      <ClusterPicker />
+      <h1 className="topbar-title">{pageTitle(location.pathname)}</h1>
       <div className="topbar-right">
+        <ClusterPicker />
         <div className="dropdown-wrap" ref={ref}>
-          <div className="user-btn" onClick={() => setMenuOpen(v => !v)}>
-            <div className="user-avatar">{initials}</div>
-            <span className="user-name">{username}@cluster</span>
+          <button type="button" className="user-btn" onClick={() => setMenuOpen(v => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>
+            <span className="user-avatar">{initials}</span>
+            <span className="user-name">{username}</span>
             <Icon name="chevron-down" className="t-muted" />
-          </div>
-          <div className={`dropdown-menu ${menuOpen ? 'open' : ''}`}>
+          </button>
+          <div className={`dropdown-menu ${menuOpen ? 'open' : ''}`} role="menu">
             <div className="dropdown-user-info">
               <div className="dropdown-name">{fullName}</div>
               <div className="dropdown-email">{email}</div>
-              <div className="dropdown-role">{role === 'admin' ? 'Admin' : 'Read-Only'}{me?.group_name ? ` · ${me.group_name}` : ''}</div>
             </div>
             <div className="dropdown-divider" />
-            <div className="dropdown-item" onClick={() => { navigate('/profile'); setMenuOpen(false); }}><Icon name="user" /> My profile</div>
-            <div className="dropdown-divider" />
-            <div className="dropdown-item t-danger" onClick={handleLogout}><Icon name="escape" /> Log out</div>
+            <button type="button" role="menuitem" className="dropdown-item" onClick={() => { navigate('/profile'); setMenuOpen(false); }}><Icon name="user" /> My profile</button>
+            <button type="button" role="menuitem" className="dropdown-item t-danger" onClick={handleLogout}><Icon name="log-out" /> Sign out</button>
           </div>
         </div>
+        <span className={`role-pill${role === 'admin' ? '' : ' role-pill--ro'}`}>{role === 'admin' ? 'admin' : 'read-only'}{me?.group_name ? ` · ${me.group_name}` : ''}</span>
       </div>
     </header>
   );

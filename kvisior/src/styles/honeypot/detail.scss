@@ -157,8 +157,8 @@
   }
 
   &--selected {
-    border-color: rgba(0, 200, 255, 0.4) !important;
-    background: rgba(0, 200, 255, 0.04) !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+    background: rgba(59, 130, 246, 0.04) !important;
   }
 }
 
@@ -219,7 +219,7 @@
   transition: all 0.12s;
 
   &:hover {
-    border-color: rgba(0, 200, 255, 0.4);
+    border-color: rgba(59, 130, 246, 0.4);
     color: var(--text-primary);
   }
 }
@@ -304,7 +304,7 @@
 
 .hp-modal {
   background: var(--bg-surface);
-  border: 1px solid rgba(0, 200, 255, 0.35);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   border-radius: 12px;
   width: 520px;
   max-height: 90vh;
@@ -333,7 +333,7 @@
   transition: all 0.12s;
 
   &:hover {
-    border-color: rgba(0, 200, 255, 0.4);
+    border-color: rgba(59, 130, 246, 0.4);
     color: var(--text-primary);
   }
 }
@@ -402,7 +402,7 @@
 
   &--selected {
     border-color: var(--accent);
-    background: rgba(0, 200, 255, 0.06);
+    background: rgba(59, 130, 246, 0.06);
   }
 }
 

@@ -137,7 +137,7 @@
   transition: all 0.12s;
 
   &:hover { background: var(--bg-card); color: var(--text-primary); }
-  &--active { color: var(--accent); background: rgba(0, 200, 255, 0.08); }
+  &--active { color: var(--accent); background: rgba(59, 130, 246, 0.08); }
 }
 
 .fns-content {
@@ -271,7 +271,7 @@
   min-height: 2px;
 
   &--quiet { background: var(--bg-card); }
-  &--low   { background: rgba(0, 200, 255, 0.25); }
+  &--low   { background: rgba(59, 130, 246, 0.25); }
   &--med   { background: rgba(245, 158, 11, 0.45); }
   &--high  { background: rgba(245, 158, 11, 0.7); }
   &--spike { background: var(--danger); }
@@ -314,9 +314,9 @@
   &:hover { border-color: rgba(255, 255, 255, 0.12); color: var(--text-primary); }
 
   &--active {
-    border-color: rgba(0, 200, 255, 0.4);
+    border-color: rgba(59, 130, 246, 0.4);
     color: var(--accent);
-    background: rgba(0, 200, 255, 0.07);
+    background: rgba(59, 130, 246, 0.07);
   }
 }
 
@@ -353,10 +353,10 @@
   gap: 6px;
   align-items: center;
 }
-.fns-chip--sev-crit  { border-color: rgba(255, 80, 80, 0.5);  color: #ff5050; background: rgba(255, 80, 80, 0.08); }
-.fns-chip--sev-high  { border-color: rgba(255, 160, 60, 0.5); color: #ffa03c; background: rgba(255, 160, 60, 0.08); }
-.fns-chip--sev-med   { border-color: rgba(250, 200, 50, 0.5); color: #fac832; background: rgba(250, 200, 50, 0.08); }
-.fns-chip--sev-low   { border-color: rgba(80, 200, 120, 0.5); color: #50c878; background: rgba(80, 200, 120, 0.08); }
+.fns-chip--sev-crit  { border-color: color-mix(in srgb, var(--danger-text) 45%, transparent); color: var(--danger-text); background: var(--danger-tint); }
+.fns-chip--sev-high  { border-color: color-mix(in srgb, var(--orange-text) 45%, transparent); color: var(--orange-text); background: var(--orange-tint); }
+.fns-chip--sev-med   { border-color: color-mix(in srgb, var(--warning-text) 45%, transparent); color: var(--warning-text); background: var(--warning-tint); }
+.fns-chip--sev-low   { border-color: var(--border-strong); color: var(--text-secondary); background: var(--hover-tint); }
 .fns-chip--bin       { border-color: rgba(140, 100, 255, 0.5); color: #8c64ff; background: rgba(140, 100, 255, 0.08); font-size: 9px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fns-bin-input-row {
   display: flex;
@@ -373,7 +373,7 @@
   font-size: 11px;
   color: var(--text-primary);
   outline: none;
-  &:focus { border-color: rgba(0, 200, 255, 0.4); }
+  &:focus { border-color: rgba(59, 130, 246, 0.4); }
 }
 
 .fns-btn {
@@ -395,8 +395,8 @@
 
   &--accent {
     color: var(--accent);
-    border-color: rgba(0, 200, 255, 0.3);
-    &:hover { background: rgba(0, 200, 255, 0.08); }
+    border-color: rgba(59, 130, 246, 0.3);
+    &:hover { background: rgba(59, 130, 246, 0.08); }
   }
 }
 
@@ -507,9 +507,9 @@
   font-weight: 500;
   padding: 2px 8px;
   border-radius: 3px;
-  background: rgba(0, 200, 255, 0.08);
+  background: rgba(59, 130, 246, 0.08);
   color: var(--accent);
-  border: 1px solid rgba(0, 200, 255, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
 .fns-bin  { color: var(--accent-3); }
@@ -702,13 +702,13 @@
   &:hover:not(.fns-syscall-chip--disabled) {
     border-color: var(--accent);
     color: var(--accent);
-    background: rgba(0,200,255,.06);
+    background: rgba(59, 130, 246, .06);
   }
 
   &--on {
     border-color: var(--accent);
     color: var(--accent);
-    background: rgba(0,200,255,.12);
+    background: rgba(59, 130, 246, .12);
     font-weight: 600;
   }
 

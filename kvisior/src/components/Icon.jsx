@@ -95,6 +95,8 @@ export const ICONS = {
   ghost:       ['M9 10h.01', 'M15 10h.01', 'M12 2a8 8 0 00-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 00-8-8z'],
   'chevron-down': ['M6 9l6 6 6-6'],
   'chevron-right': ['M9 18l6-6-6-6'],
+  'chevron-left': ['M15 18l-6-6 6-6'],
+  'log-out':   ['M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4', 'M16 17l5-5-5-5', 'M21 12H9'],
   'chevron-up': ['M18 15l-6-6-6 6'],
   'arrow-left': ['M19 12H5', 'M12 19l-7-7 7-7'],
   'arrow-up':  ['M12 19V5', 'M5 12l7-7 7 7'],
