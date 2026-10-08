@@ -47,7 +47,7 @@ export function NetworkEventsTab({ anomalies }) {
             </div>
           );
         })}
-        {filtered.length > 0 && <div className="dw-foot"><Pager {...pager} noun="events" /></div>}
+        {filtered.length > 0 && <div className="dw-foot dw-foot--sticky"><Pager {...pager} noun="events" /></div>}
       </div>
       <EvDetail ev={selectedEv}/>
       {pickerEv&&<PolPicker ev={pickerEv} anchor={pickerAnchor} onClose={()=>{setPickerEv(null);setPickerAnchor(null);}}/>}

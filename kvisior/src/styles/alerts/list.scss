@@ -277,5 +277,6 @@
   &:hover { color: var(--accent); border-color: var(--accent); }
 }
 
-.al-list.dw { margin: 0 16px 16px 24px; padding: 0; align-self: flex-start; }
+.al-stack { flex: 1; min-width: 0; display: flex; flex-direction: column; align-self: flex-start; margin: 0 16px 16px 24px; }
+.al-list.dw { margin: 0; padding: 0; flex: none; }
 .al-list.dw .al-row { padding: 10px 16px; }

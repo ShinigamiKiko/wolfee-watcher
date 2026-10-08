@@ -131,7 +131,7 @@ export function PodList({ ns, pods, eventSummary = [], anomalyEvents = [], activ
           {rows.length === 0 && <tr><td colSpan={5} className="fns-empty">No pods found</td></tr>}
         </tbody>
       </table>
-      {rows.length > 0 && <div className="dw-foot"><Pager {...pager} noun="pods" /></div>}
+      {rows.length > 0 && <div className="dw-foot dw-foot--sticky"><Pager {...pager} noun="pods" /></div>}
     </div>
   );
 }
