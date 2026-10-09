@@ -108,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0020-audit-rollup-marks"
+  schemaVersion: "0021-honeypot-registry"
   adminBootstrapPassword: ""
   resources:
     requests:
@@ -277,6 +277,9 @@ honeyOperator:
   image:
     repository: localhost/wolfee-watcher/honey-operator
     tag: latest
+    pullPolicy: Never
+  decoy:
+    registry: localhost/library
     pullPolicy: Never
   resources:
     requests:

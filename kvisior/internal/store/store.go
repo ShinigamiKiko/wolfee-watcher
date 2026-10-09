@@ -679,9 +679,20 @@ func (c *Scoped) WriteHoneypotEvent(ctx context.Context, ns, honeypot, eventID, 
 
 func (c *Scoped) ListHoneypotEvents(ctx context.Context, ns, honeypot string) ([]json.RawMessage, error) {
 	return c.listJSONBlobs(ctx,
-		`SELECT data FROM honeypot_events
-		  WHERE cluster_id=$1 AND namespace=$2 AND honeypot=$3
-		  ORDER BY ts ASC, created_at ASC`,
+		`SELECT CASE WHEN p.data IS NULL THEN e.data ELSE e.data || jsonb_build_object('client', p.data) END
+		   FROM honeypot_events e
+		   LEFT JOIN LATERAL (
+		        SELECT a.data FROM anomaly_events a
+		         WHERE a.cluster_id = e.cluster_id
+		           AND a.kind = 'honeypot_probe'
+		           AND a.data->>'dst_namespace' = e.namespace
+		           AND a.data->>'honeypot_name' = e.honeypot
+		           AND a.data->>'src_ip' = e.data->>'src_ip'
+		           AND a.ts BETWEEN e.created_at - interval '10 minutes' AND e.created_at + interval '2 minutes'
+		         ORDER BY abs(extract(epoch FROM a.ts - e.created_at))
+		         LIMIT 1) p ON true
+		  WHERE e.cluster_id=$1 AND e.namespace=$2 AND e.honeypot=$3
+		  ORDER BY e.ts ASC, e.created_at ASC`,
 		c.id, ns, honeypot)
 }
 

@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0020-audit-rollup-marks"
+const Version = "0021-honeypot-registry"
 
 var DDL = []string{
 

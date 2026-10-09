@@ -70,6 +70,8 @@ var Grants = map[string][]TableGrant{
 		{"forensic_watches", "SELECT, INSERT, UPDATE, DELETE"},
 		{"honeypot_hidden_events", "SELECT, INSERT, DELETE"},
 		{"honeypot_events", "SELECT, INSERT, DELETE"},
+		{"honeypots", "SELECT, INSERT, UPDATE, DELETE"},
+		{"anomaly_events", "SELECT"},
 		{"container_logs", "SELECT, INSERT, DELETE"},
 
 		{"log_cursors", "SELECT, INSERT, UPDATE, DELETE"},
@@ -88,5 +90,6 @@ var Grants = map[string][]TableGrant{
 		{"network_baselines", "SELECT, INSERT, UPDATE"},
 		{"anomaly_events", "SELECT, INSERT, UPDATE, DELETE"},
 		{"anomaly_silents", "SELECT, INSERT, UPDATE, DELETE"},
+		{"honeypots", "SELECT"},
 	},
 }

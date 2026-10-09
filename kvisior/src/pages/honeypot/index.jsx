@@ -2,12 +2,18 @@ import { sseUrl } from '../../data/cluster';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSensor } from '../../context/SensorContext';
 import '../../styles/honeypot.scss';
-import { SERVICES, DEFAULT_NS } from './honeypotConstants';
+import { DEFAULT_NS, STATE_LABEL } from './honeypotConstants';
 import { apiList, apiCreate, apiDelete, apiEvents, apiPersistedEvents, apiHideEvent, apiHiddenEvents } from './honeypotApi';
-import { svcByName, fmtTime } from './honeypotUtils';
+import { svcByName } from './honeypotUtils';
 import { HoneypotDetail } from './HoneypotDetail';
 import { CreateModal } from './CreateModal';
 import { Icon } from '../../components/Icon';
+
+function kindShort(kind) {
+  if (kind === 'StatefulSet') return 'sts';
+  if (kind === 'Deployment') return 'deploy';
+  return (kind || 'pod').toLowerCase();
+}
 
 export function Honeypot() {
   const { snapshot } = useSensor();
@@ -21,20 +27,30 @@ export function Honeypot() {
   const [error,        setError]        = useState(null);
   const [showModal,    setShowModal]    = useState(false);
 
-  const [formName,     setFormName]     = useState('');
+  const [catalog,      setCatalog]      = useState([]);
+  const [formSvc,      setFormSvc]      = useState('postgres');
+  const [formName,     setFormName]     = useState('postgres');
+  const [nameTouched,  setNameTouched]  = useState(false);
   const [formNs,       setFormNs]       = useState('production');
-  const [formSvcs,     setFormSvcs]     = useState(['redis', 'postgres', 'elastic', 'dns']);
   const [creating,     setCreating]     = useState(false);
   const [createErr,    setCreateErr]    = useState(null);
   const [deleting,     setDeleting]     = useState(false);
 
   const pollRef = useRef(null);
   const selectedRef = useRef(null);
+  const quietRef = useRef(null);
+  const loadEventsRef = useRef(null);
 
   const loadList = useCallback(async () => {
     try {
       const data = await apiList();
-      setHoneypots(data.honeypots || []);
+      const list = data.honeypots || [];
+      setHoneypots(prev => list.map(h => {
+        const old = prev.find(p => p.name === h.name && p.namespace === h.namespace);
+        return old?.eventCount && !h.eventCount ? { ...h, eventCount: old.eventCount } : h;
+      }));
+      if (Array.isArray(data.catalog)) setCatalog(data.catalog);
+      setSelected(cur => cur ? (list.find(h => h.name === cur.name && h.namespace === cur.namespace) || cur) : cur);
     } catch (e) {
       setError(e.message);
     }
@@ -51,12 +67,15 @@ export function Honeypot() {
   }, [selected]);
 
   useEffect(() => {
-    const es = new EventSource(sseUrl(sseUrl('/honey/api/honeypots/stream')));
+    const es = new EventSource(sseUrl('/honey/api/honeypots/stream'));
 
     es.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        const { honeypotName, namespace, event } = msg;
+        const event = msg.event || msg;
+        const honeypotName = msg.honeypotName || event.honeypotName;
+        const namespace = msg.namespace || event.namespace;
+        if (!honeypotName) return;
 
         setHoneypots(prev => prev.map(h =>
           h.name === honeypotName && h.namespace === namespace
@@ -67,9 +86,16 @@ export function Honeypot() {
         const cur = selectedRef.current;
         if (cur?.name === honeypotName && cur?.namespace === namespace) {
           setEvents(evs => {
-            const exists = evs.some(ev => ev.timestamp === event.timestamp && ev.action === event.action);
+            const exists = evs.some(ev =>
+              ev.timestamp === event.timestamp && ev.action === event.action &&
+              ev.src_ip === event.src_ip && ev.src_port === event.src_port);
             return exists ? evs : [...evs, event];
           });
+          clearTimeout(quietRef.current);
+          quietRef.current = setTimeout(() => {
+            const now = selectedRef.current;
+            if (now?.name === honeypotName && now?.namespace === namespace) loadEventsRef.current?.(now, true);
+          }, 5000);
         }
       } catch {}
     };
@@ -77,13 +103,15 @@ export function Honeypot() {
     es.onerror = () => {
     };
 
-    return () => es.close();
+    return () => { es.close(); clearTimeout(quietRef.current); };
   }, []);
 
-  const loadEvents = useCallback(async (hp) => {
+  const loadEvents = useCallback(async (hp, quiet = false) => {
     if (!hp) return;
-    setLoading(true);
-    setSelectedEvent(null);
+    if (!quiet) {
+      setLoading(true);
+      setSelectedEvent(null);
+    }
     try {
       const ns = hp.namespace || DEFAULT_NS;
       const [data, persisted, hidden] = await Promise.all([
@@ -94,15 +122,16 @@ export function Honeypot() {
       const hiddenSet = new Set(hidden.ids || []);
 
       const byId = new Map();
-      for (const e of [...(persisted.events || []), ...(data.events || [])]) {
+      for (const e of [...(data.events || []), ...(persisted.events || [])]) {
         if (hiddenSet.has(e.id)) continue;
-        if (e.id) byId.set(e.id, e);
-        else byId.set(`${e.timestamp}\x1f${e.action}\x1f${e.src_ip}`, e);
+        const key = e.id || `${e.timestamp}\x1f${e.action}\x1f${e.src_ip}\x1f${e.src_port}`;
+        byId.set(key, { ...(byId.get(key) || {}), ...e });
       }
       const evs = [...byId.values()].sort(
         (a, b) => String(a.timestamp).localeCompare(String(b.timestamp))
       );
       setEvents(evs);
+      if (quiet) setSelectedEvent(sel => sel ? (evs.find(e => e.id && e.id === sel.id) || sel) : sel);
       if (evs.length > 0) {
         setHoneypots(prev => prev.map(h =>
           h.name === hp.name && h.namespace === hp.namespace
@@ -111,36 +140,57 @@ export function Honeypot() {
         ));
       }
     } catch (e) {
-      setEvents([]);
+      if (!quiet) setEvents([]);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
+  loadEventsRef.current = loadEvents;
 
+  const selectedKey = selected ? `${selected.namespace}/${selected.name}` : '';
   useEffect(() => {
-    if (selected) loadEvents(selected);
-  }, [selected, loadEvents]);
+    if (selectedRef.current) loadEvents(selectedRef.current);
+  }, [selectedKey, loadEvents]);
 
   function resolveIP(ip) {
     if (!ip || ip === '0.0.0.0') return null;
     return snapshot?.pods?.find(p => p.status?.podIP === ip) || null;
   }
 
+  function openCreate() {
+    setCreateErr(null);
+    setShowModal(true);
+  }
+
+  function pickSvc(name) {
+    setFormSvc(name);
+    if (!nameTouched) setFormName(svcByName(name, catalog).defaultName);
+  }
+
+  function editName(v) {
+    setNameTouched(v.trim() !== '');
+    setFormName(v);
+  }
+
   async function handleCreate() {
-    const name = formName.trim();
-    if (!name || formSvcs.length === 0) return;
+    const svc = svcByName(formSvc, catalog);
+    const name = formName.trim() || svc.defaultName;
+    if (!formSvc) return;
     if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name) || name.length > 40) {
-      setCreateErr('Name must be lowercase letters, digits and "-" (max 40 chars), e.g. prod-redis-trap');
+      setCreateErr('Name must be lowercase letters, digits and "-" (max 40 chars), e.g. orders-db');
       return;
     }
     setCreating(true);
     setCreateErr(null);
     try {
-      await apiCreate({ name, namespace: formNs.trim() || DEFAULT_NS, services: formSvcs });
+      const ns = formNs.trim() || DEFAULT_NS;
+      await apiCreate({ name, namespace: ns, service: formSvc });
       setShowModal(false);
-      setFormName('');
-      setFormSvcs(['redis', 'postgres', 'elastic', 'dns']);
+      setNameTouched(false);
+      setFormName(svc.defaultName);
       await loadList();
+      setSelected(cur => cur && cur.name === name && cur.namespace === ns ? cur : { name, namespace: ns, services: [formSvc], kind: svc.kind });
+      setDetailTab('info');
     } catch (e) {
       setCreateErr(e.message);
     } finally {
@@ -149,7 +199,8 @@ export function Honeypot() {
   }
 
   async function handleDelete(hp) {
-    if (!window.confirm(`Delete honeypot "${hp.name}" in namespace "${hp.namespace}"?\n\nThis will remove the Pod, Service and ConfigMap.`)) return;
+    const what = hp.legacy ? 'Pod and Service' : `${hp.kind}, Service and NetworkPolicy`;
+    if (!window.confirm(`Delete honeypot "${hp.name}" in namespace "${hp.namespace}"?\n\nThis removes the ${what}.`)) return;
     setDeleting(true);
     setError(null);
     try {
@@ -182,12 +233,6 @@ export function Honeypot() {
     }
   }
 
-  function toggleSvc(name) {
-    setFormSvcs(prev =>
-      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
-    );
-  }
-
   function selectHp(hp) {
     setSelected(hp);
     setDetailTab('events');
@@ -215,7 +260,7 @@ export function Honeypot() {
           <div className="hp-empty-sub">
             Deploy fake services inside your cluster to detect lateral movement and unauthorized access.
           </div>
-          <button className="hp-btn-primary" onClick={() => setShowModal(true)}>
+          <button className="hp-btn-primary" onClick={openCreate}>
             + Create Honeypot
           </button>
         </div>
@@ -229,7 +274,7 @@ export function Honeypot() {
           <div className="hp-list">
             <div className="hp-list-header">
               <span>Honeypots <span className="hp-count">({honeypots.length})</span></span>
-              <button className="hp-add-btn" onClick={() => setShowModal(true)}>+</button>
+              <button className="hp-add-btn" onClick={openCreate} aria-label="Create honeypot" title="Create honeypot">+</button>
             </div>
 
             {honeypots.map(hp => (
@@ -239,20 +284,26 @@ export function Honeypot() {
                 onClick={() => selectHp(hp)}
               >
                 <div className="hp-item-name">
-                  <span className={`hp-dot${hasAlert(hp) ? ' hp-dot--alert' : ''}`} />
+                  <span className={`hp-dot${hasAlert(hp) ? ' hp-dot--alert' : hp.state && hp.state !== 'ok' ? ' hp-dot--off' : ''}`} />
                   {hp.name}
                   {hasAlert(hp) && <span className="hp-alert-badge">!</span>}
                 </div>
                 <div className="hp-item-meta">{hp.namespace} · {hp.clusterIP || '—'}</div>
                 <div className="hp-item-services">
+                  <span className={`hp-kind-badge${hp.legacy ? ' hp-kind-badge--legacy' : ''}`}>
+                    {hp.legacy ? 'legacy pod' : kindShort(hp.kind)}
+                  </span>
                   {(hp.services || []).map(s => {
-                    const svc = svcByName(s);
+                    const svc = svcByName(s, catalog);
                     return (
                       <span key={s} className="hp-svc-badge">
-                        {svc.name}:{svc.port}
+                        {svc.name}:{hp.port || svc.port}
                       </span>
                     );
                   })}
+                  {hp.state && hp.state !== 'ok' && STATE_LABEL[hp.state] && (
+                    <span className={`hp-state hp-state--${STATE_LABEL[hp.state].tone}`}>{STATE_LABEL[hp.state].text}</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -268,6 +319,7 @@ export function Honeypot() {
              events={events}
              loading={loading}
              snapshot={snapshot}
+             catalog={catalog}
              hasAlert={hasAlert}
              deleting={deleting}
              resolveIP={resolveIP}
@@ -280,9 +332,10 @@ export function Honeypot() {
       {}
       <CreateModal
         showModal={showModal} setShowModal={setShowModal}
-        formName={formName} setFormName={setFormName}
+        catalog={catalog}
+        formName={formName} setFormName={editName}
         formNs={formNs} setFormNs={setFormNs}
-        formSvcs={formSvcs} toggleSvc={toggleSvc}
+        formSvc={formSvc} pickSvc={pickSvc}
         createErr={createErr} creating={creating} handleCreate={handleCreate}
       />
 

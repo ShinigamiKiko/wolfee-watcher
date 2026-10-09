@@ -68,6 +68,8 @@
   font-size: 11px;
 
   &--ok { color: var(--accent-3); }
+  &--warn { color: var(--warning-text); }
+  &--danger { color: var(--danger-text); }
 }
 
 .hp-svc-list {
@@ -119,7 +121,7 @@
 
 .hp-events-header-row {
   display: grid;
-  grid-template-columns: 90px 70px 110px 1fr 22px;
+  grid-template-columns: 90px 70px minmax(110px, 0.9fr) 1.3fr 22px;
   gap: 8px;
   padding: 4px 10px;
   font-size: 10px;
@@ -132,7 +134,7 @@
 
 .hp-event-row {
   display: grid;
-  grid-template-columns: 90px 70px 110px 1fr 22px;
+  grid-template-columns: 90px 70px minmax(110px, 0.9fr) 1.3fr 22px;
   gap: 8px;
   padding: 7px 10px;
   border-radius: 6px;
@@ -164,7 +166,18 @@
 
 .hp-ev-time { font-family: var(--font-mono); color: var(--text-muted); font-size: 10px; }
 .hp-ev-svc  { font-family: var(--font-mono); color: var(--accent-2);   font-size: 10px; }
-.hp-ev-ip   { font-family: var(--font-mono); color: var(--text-secondary); font-size: 10px; }
+.hp-ev-ip   {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+
+  svg { color: var(--danger-text); flex-shrink: 0; }
+}
+.hp-ev-src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hp-ev-data { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hp-ev-del {
   background: none;
@@ -247,7 +260,7 @@
 
 .hp-ep-kv {
   display: grid;
-  grid-template-columns: 80px 1fr;
+  grid-template-columns: 104px 1fr;
   gap: 6px;
   font-size: 11px;
   margin-bottom: 5px;
@@ -388,6 +401,10 @@
 }
 
 .hp-svc-option {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -407,8 +424,9 @@
 }
 
 .hp-svc-option-icon { font-size: 18px; flex-shrink: 0; }
+.hp-svc-option-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hp-svc-option-name { font-size: 12px; font-weight: 600; }
-.hp-svc-option-port { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+.hp-svc-option-port { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
 
 .hp-svc-check {
   margin-left: auto;
@@ -477,4 +495,69 @@
 
 .hp-events-list.dw .hp-events-header-row {
   font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #7a8599;
+}
+
+.hp-plan {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hp-plan-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.hp-plan-k { color: var(--text-muted); }
+.hp-plan-v { font-family: var(--font-mono); color: var(--text-primary); overflow-wrap: anywhere; }
+
+.hp-plan-note {
+  margin-top: 4px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.hp-ep-source {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.hp-info-note {
+  margin-top: 16px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+
+  &--warn { border-color: var(--warning-tint-strong); background: var(--warning-tint); color: var(--warning-text); }
+  &--danger { border-color: var(--danger-tint-strong); background: var(--danger-tint); color: var(--danger-text); }
+}
+
+.hp-tab-content { flex-direction: column; }
+.hp-tab-content > .hp-info { flex: 1; }
+.hp-tab-content > .dw-foot { flex-shrink: 0; padding: 0 20px 12px; }
+.hp-events-wrap { min-height: 0; }
+.hp-events-list.dw.hp-events-list--narrow { max-width: none; flex: 1; min-width: 0; }
+.hp-event-panel { flex: 0 0 380px; min-width: 0; }
+
+.hp-modal { width: min(520px, calc(100vw - 32px)); }
+
+@media (max-width: 560px) {
+  .hp-svc-picker { grid-template-columns: repeat(2, 1fr); }
+  .hp-form-row { grid-template-columns: 1fr; gap: 0; }
 }

@@ -14,11 +14,12 @@ import (
 const cacheTTL = 30 * time.Second
 
 type PodInfo struct {
-	Deployment string
-	Node       string
-	Namespace  string
-	PodIP      string
-	Labels     map[string]string
+	Deployment     string
+	Node           string
+	Namespace      string
+	PodIP          string
+	Labels         map[string]string
+	ServiceAccount string
 }
 
 type SvcInfo struct {
@@ -109,11 +110,12 @@ func (e *Enricher) refreshPods(ctx context.Context) {
 			}
 		}
 		fresh[pod.Namespace+"/"+pod.Name] = PodInfo{
-			Deployment: dep,
-			Node:       pod.Spec.NodeName,
-			Namespace:  pod.Namespace,
-			PodIP:      pod.Status.PodIP,
-			Labels:     pod.Labels,
+			Deployment:     dep,
+			Node:           pod.Spec.NodeName,
+			Namespace:      pod.Namespace,
+			PodIP:          pod.Status.PodIP,
+			Labels:         pod.Labels,
+			ServiceAccount: pod.Spec.ServiceAccountName,
 		}
 	}
 
@@ -233,6 +235,32 @@ func selectorString(sel map[string]string) string {
 			out += ","
 		}
 		out += k + "=" + v
+	}
+	return out
+}
+
+func (e *Enricher) PodIPsMatching(ctx context.Context, ns string, sel map[string]string) []string {
+	if len(sel) == 0 {
+		return nil
+	}
+	e.refreshPods(ctx)
+	e.muPods.RLock()
+	defer e.muPods.RUnlock()
+	var out []string
+	for _, p := range e.pods {
+		if p.Namespace != ns || p.PodIP == "" {
+			continue
+		}
+		match := true
+		for k, v := range sel {
+			if p.Labels[k] != v {
+				match = false
+				break
+			}
+		}
+		if match {
+			out = append(out, p.PodIP)
+		}
 	}
 	return out
 }

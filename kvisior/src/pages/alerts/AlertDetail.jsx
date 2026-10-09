@@ -98,7 +98,19 @@ export function AlertDetail({ selected, bucketsOpen, setSelected }) {
               {selected.src_container && <DetailRow label="Container" val={selected.src_container} />}
               <DetailRow label="Node"       val={selected.src_node} />
               <DetailRow label="Process"    val={selected.src_process} />
+              {selected.src_service_account && <DetailRow label="Service account" val={selected.src_service_account} mono />}
+              {selected.src_cmdline && <DetailRow label="Cmdline" val={selected.src_cmdline} mono />}
+              {(selected.src_pid || selected.src_uid) && <DetailRow label="PID / UID" val={`${selected.src_pid || '—'} / ${selected.src_uid || '—'}`} mono />}
             </section>
+
+            {selected.kind === 'honeypot_probe' && (
+              <section className="al-section">
+                <div className="al-section-title">Honeypot</div>
+                <DetailRow label="Trap"    val={`${selected.dst_namespace}/${selected.honeypot_name}`} mono />
+                <DetailRow label="Service" val={selected.honeypot_service} />
+                <DetailRow label="Kind"    val={selected.honeypot_kind} />
+              </section>
+            )}
 
             <section className="al-section">
               <div className="al-section-title">Destination</div>

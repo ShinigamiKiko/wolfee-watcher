@@ -358,6 +358,8 @@ func main() {
 	mux.HandleFunc("/internal/push/sensor", pushWrap(pushH.HandleSensorSnapshot))
 	mux.HandleFunc("/internal/push/anomaly", pushWrap(pushH.HandleAnomalyEvents))
 	mux.HandleFunc("/internal/push/honeypot", pushWrap(pushH.HandleHoneypotEvents))
+	mux.HandleFunc("/internal/push/honeypot-registry", pushWrap(pushH.HandleHoneypotRegistry))
+	mux.HandleFunc("/internal/pull/honeypot-registry", pushWrap(pushH.HandleHoneypotRegistryPull))
 	mux.HandleFunc("/internal/push/scan", pushWrap(pushH.HandleScan))
 	mux.HandleFunc("/internal/push/audit-run", pushWrap(pushH.HandleAuditRun))
 	mux.HandleFunc("/internal/push/histories", pushWrap(pushH.HandleHistories))

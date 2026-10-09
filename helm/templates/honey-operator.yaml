@@ -58,6 +58,10 @@ spec:
               value: {{ .Values.global.internalPushSecret | quote }}
             - name: CLUSTER_ID
               value: {{ .Values.global.clusterId | quote }}
+            - name: DECOY_REGISTRY
+              value: {{ .Values.honeyOperator.decoy.registry | quote }}
+            - name: DECOY_PULL_POLICY
+              value: {{ .Values.honeyOperator.decoy.pullPolicy | quote }}
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:

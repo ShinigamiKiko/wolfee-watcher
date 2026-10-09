@@ -34,16 +34,17 @@ func (c *Consumer) evaluateRaw(ctx context.Context, data []byte) []*AnomalyEvent
 		srcNode = strVal(ev, "node")
 	}
 	base := &AnomalyEvent{
-		Ts:            time.Now(),
-		SrcNamespace:  srcNS,
-		SrcDeployment: podInfo.Deployment,
-		SrcPod:        srcPod,
-		SrcNode:       srcNode,
-		SrcProcess:    strVal(ev, "process"),
-		SrcIP:         podInfo.PodIP,
-		SrcContainer:  strVal(ev, "container"),
-		Syscall:       syscall,
-		EventKind:     strVal(ev, "event_kind"),
+		Ts:                time.Now(),
+		SrcNamespace:      srcNS,
+		SrcDeployment:     podInfo.Deployment,
+		SrcPod:            srcPod,
+		SrcNode:           srcNode,
+		SrcProcess:        strVal(ev, "process"),
+		SrcIP:             podInfo.PodIP,
+		SrcContainer:      strVal(ev, "container"),
+		SrcServiceAccount: podInfo.ServiceAccount,
+		Syscall:           syscall,
+		EventKind:         strVal(ev, "event_kind"),
 	}
 
 	switch syscall {
@@ -96,6 +97,9 @@ func (c *Consumer) evalConnect(ctx context.Context, ev map[string]interface{}, b
 	}
 	if dstIP == "" {
 		return nil
+	}
+	if tr, ok := c.matchTrap(ctx, dstIP, dstPort); ok {
+		return []*AnomalyEvent{c.honeypotProbe(ev, base, tr, dstIP, dstPort)}
 	}
 
 	dstService, dstNS := "", ""
