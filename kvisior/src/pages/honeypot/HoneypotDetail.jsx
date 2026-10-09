@@ -17,6 +17,8 @@ function KV({ k, v, tone }) {
 function sourceLabel(ev) {
   const c = ev.client;
   if (c?.src_pod) return { main: c.src_pod, sub: c.src_namespace, linked: true };
+  const s = ev.client_snapshot;
+  if (s?.pod) return { main: s.pod, sub: s.namespace, linked: false };
   return { main: ev.src_ip, sub: '', linked: false };
 }
 
@@ -34,6 +36,20 @@ function ClientCard({ client }) {
       <KV k="PID / UID" v={client.src_pid || client.src_uid ? `${client.src_pid || '—'} / ${client.src_uid || '—'}` : ''} />
       <KV k="Seen at" v={client.ts ? fmtTime(client.ts) : ''} />
       <div className="hp-ep-source">Kernel connect() traced by eBPF, matched by source IP and time</div>
+    </div>
+  );
+}
+
+function RecordedCard({ client }) {
+  return (
+    <div className="hp-ep-pod-card">
+      <KV k="Pod" v={client.pod} tone="danger" />
+      <KV k="Namespace" v={client.namespace} />
+      <KV k="Workload" v={client.workload} />
+      <KV k="Service account" v={client.serviceAccount} tone="danger" />
+      <KV k="Node" v={client.node} />
+      <KV k="Image" v={client.image} />
+      <div className="hp-ep-source">Resolved by source IP from the pod snapshot when the event arrived. No kernel trace matched, so the process is unknown.</div>
     </div>
   );
 }
@@ -215,7 +231,7 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                         >
                           <span className="hp-ev-time">{fmtTime(ev.timestamp)}</span>
                           <span className="hp-ev-svc">{ev.server?.replace('_server', '')}</span>
-                          <span className="hp-ev-ip" title={src.linked ? `${src.sub}/${src.main} · ${ev.src_ip}` : ev.src_ip}>
+                          <span className="hp-ev-ip" title={src.sub ? `${src.sub}/${src.main} · ${ev.src_ip}` : ev.src_ip}>
                             {src.linked && <Icon name="link" size={11} />}
                             <span className="hp-ev-src">{src.main}</span>
                           </span>
@@ -259,7 +275,9 @@ export function HoneypotDetail({ selected, selectedEvent, setSelectedEvent, deta
                       <div className="hp-ep-title">Client</div>
                       {selectedEvent.client
                         ? <ClientCard client={selectedEvent.client} />
-                        : <SnapshotCard ip={selectedEvent.src_ip} pod={resolveIP(selectedEvent.src_ip)} />}
+                        : selectedEvent.client_snapshot?.pod
+                          ? <RecordedCard client={selectedEvent.client_snapshot} />
+                          : <SnapshotCard ip={selectedEvent.src_ip} pod={resolveIP(selectedEvent.src_ip)} />}
                     </div>
 
                     <div className="hp-ep-section">

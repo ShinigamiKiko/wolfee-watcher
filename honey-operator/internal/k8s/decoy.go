@@ -407,6 +407,8 @@ func decoyPodSpec(name string, p decoy.Profile) corev1.PodTemplateSpec {
 		}},
 		InitialDelaySeconds: 5,
 		PeriodSeconds:       10,
+		TimeoutSeconds:      5,
+		FailureThreshold:    6,
 	}
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{Labels: p.Labels(name)},

@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	alertspkg "github.com/wolfee-watcher/pkg/alerts"
+
+	"github.com/wolfee-watcher/pkg/env"
 )
 
 const (
@@ -30,9 +32,9 @@ const (
 	ActiveTTL = 30 * 24 * time.Hour
 
 	AuditRunsTTL = 14 * 24 * time.Hour
-
-	HoneypotEventsTTL = 30 * 24 * time.Hour
 )
+
+var HoneypotEventsTTL = env.HoneypotRetention()
 
 type Store struct {
 	pool         *pgxpool.Pool
@@ -687,9 +689,13 @@ func (c *Scoped) ListHoneypotEvents(ctx context.Context, ns, honeypot string) ([
 		           AND a.kind = 'honeypot_probe'
 		           AND a.data->>'dst_namespace' = e.namespace
 		           AND a.data->>'honeypot_name' = e.honeypot
-		           AND a.data->>'src_ip' = e.data->>'src_ip'
+		           AND (a.data->>'src_ip' = e.data->>'src_ip'
+		                OR (coalesce(a.data->>'src_ip', '') = ''
+		                    AND a.data->>'src_namespace' = e.data->'client_snapshot'->>'namespace'
+		                    AND a.data->>'src_pod' = e.data->'client_snapshot'->>'pod'))
 		           AND a.ts BETWEEN e.created_at - interval '10 minutes' AND e.created_at + interval '2 minutes'
-		         ORDER BY abs(extract(epoch FROM a.ts - e.created_at))
+		         ORDER BY (a.data->>'src_ip' = e.data->>'src_ip') DESC NULLS LAST,
+		                  abs(extract(epoch FROM a.ts - e.created_at))
 		         LIMIT 1) p ON true
 		  WHERE e.cluster_id=$1 AND e.namespace=$2 AND e.honeypot=$3
 		  ORDER BY e.ts ASC, e.created_at ASC`,
@@ -701,13 +707,16 @@ func (s *Store) SweepOldHoneypotEvents(ctx context.Context) (int64, error) {
 }
 
 func sweepOldHoneypotEvents(ctx context.Context, db execer) (int64, error) {
-	tag, err := db.Exec(ctx,
-		`DELETE FROM honeypot_events WHERE created_at < NOW() - $1::interval`,
-		fmt.Sprintf("%d seconds", int64(HoneypotEventsTTL.Seconds())))
+	ttl := fmt.Sprintf("%d seconds", int64(HoneypotEventsTTL.Seconds()))
+	tag, err := db.Exec(ctx, `DELETE FROM honeypot_events WHERE created_at < NOW() - $1::interval`, ttl)
 	if err != nil {
 		return 0, err
 	}
-	return tag.RowsAffected(), nil
+	hidden, err := db.Exec(ctx, `DELETE FROM honeypot_hidden_events WHERE created_at < NOW() - $1::interval`, ttl)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected() + hidden.RowsAffected(), nil
 }
 
 func (c *Scoped) HiddenHoneypotEvents(ctx context.Context, ns, honeypot string) ([]string, error) {

@@ -97,6 +97,7 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
             httpGet:
@@ -105,7 +106,8 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: 15
             periodSeconds: 20
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.traceeBridge.resources | nindent 12 }}
           securityContext:

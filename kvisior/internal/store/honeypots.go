@@ -72,3 +72,21 @@ func (c *Scoped) ListHoneypotRegistry(ctx context.Context) ([]HoneypotRecord, er
 	}
 	return out, rows.Err()
 }
+
+func (c *Scoped) AttachHoneypotClient(ctx context.Context, ns, honeypot, eventID string, client json.RawMessage) (bool, error) {
+	tag, err := c.s.pool.Exec(ctx,
+		`WITH d AS (
+		   DELETE FROM honeypot_events
+		    WHERE cluster_id = $1 AND namespace = $2 AND honeypot = $3 AND event_id = $4
+		      AND NOT (data ? 'client_snapshot')
+		   RETURNING cluster_id, namespace, honeypot, event_id, ts, data, created_at)
+		 INSERT INTO honeypot_events (cluster_id, namespace, honeypot, event_id, ts, data, created_at)
+		 SELECT cluster_id, namespace, honeypot, event_id, ts,
+		        data || jsonb_build_object('client_snapshot', $5::jsonb), created_at
+		   FROM d`,
+		c.id, ns, honeypot, eventID, client)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

@@ -166,7 +166,7 @@ traceeBridge:
       cpu: 50m
       memory: 256Mi
     limits:
-      cpu: 500m
+      cpu: "1"
       memory: 512Mi
 
 anomalyDetector:
@@ -274,6 +274,7 @@ forensicWatcher:
 honeyOperator:
   enabled: true
   replicaCount: 1
+  eventRetentionDays: 30
   image:
     repository: localhost/wolfee-watcher/honey-operator
     tag: latest

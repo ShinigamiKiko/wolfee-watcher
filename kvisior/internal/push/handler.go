@@ -15,6 +15,7 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/auditengine"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
+	"github.com/wolfee-watcher/kvisior/internal/podindex"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
@@ -42,6 +43,29 @@ type Handler struct {
 	audit    *auditengine.Engine
 	store    *store.Store
 	writeSem chan struct{}
+	pods     *podindex.Index
+	pending  *clientQueue
+}
+
+func (h *Handler) SetPodIndex(ctx context.Context, idx *podindex.Index) {
+	h.pods = idx
+	h.pending = newClientQueue()
+	go h.resolveLater(ctx)
+}
+
+func (h *Handler) resolveClient(cluster, ip string, at time.Time) *podindex.Client {
+	if h.pods == nil || ip == "" {
+		return nil
+	}
+	if c, ok := h.pods.Lookup(cluster, ip, at); ok {
+		return &c
+	}
+	if !clusterctx.Hub() && cluster != clusterctx.Local() {
+		if c, ok := h.pods.Lookup(clusterctx.Local(), ip, at); ok {
+			return &c
+		}
+	}
+	return nil
 }
 
 func New(pub, local hub.Publisher, m *rules.Matcher, audit *auditengine.Engine, st *store.Store) *Handler {
@@ -244,6 +268,7 @@ func (h *Handler) HandleHoneypotEvents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		ev.ID = honeypotEventID(ev)
+		ev.ClientSnapshot = h.resolveClient(clusterctx.ForPush(r), ev.SrcIP, time.Now())
 
 		enriched, err := json.Marshal(ev)
 		if err != nil {
@@ -256,6 +281,9 @@ func (h *Handler) HandleHoneypotEvents(w http.ResponseWriter, r *http.Request) {
 				return h.cluster(r).WriteHoneypotEvent(ctx, ns, name, id, ts, data)
 			}) {
 				return
+			}
+			if ev.ClientSnapshot == nil && ev.SrcIP != "" && h.pending != nil {
+				h.pending.add(pendingClient{cluster: clusterctx.ForPush(r), ns: ns, honeypot: name, id: id, ip: ev.SrcIP, at: time.Now()})
 			}
 		}
 		h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "honeypot_event", Data: enriched})
@@ -287,6 +315,8 @@ type honeypotEvent struct {
 	Data         string `json:"data,omitempty"`
 	Username     string `json:"username,omitempty"`
 	Password     string `json:"password,omitempty"`
+
+	ClientSnapshot *podindex.Client `json:"client_snapshot,omitempty"`
 }
 
 func honeypotEventID(ev honeypotEvent) string {

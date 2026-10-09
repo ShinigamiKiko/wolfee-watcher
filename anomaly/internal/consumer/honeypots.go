@@ -12,7 +12,11 @@ import (
 	"github.com/wolfee-watcher/pkg/mtls"
 )
 
-const trapRefresh = 15 * time.Second
+const (
+	trapRefresh    = 15 * time.Second
+	probeClockSkew = time.Hour
+	probeIPWait    = 3 * time.Second
+)
 
 type trap struct {
 	ID         string
@@ -129,6 +133,9 @@ func (c *Consumer) isTrapPod(ctx context.Context, ns string, labels map[string]s
 func (c *Consumer) honeypotProbe(ev map[string]interface{}, base *AnomalyEvent, tr trap, dstIP string, dstPort uint32) *AnomalyEvent {
 	a := clone(base)
 	a.Kind = KindHoneypotProbe
+	if ts, err := time.Parse(time.RFC3339Nano, strVal(ev, "ts")); err == nil && absDuration(time.Since(ts)) < probeClockSkew {
+		a.Ts = ts
+	}
 	a.DstIP = dstIP
 	a.DstPort = dstPort
 	a.DstService = tr.Name
@@ -159,4 +166,11 @@ func anyString(v interface{}) string {
 	default:
 		return fmt.Sprintf("%v", x)
 	}
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }

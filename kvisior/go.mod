@@ -48,3 +48,7 @@ replace github.com/wolfee-watcher/pkg/policy => ../pkg/policy
 require github.com/wolfee-watcher/pkg/auditrules v0.0.0
 
 replace github.com/wolfee-watcher/pkg/auditrules => ../pkg/auditrules
+
+require github.com/wolfee-watcher/pkg/env v0.0.0
+
+replace github.com/wolfee-watcher/pkg/env => ../pkg/env

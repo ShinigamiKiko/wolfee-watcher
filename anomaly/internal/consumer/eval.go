@@ -28,7 +28,7 @@ func (c *Consumer) evaluateRaw(ctx context.Context, data []byte) []*AnomalyEvent
 		return nil
 	}
 
-	podInfo := c.enrich.Pod(ctx, srcNS, srcPod)
+	podInfo := c.enrich.PodByUID(ctx, srcNS, srcPod, strVal(ev, "podUID"))
 	if c.isTrapPod(ctx, srcNS, podInfo.Labels) {
 		return nil
 	}
@@ -102,7 +102,17 @@ func (c *Consumer) evalConnect(ctx context.Context, ev map[string]interface{}, b
 		return nil
 	}
 	if tr, ok := c.matchTrap(ctx, dstIP, dstPort); ok {
-		return []*AnomalyEvent{c.honeypotProbe(ev, base, tr, dstIP, dstPort)}
+		if base.SrcIP == "" {
+			if info, found := c.enrich.WaitPodIP(ctx, base.SrcNamespace, base.SrcPod, strVal(ev, "podUID"), probeIPWait); found {
+				base.SrcIP = info.PodIP
+				base.SrcServiceAccount = info.ServiceAccount
+				if base.SrcNode == "" {
+					base.SrcNode = info.Node
+				}
+			}
+		}
+		events := []*AnomalyEvent{c.honeypotProbe(ev, base, tr, dstIP, dstPort)}
+		return append(events, c.reconEvents(base, dstIP, dstPort, tr.Name, tr.Namespace)...)
 	}
 
 	dstService, dstNS := "", ""
@@ -135,6 +145,11 @@ func (c *Consumer) evalConnect(ctx context.Context, ev map[string]interface{}, b
 		events = append(events, a)
 	}
 
+	return append(events, c.reconEvents(base, dstIP, dstPort, dstService, dstNS)...)
+}
+
+func (c *Consumer) reconEvents(base *AnomalyEvent, dstIP string, dstPort uint32, dstService, dstNS string) []*AnomalyEvent {
+	var events []*AnomalyEvent
 	for _, ra := range c.recon.Observe(base.SrcNamespace, base.SrcDeployment, dstIP, dstPort, base.Ts) {
 		a := clone(base)
 		a.DstIP = dstIP
