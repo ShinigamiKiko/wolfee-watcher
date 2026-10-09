@@ -3,6 +3,13 @@ import { Icon } from '../../components/Icon';
 import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
 
+function duration(run) {
+  if (!run.startedAt || !run.doneAt) return '';
+  const sec = Math.round((run.doneAt - run.startedAt) / 1000);
+  if (sec <= 0) return '';
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+
 function RunList({ runs, onOpen, onNew, tool, busy, onDownload, downloading }) {
   const { pageItems, pager } = usePaged(runs, 'audit.runs', [tool]);
   return (
@@ -33,12 +40,12 @@ function RunList({ runs, onOpen, onNew, tool, busy, onDownload, downloading }) {
             <div className="au-run-card__body">
               <div className="au-run-card__name">{run.name}</div>
               <div className="au-run-card__meta">
-                {tool} · {fmt(run.startedAt)}
+                {tool} · {fmt(run.startedAt)}{duration(run) && <> · {duration(run)}</>}
               </div>
             </div>
             <div className="au-run-card__right">
               {run.status === 'running' && <span className="au-run-card__status au-run-card__status--running">● Running…</span>}
-              {run.status === 'error'   && <span className="au-run-card__status au-run-card__status--error"><Icon name="x" /> Failed</span>}
+              {run.status === 'error'   && <span className="au-run-card__status au-run-card__status--error" title={run.error || ''}><Icon name="x" /> Failed</span>}
               {run.status === 'done' && isBench && ctrlFail > 0 && (
                 <span className="au-run-card__badge au-run-card__badge--fail">{ctrlFail} failed</span>
               )}
