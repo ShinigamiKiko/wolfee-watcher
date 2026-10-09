@@ -3,7 +3,7 @@ import { Icon } from '../../components/Icon';
 import { Pager } from '../../components/Pager';
 import { usePaged } from '../../hooks/usePaged';
 
-function RunList({ runs, onOpen, onNew, tool, busy }) {
+function RunList({ runs, onOpen, onNew, tool, busy, onDownload, downloading }) {
   const { pageItems, pager } = usePaged(runs, 'audit.runs', [tool]);
   return (
     <>
@@ -50,6 +50,14 @@ function RunList({ runs, onOpen, onNew, tool, busy }) {
               )}
               {run.status === 'done' && !isBench && vulnCount === 0 && (
                 <span className="au-run-card__badge au-run-card__badge--pass">No findings</span>
+              )}
+              {run.status === 'done' && onDownload && (
+                <button type="button" className="btn-icon btn-icon--sm au-run-card__download"
+                  title="Download PDF report" aria-label={`Download PDF report for ${run.name}`}
+                  disabled={!!downloading}
+                  onClick={e => { e.stopPropagation(); onDownload(run); }}>
+                  <Icon name={downloading === run.id ? 'loader' : 'download'} />
+                </button>
               )}
               {run.status === 'done' && <span className="au-run-card__arrow">›</span>}
             </div>

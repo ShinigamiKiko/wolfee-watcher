@@ -8,6 +8,7 @@ import { BenchDetail } from './BenchDetail';
 import { HunterDetail } from './HunterDetail';
 import { DetailModal, F } from './DetailModal';
 import { Icon } from '../../components/Icon';
+import { useReportDownload } from '../../reports/useReportDownload';
 
 export function Audit() {
   return <AuditBoundary><AuditInner/></AuditBoundary>;
@@ -21,6 +22,7 @@ function AuditInner() {
   const [runs,   setRuns]   = useState({ bench: [], hunter: [] });
   const [busy,   setBusy]   = useState({ bench: false, hunter: false });
   const pollRef = useRef(null);
+  const { busy: downloading, download } = useReportDownload();
   const activeRunId = useRef({ bench: null, hunter: null });
 
   const pollStatus = useCallback(async () => {
@@ -110,6 +112,11 @@ function AuditInner() {
     }
   };
 
+  const downloadRun = run => download(run.id, async ctx => {
+    const reports = await import('../../reports/auditReport');
+    return tab === 'bench' ? reports.benchReport({ run, ...ctx }) : reports.hunterReport({ run, ...ctx });
+  });
+
   const toolRuns = runs[tab];
   const isBusy   = busy[tab];
   const toolName = tab==='bench' ? 'kube-bench' : 'kube-hunter';
@@ -156,13 +163,17 @@ function AuditInner() {
             busy={isBusy}
             onNew={()=>setDialog(tab)}
             onOpen={run => setDetail(run)}
+            onDownload={downloadRun}
+            downloading={downloading}
           />
         )}
         {detail && tab==='bench' && (
-          <BenchDetail run={detail} onBack={()=>setDetail(null)} onSelect={(item,type)=>setModal({item,type})}/>
+          <BenchDetail run={detail} onBack={()=>setDetail(null)} onSelect={(item,type)=>setModal({item,type})}
+            onDownload={downloadRun} downloading={downloading}/>
         )}
         {detail && tab==='hunter' && (
-          <HunterDetail run={detail} onBack={()=>setDetail(null)} onSelect={(item,type)=>setModal({item,type})}/>
+          <HunterDetail run={detail} onBack={()=>setDetail(null)} onSelect={(item,type)=>setModal({item,type})}
+            onDownload={downloadRun} downloading={downloading}/>
         )}
       </div>
 

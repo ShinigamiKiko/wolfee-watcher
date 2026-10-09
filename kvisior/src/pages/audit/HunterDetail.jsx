@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fmt, SEV, sev, SEV_ORDER } from './auditConstants';
 import { Icon } from '../../components/Icon';
 
-function HunterDetail({ run, onBack, onSelect }) {
+function HunterDetail({ run, onBack, onSelect, onDownload, downloading }) {
   const [sevFilter, setSevFilter] = useState('all');
   const nodes   = Array.isArray(run.data?.nodes)           ? run.data.nodes           : [];
   const services= Array.isArray(run.data?.services)        ? run.data.services        : [];
@@ -23,6 +23,11 @@ function HunterDetail({ run, onBack, onSelect }) {
         <div className="au-detail__score" style={{color: totals.critical>0?sev('critical').color:totals.high>0?sev('high').color:'var(--accent-3)'}}>
           {vulns.length} findings
         </div>
+        {onDownload && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => onDownload(run)} disabled={!!downloading}>
+            <Icon name={downloading ? 'loader' : 'download'} /> PDF
+          </button>
+        )}
       </div>
 
       {(nodes.length>0||services.length>0) && (
