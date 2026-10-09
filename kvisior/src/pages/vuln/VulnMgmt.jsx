@@ -17,6 +17,7 @@ import { VulnLibsTab } from './VulnLibsTab';
 import { VulnImagesTab } from './VulnImagesTab';
 import { Icon } from '../../components/Icon';
 import { ProgressLine } from '../../components/ProgressLine';
+import { useReportDownload } from '../../reports/useReportDownload';
 import '../../styles/vuln.scss';
 
 const SYSTEM_NS = ['kube-system', 'kube-public', 'kube-node-lease', 'metallb-system', 'calico-system', 'cert-manager'];
@@ -64,6 +65,12 @@ export function VulnMgmt() {
   const summaryRef = useRef(null);
 
   const [starting, setStarting] = useState(false);
+  const { busy: reporting, download } = useReportDownload();
+
+  const exportPDF = () => download('vuln', async ctx => {
+    const { vulnReport } = await import('../../reports/vulnReport');
+    return vulnReport({ results, cves: allCVEs, summary, ...ctx });
+  });
 
   const handleScanAll = async () => {
     setShowProgress(true);
@@ -257,6 +264,12 @@ export function VulnMgmt() {
               </button>
             )}
             {allCVEs.length > 0 && <button type="button" className="btn btn-outline" onClick={exportCSV}><Icon name="download" /> CSV</button>}
+            {results.length > 0 && (
+              <button type="button" className="btn btn-outline" onClick={exportPDF} disabled={!!reporting || scanning}
+                title={scanning ? 'Wait for the scan to finish' : 'Download a PDF report of images and vulnerabilities'}>
+                <Icon name={reporting ? 'loader' : 'download'} /> {reporting ? 'Building…' : 'PDF'}
+              </button>
+            )}
           </>}
         />
 
@@ -350,7 +363,7 @@ export function VulnMgmt() {
                                 <td><SevBadge sev={c.severity?.toUpperCase()} /></td>
                                 <td className={cx('mono t-sm t-strong', tone && `t-${tone}`)}>{c.cvssV3Score > 0 ? c.cvssV3Score.toFixed(1) : '—'}</td>
                                 <td className={cx('mono t-xs', epssTone(c.epssScore) ? `t-${epssTone(c.epssScore)}` : 't-muted')}>{epss?.text || '—'}</td>
-                                <td>{c.riskScore > 0 ? <Tag tone={sevTone(c.riskLabel)} mono>{c.riskScore}</Tag> : <span className="t-muted">—</span>}</td>
+                                <td>{c.riskScore > 0 ? <Tag tone={sevTone(c.riskLabel)} mono>{Number(c.riskScore).toFixed(1)}</Tag> : <span className="t-muted">—</span>}</td>
                                 <td className="t-sm">{c.pkgName}</td>
                                 <td className="mono t-xs t-muted">{c.pkgVersion}</td>
                                 <td className="mono t-xs t-muted clip clip--sm" title={c._imageName}>{c._imageName || '—'}</td>

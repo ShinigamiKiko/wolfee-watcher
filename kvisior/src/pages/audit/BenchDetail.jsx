@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { STATUS_COLOR, fmt } from './auditConstants';
 import { Icon } from '../../components/Icon';
 
-function BenchDetail({ run, onBack, onSelect }) {
+function BenchDetail({ run, onBack, onSelect, onDownload, downloading }) {
   const [filter, setFilter] = useState('all');
   const [openCtrl, setOpenCtrl] = useState(null);
   const controls = Array.isArray(run.data?.controls) ? run.data.controls : [];
@@ -20,6 +20,11 @@ function BenchDetail({ run, onBack, onSelect }) {
           <span className="au-detail__meta">kube-bench · {fmt(run.startedAt)}</span>
         </div>
         <div className="au-detail__score" style={{color:sc}}>{score}% pass</div>
+        {onDownload && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => onDownload(run)} disabled={!!downloading}>
+            <Icon name={downloading ? 'loader' : 'download'} /> PDF
+          </button>
+        )}
       </div>
       <div className="au-summary-bar">
         <div className="au-score-block">
