@@ -29,6 +29,9 @@ func (c *Consumer) evaluateRaw(ctx context.Context, data []byte) []*AnomalyEvent
 	}
 
 	podInfo := c.enrich.Pod(ctx, srcNS, srcPod)
+	if c.isTrapPod(ctx, srcNS, podInfo.Labels) {
+		return nil
+	}
 	srcNode := podInfo.Node
 	if srcNode == "" {
 		srcNode = strVal(ev, "node")

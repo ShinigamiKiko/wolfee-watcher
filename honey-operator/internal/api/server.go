@@ -431,6 +431,7 @@ func ParseLogs(raw []byte) []HoneypotEvent {
 		if ev.Action == "process" && ev.SrcIP == "0.0.0.0" {
 			continue
 		}
+		ev.Timestamp = decoy.UTCStamp(ev.Timestamp)
 		ev.ID = eventKey(ev)
 		events = append(events, ev)
 	}

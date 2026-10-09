@@ -99,7 +99,7 @@ export function AlertDetail({ selected, bucketsOpen, setSelected }) {
               <DetailRow label="Node"       val={selected.src_node} />
               <DetailRow label="Process"    val={selected.src_process} />
               {selected.src_service_account && <DetailRow label="Service account" val={selected.src_service_account} mono />}
-              {selected.src_cmdline && <DetailRow label="Cmdline" val={selected.src_cmdline} mono />}
+              {selected.src_cmdline && selected.src_cmdline !== selected.dst_ip && <DetailRow label="Cmdline" val={selected.src_cmdline} mono />}
               {(selected.src_pid || selected.src_uid) && <DetailRow label="PID / UID" val={`${selected.src_pid || '—'} / ${selected.src_uid || '—'}`} mono />}
             </section>
 

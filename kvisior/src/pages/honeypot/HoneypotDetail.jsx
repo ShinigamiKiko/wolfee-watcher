@@ -30,7 +30,7 @@ function ClientCard({ client }) {
       <KV k="Container" v={client.src_container} />
       <KV k="Node" v={client.src_node} />
       <KV k="Process" v={client.src_process} />
-      <KV k="Cmdline" v={client.src_cmdline} />
+      <KV k="Cmdline" v={client.src_cmdline !== client.dst_ip ? client.src_cmdline : ''} />
       <KV k="PID / UID" v={client.src_pid || client.src_uid ? `${client.src_pid || '—'} / ${client.src_uid || '—'}` : ''} />
       <KV k="Seen at" v={client.ts ? fmtTime(client.ts) : ''} />
       <div className="hp-ep-source">Kernel connect() traced by eBPF, matched by source IP and time</div>

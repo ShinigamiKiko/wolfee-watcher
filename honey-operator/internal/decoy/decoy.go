@@ -3,6 +3,7 @@ package decoy
 import (
 	"os"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -155,4 +156,19 @@ func (p Profile) Labels(name string) map[string]string {
 		l["app.kubernetes.io/component"] = p.Component
 	}
 	return l
+}
+
+func UTCStamp(s string) string {
+	if s == "" {
+		return s
+	}
+	if _, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return s
+	}
+	for _, layout := range []string{"2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05.999999999"} {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+			return t.UTC().Format(time.RFC3339Nano)
+		}
+	}
+	return s
 }

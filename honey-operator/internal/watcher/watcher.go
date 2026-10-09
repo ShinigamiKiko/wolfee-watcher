@@ -13,6 +13,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/wolfee-watcher/honey-operator/internal/decoy"
 	k8sclient "github.com/wolfee-watcher/honey-operator/internal/k8s"
 	"github.com/wolfee-watcher/honey-operator/internal/registry"
 )
@@ -233,7 +234,7 @@ func (w *Watcher) handleLine(t target, line []byte) {
 		Kind:         t.kind,
 		Service:      t.service,
 		Pod:          t.pod,
-		Timestamp:    ev.Timestamp,
+		Timestamp:    decoy.UTCStamp(ev.Timestamp),
 		Server:       ev.Server,
 		SrcIP:        ev.SrcIP,
 		SrcPort:      ev.SrcPort,

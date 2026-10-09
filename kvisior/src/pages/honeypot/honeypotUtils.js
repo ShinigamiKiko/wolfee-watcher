@@ -17,6 +17,10 @@ function shortImage(image) {
   return parts[parts.length - 1];
 }
 
-const fmtTime = fmtDateTime;
+function utcTs(ts) {
+  return typeof ts === 'string' && /T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(ts) ? `${ts}Z` : ts;
+}
+
+const fmtTime = ts => fmtDateTime(utcTs(ts));
 
 export { svcByName, shortImage, fmtTime };

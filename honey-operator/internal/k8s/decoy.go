@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -400,12 +401,12 @@ func decoyPodSpec(name string, p decoy.Profile) corev1.PodTemplateSpec {
 		},
 		VolumeMounts: mounts,
 	}
-	if p.Protocol == corev1.ProtocolTCP {
-		container.ReadinessProbe = &corev1.Probe{
-			ProbeHandler:        corev1.ProbeHandler{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromString(p.PortName)}},
-			InitialDelaySeconds: 5,
-			PeriodSeconds:       10,
-		}
+	container.ReadinessProbe = &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{Exec: &corev1.ExecAction{
+			Command: []string{"/usr/local/bin/docker-healthcheck", strconv.Itoa(int(p.TargetPort))},
+		}},
+		InitialDelaySeconds: 5,
+		PeriodSeconds:       10,
 	}
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{Labels: p.Labels(name)},

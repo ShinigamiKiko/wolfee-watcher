@@ -104,6 +104,28 @@ func (c *Consumer) matchTrap(ctx context.Context, dstIP string, dstPort uint32) 
 	return trap{}, false
 }
 
+func (c *Consumer) isTrapPod(ctx context.Context, ns string, labels map[string]string) bool {
+	if c.traps == nil || len(labels) == 0 {
+		return false
+	}
+	for _, tr := range c.traps.load(ctx) {
+		if tr.Namespace != ns || len(tr.Selector) == 0 {
+			continue
+		}
+		match := true
+		for k, v := range tr.Selector {
+			if labels[k] != v {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Consumer) honeypotProbe(ev map[string]interface{}, base *AnomalyEvent, tr trap, dstIP string, dstPort uint32) *AnomalyEvent {
 	a := clone(base)
 	a.Kind = KindHoneypotProbe
@@ -118,9 +140,9 @@ func (c *Consumer) honeypotProbe(ev map[string]interface{}, base *AnomalyEvent, 
 	a.HoneypotKind = tr.Kind
 	a.SrcPID = anyString(ev["pid"])
 	a.SrcUID = anyString(ev["uid"])
-	a.SrcCmdline = strVal(ev, "cmdline")
-	if a.SrcCmdline == "" {
-		a.SrcCmdline = strVal(ev, "execpath")
+	a.SrcCmdline = strVal(ev, "execpath")
+	if cmd := strVal(ev, "cmdline"); cmd != "" && cmd != dstIP && parseIPFromAddr(cmd) == "" {
+		a.SrcCmdline = cmd
 	}
 	a.Detail = fmt.Sprintf("connect to honeypot %s/%s (%s) from %s", tr.Namespace, tr.Name, tr.Service, base.SrcProcess)
 	return a
