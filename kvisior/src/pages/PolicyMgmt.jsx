@@ -153,10 +153,10 @@ export function PolicyMgmt() {
                     <td className="t-center">{p.alertOnly ? <span className="t-accent"><Icon name="check" /></span> : <span className="t-muted">—</span>}</td>
                     <td className="row-actions-cell">
                       <span className="row-actions">
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(p)} title="Edit" aria-label={`Edit ${p.name}`}><Icon name="edit" /></button>
+                        <button type="button" className="btn btn-outline btn-sm btn-square" onClick={() => openEdit(p)} title="Edit" aria-label={`Edit ${p.name}`}><Icon name="edit" /></button>
                         <button type="button" className={`btn btn-outline btn-sm ${on ? 'btn-tone-warning' : 'btn-tone-ok'}`} onClick={() => toggleRule(p.id)}
                           title={on ? 'Stop rule' : 'Run rule'}>{on ? 'Stop' : 'Run'}</button>
-                        <button type="button" className="btn btn-outline btn-sm btn-tone-danger" onClick={() => deleteRule(p.id)} title="Delete" aria-label={`Delete ${p.name}`}><Icon name="trash" /></button>
+                        <button type="button" className="btn btn-outline btn-sm btn-square btn-tone-danger" onClick={() => deleteRule(p.id)} title="Delete" aria-label={`Delete ${p.name}`}><Icon name="x" /></button>
                       </span>
                     </td>
                   </tr>

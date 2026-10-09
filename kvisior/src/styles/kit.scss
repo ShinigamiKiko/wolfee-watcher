@@ -404,7 +404,7 @@ mark.hit { background: rgba(245, 158, 11, 0.3); color: var(--warning-text); bord
 
 .settings-section + .settings-section { margin-top: 16px; }
 .secret-box { font-family: var(--font-mono); font-size: var(--fs-sm); padding: 8px 10px; background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow-wrap: anywhere; color: var(--text-primary); }
-.row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.row-actions { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 6px; }
 
 .measure { max-width: 640px; }
 .check--top { align-items: flex-start; input { margin-top: 2px; } }

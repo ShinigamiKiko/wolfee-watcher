@@ -92,6 +92,8 @@
 .progress-line--compact > span { overflow: hidden; text-overflow: ellipsis; }
 
 .btn-sm { height:27px; padding:0 10px; font-size:var(--fs-sm); border-radius:var(--radius-sm); gap:6px; }
+.btn-square { width:32px; padding:0; }
+.btn-sm.btn-square { width:27px; }
 .btn-xs { height:20px; padding:0 7px; font-size:var(--fs-2xs); font-weight:600; border-radius:4px; gap:4px; }
 .btn-xs + .btn-xs { margin-left:4px; }
 .btn-dd { font-size:12px; white-space:nowrap; }
