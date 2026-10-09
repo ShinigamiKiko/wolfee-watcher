@@ -20,8 +20,12 @@ export const TOKEN_TTL_OPTIONS = [
 export const INTEGRATION_DEFS = [
   {
     kind: 'jira',
+    group: 'alerts',
+    icon: 'ticket',
+    toggle: 'Open a Jira issue for every anomaly',
+    summary: c => [c.project, c.issue_type].filter(Boolean).join(' · '),
     label: 'Jira',
-    desc: 'Open an issue in the configured project for every anomaly. Title is "Attention: <kind>"; description carries event details.',
+    desc: 'Opens an issue titled "Attention: <kind>" with the event details.',
     fields: [
       { key: 'url',       label: 'Jira URL',     placeholder: 'https://your-org.atlassian.net', required: true },
       { key: 'email',     label: 'Email (Cloud only)', placeholder: 'you@example.com' },
@@ -32,8 +36,12 @@ export const INTEGRATION_DEFS = [
   },
   {
     kind: 'mattermost',
+    group: 'alerts',
+    icon: 'message-square',
+    toggle: 'Post alerts to Mattermost',
+    summary: c => (c.channel ? `#${c.channel}` : ''),
     label: 'Mattermost',
-    desc: 'Send alerts to a Mattermost channel through an incoming webhook.',
+    desc: 'Incoming webhook to a Mattermost channel.',
     fields: [
       { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://mm.example.com/hooks/xxxx', secret: true, required: true },
       { key: 'channel',     label: 'Channel override', placeholder: 'sec-alerts' },
@@ -42,8 +50,12 @@ export const INTEGRATION_DEFS = [
   },
   {
     kind: 'discord',
+    group: 'alerts',
+    icon: 'message-circle',
+    toggle: 'Post alerts to Discord',
+    summary: c => c.username || '',
     label: 'Discord',
-    desc: 'Send alerts to a Discord channel through an incoming webhook.',
+    desc: 'Incoming webhook to a Discord channel.',
     fields: [
       { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/…', secret: true, required: true },
       { key: 'username',    label: 'Bot username', placeholder: 'Wolfee-Watcher' },
@@ -51,8 +63,12 @@ export const INTEGRATION_DEFS = [
   },
   {
     kind: 'harbor',
+    group: 'registry',
+    icon: 'package',
+    toggle: 'Use these credentials when pulling images',
+    summary: c => (c.url ? c.url.replace(/^https?:\/\//, '') : ''),
     label: 'Harbor',
-    desc: 'Registry credentials used by the scanner to pull images for Trivy.',
+    desc: 'Registry credentials the scanner uses to pull images for Trivy.',
     fields: [
       { key: 'url',      label: 'Harbor URL',       placeholder: 'https://harbor.example.com', required: true },
       { key: 'username', label: 'Robot / user name', placeholder: 'robot$kvisior' },

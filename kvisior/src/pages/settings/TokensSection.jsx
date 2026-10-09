@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
+import { Icon } from '../../components/Icon';
 import { apiJSON, formatDate } from './settingsApi';
 import { RoleBadge, Field, SettingsSection, EditorBox, ListState } from './settingsUi';
 import { Notice } from '../../components/kit';
@@ -96,7 +97,7 @@ export function TokensSection({ toast }) {
                   <td className="t-sm t-muted">{t.expires_at ? formatDate(t.expires_at) : 'Never'}</td>
                   <td><span className={`status-dot ${expired ? 'status-warn' : 'status-active'}`}>{expired ? 'Expired' : 'Active'}</span></td>
                   <td className="row-actions-cell">
-                    {can('tokens.delete') && <button type="button" onClick={() => revoke(t)} className="btn btn-ghost btn-sm btn-tone-danger">Revoke</button>}
+                    {can('tokens.delete') && <button type="button" onClick={() => revoke(t)} className="btn btn-ghost btn-sm btn-square btn-tone-danger" title="Revoke" aria-label={`Revoke ${t.name}`}><Icon name="x" /></button>}
                   </td>
                 </tr>
               );

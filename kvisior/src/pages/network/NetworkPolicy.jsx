@@ -158,7 +158,6 @@ export function NetworkRuntime() {
   return (
     <div className="net-page">
       <div className="net-topbar">
-        <span className="net-page-title">Network Runtime</span>
         <div className="rn-main-tabs">
           {[
             { id:'graph',  label:'Graph' },

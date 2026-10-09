@@ -38,7 +38,7 @@
   background: transparent; color: var(--text-muted);
   cursor: pointer; font-family: var(--font-sans); transition: all .12s; white-space: nowrap;
   &:hover { border-color: rgba(255,255,255,.15); color: var(--text-secondary); }
-  &.active { background: rgba(0,200,255,.1); border-color: rgba(0,200,255,.3); color: var(--accent); }
+  &.active { background: rgba(59, 130, 246, .1); border-color: rgba(59, 130, 246, .3); color: var(--accent); }
   &.gpl-active { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); color: var(--danger); }
 }
 
@@ -69,7 +69,7 @@
     cursor: pointer; transition: background .1s;
     &:last-child td { border-bottom: none; }
     &:hover td { background: rgba(255,255,255,.025); }
-    &.selected td { background: rgba(0,200,255,.06) !important; }
+    &.selected td { background: rgba(59, 130, 246, .06) !important; }
     &.selected td:first-child { border-left: 2px solid var(--accent); }
   }
 }

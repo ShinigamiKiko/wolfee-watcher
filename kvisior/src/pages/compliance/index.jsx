@@ -109,8 +109,6 @@ export function Compliance() {
     <div className="co-page">
       <div className="co-header">
         <div>
-          <span className="co-header-title">Compliance</span>
-          <span className="co-header-sep">·</span>
           <span className="co-header-sub">CIS Kubernetes · NIST 800-190 · PCI DSS · HIPAA · FSTEC 118</span>
         </div>
         <div className="co-header-right">

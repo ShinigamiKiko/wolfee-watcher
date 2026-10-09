@@ -157,16 +157,16 @@ export function UsersSection({ toast }) {
             {(users || []).map(u => (
               <tr key={u.id}>
                 <td className="td-primary mono t-sm">{u.username}</td>
-                <td className="t-sm t-muted">{u.full_name || '—'}</td>
+                <td className="t-sm t-muted wrap">{u.full_name || '—'}</td>
                 <td className="t-sm t-muted">{u.email || '—'}</td>
-                <td className="t-sm t-muted">{u.group_name || '—'}</td>
+                <td className="t-sm t-muted wrap">{u.group_name || '—'}</td>
                 <td><RoleBadge role={u.role} /></td>
                 <td><RoleBadge role={u.effective_role} /></td>
                 <td className="row-actions-cell">
                   <span className="row-actions">
                     {can('users.write') && <button type="button" onClick={() => startEdit(u)} className="btn btn-ghost btn-sm">Edit</button>}
-                    {can('users.write') && <button type="button" onClick={() => resetPassword(u)} className="btn btn-ghost btn-sm">Reset password</button>}
-                    {can('users.delete') && <button type="button" onClick={() => remove(u)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>}
+                    {can('users.write') && <button type="button" onClick={() => resetPassword(u)} className="btn btn-ghost btn-sm btn-square" title="Reset password" aria-label={`Reset password for ${u.username}`}><Icon name="lock" /></button>}
+                    {can('users.delete') && <button type="button" onClick={() => remove(u)} className="btn btn-ghost btn-sm btn-square btn-tone-danger" title="Remove" aria-label={`Remove ${u.username}`}><Icon name="x" /></button>}
                   </span>
                 </td>
               </tr>

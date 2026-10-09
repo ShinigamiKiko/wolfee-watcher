@@ -1,3 +1,5 @@
+import { Icon } from './Icon';
+
 export const PAGE_SIZES = [50, 100, 150];
 
 const num = n => Number(n).toLocaleString();
@@ -20,9 +22,9 @@ export function Pager({ total, page, pageSize, onPage, onPageSize, noun = 'rows'
         </div>
         {range == null && pages > 1 && <span className="pager__pos">{page} / {pages}</span>}
         <button type="button" className="btn btn-outline btn-sm" disabled={!prevOk || busy}
-          onClick={() => (onPrev ? onPrev() : onPage(page - 1))}>Previous</button>
+          onClick={() => (onPrev ? onPrev() : onPage(page - 1))}><Icon name="chevron-left" />Prev</button>
         <button type="button" className="btn btn-outline btn-sm" disabled={!nextOk || busy}
-          onClick={() => (onNext ? onNext() : onPage(page + 1))}>Next</button>
+          onClick={() => (onNext ? onNext() : onPage(page + 1))}>Next<Icon name="chevron-right" /></button>
       </div>
     </div>
   );

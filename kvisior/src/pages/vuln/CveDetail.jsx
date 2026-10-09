@@ -14,7 +14,7 @@ const VEX_LABEL = {
   unknown:             { icon: 'help',         text: 'Unknown',             tone: 'muted' },
 };
 
-const TONE_COLOR = { danger: 'var(--danger)', warning: 'var(--warning)', info: 'var(--info)', ok: 'var(--ok-text)' };
+const TONE_COLOR = { danger: 'var(--danger)', orange: 'var(--orange)', warning: 'var(--warning)', low: 'var(--text-muted)', info: 'var(--info)', ok: 'var(--ok-text)' };
 
 export function RiskBox({ score, label, inset, note }) {
   const tone = sevTone(label);

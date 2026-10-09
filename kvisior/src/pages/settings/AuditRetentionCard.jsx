@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
 import { apiJSON } from './settingsApi';
+import { Field } from '../../components/kit';
+import { SettingsRow, SettingsActions } from './settingsUi';
 
 const CHOICES = [1, 3, 7, 14, 21, 30];
 
@@ -26,9 +28,10 @@ export function AuditRetentionCard({ toast }) {
 
   if (!view) {
     return (
-      <div className={`pane empty-state empty-state--compact settings-section ${error ? 't-danger' : ''}`}>
-        {error ? `Failed to load the audit log retention: ${error}` : 'Loading the audit log retention…'}
-      </div>
+      <SettingsRow icon="clock" title="Audit log retention" desc="How long audit events, silenced events and rollups are kept."
+        status={error ? 'Unavailable' : 'Loading…'} tone={error ? 'danger' : 'muted'}>
+        <p className={`set-lead ${error ? 't-danger' : ''}`}>{error ? `Failed to load the audit log retention: ${error}` : 'Loading the audit log retention…'}</p>
+      </SettingsRow>
     );
   }
 
@@ -63,27 +66,21 @@ export function AuditRetentionCard({ toast }) {
       : 'Taken from AUDIT_RETENTION_HOURS when the hub first started';
 
   return (
-    <section className="pane settings-section">
-      <div className="pane-head">
-        <div className="grow">
-          <div className="pane-title">Audit log retention</div>
-          <div className="pane-sub">
-            How long audit events, silenced events and rollups are kept. One value applies to every cluster that shares the database.
-          </div>
-          <div className={`t-xs mt-8 ${view.synced ? 't-muted' : 't-warning'}`}>
-            {view.synced ? note : 'Waiting for the hub value: nothing is deleted until it is read.'}
-          </div>
-        </div>
-        <div className="row shrink-0">
-          <select className="input input--narrow" value={choice} disabled={!editable || busy}
-            onChange={e => setChoice(Number(e.target.value))} aria-label="Retention in days">
-            {options.map(d => <option key={d} value={d}>{d} {d === 1 ? 'day' : 'days'}</option>)}
-          </select>
-          {editable && (
-            <button type="button" className="btn btn-primary" disabled={busy || choice === current} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
-          )}
-        </div>
-      </div>
-    </section>
+    <SettingsRow icon="clock" title="Audit log retention" desc="How long audit events, silenced events and rollups are kept."
+      summary={`${current} ${current === 1 ? 'day' : 'days'}`}
+      status={view.synced ? (view.editable ? null : 'Set on the hub') : 'Waiting for the hub'} tone={view.synced ? 'muted' : 'warning'}>
+      <p className="set-lead">One value applies to every cluster that shares the database. Shortening it deletes older events within the next hour.</p>
+      <Field label="Keep audit events for" htmlFor="audit-retention" className="set-narrow">
+        <select id="audit-retention" className="input input--block" value={choice} disabled={!editable || busy}
+          onChange={e => setChoice(Number(e.target.value))}>
+          {options.map(d => <option key={d} value={d}>{d} {d === 1 ? 'day' : 'days'}</option>)}
+        </select>
+      </Field>
+      <SettingsActions aside={<span className={`set-actions-note ${view.synced ? '' : 't-warning'}`}>{view.synced ? note : 'Waiting for the hub value: nothing is deleted until it is read.'}</span>}>
+        {editable && (
+          <button type="button" className="btn btn-primary" disabled={busy || choice === current} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        )}
+      </SettingsActions>
+    </SettingsRow>
   );
 }

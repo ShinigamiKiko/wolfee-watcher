@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePerms } from '../../context/PermissionsContext';
+import { Icon } from '../../components/Icon';
 import { apiJSON, formatDate } from './settingsApi';
 import { RoleBadge, Field, SettingsSection, EditorBox, ListState } from './settingsUi';
 import { ROLE_OPTIONS } from './settingsConstants';
@@ -78,7 +79,7 @@ export function GroupSection({ toast }) {
                 <td className="row-actions-cell">
                   <span className="row-actions">
                     {can('groups.write') && <button type="button" onClick={() => startEdit(g)} className="btn btn-ghost btn-sm">Edit</button>}
-                    {can('groups.delete') && <button type="button" onClick={() => remove(g)} className="btn btn-ghost btn-sm btn-tone-danger">Remove</button>}
+                    {can('groups.delete') && <button type="button" onClick={() => remove(g)} className="btn btn-ghost btn-sm btn-square btn-tone-danger" title="Remove" aria-label={`Remove ${g.name}`}><Icon name="x" /></button>}
                   </span>
                 </td>
               </tr>

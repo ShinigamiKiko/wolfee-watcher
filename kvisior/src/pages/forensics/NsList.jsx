@@ -8,7 +8,6 @@ export function NsList({ namespaces, pods, eventSummary = [], anomalyEvents = []
     <div className="fns-nslist">
       <div className="fns-nslist-hdr">
         <div>
-          <div className="fns-page-title">Forensics</div>
           <div className="fns-page-sub">Select namespace to explore pod runtime-event history</div>
         </div>
         <div className="row">

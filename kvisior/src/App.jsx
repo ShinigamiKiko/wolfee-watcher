@@ -69,10 +69,11 @@ function ClusteredShell() {
     <BridgeProvider key={current}>
       <ScannerProvider>
         <SensorProvider>
-          <Topbar />
-          <ClusterBanner />
           <div className="layout">
             <Sidebar />
+            <div className="shell-main">
+            <Topbar />
+            <ClusterBanner />
             <main className="main">
               <RouteErrorBoundary>
               <Suspense fallback={<div className="page-loading">Loading…</div>}>
@@ -104,6 +105,7 @@ function ClusteredShell() {
               </Suspense>
               </RouteErrorBoundary>
             </main>
+            </div>
           </div>
           <ToastStack />
           <Modal />

@@ -5,6 +5,7 @@ import { INTEGRATION_DEFS } from './settingsConstants';
 import { AuditLogSourceCard } from './AuditLogSourceCard';
 import { AuditRetentionCard } from './AuditRetentionCard';
 import { Field, Switch, Notice } from '../../components/kit';
+import { SettingsGroup, SettingsRow, SettingsActions, SettingsToggle } from './settingsUi';
 
 function mergeWithStored(def, values, record) {
   const out = {};
@@ -115,47 +116,40 @@ function IntegrationCard({ def, record, onSaved, toast }) {
   };
 
   const isConfigured = !!record;
-  const statusLabel = !isConfigured ? 'Not configured' : enabled ? 'Enabled' : 'Disabled';
-  const statusTone = !isConfigured ? 't-muted' : enabled ? 't-ok' : 't-warning';
+  const live = !!record?.enabled;
+  const statusLabel = !isConfigured ? 'Not configured' : live ? 'Connected' : 'Disabled';
+  const tone = !isConfigured ? 'muted' : live ? 'ok' : 'warning';
   const writable = can('integrations.write');
   const wide = key => key === 'webhook_url' || key === 'url';
+  const summary = def.summary?.(record?.config || {});
 
   return (
-    <section className="pane settings-section">
-      <div className="pane-head">
-        <div className="grow">
-          <div className="pane-title">{def.label}</div>
-          <div className="pane-sub">{def.desc}</div>
-        </div>
-        <span className={`row t-sm ${statusTone}`}>
-          <Switch checked={enabled} disabled={!writable} onChange={setEnabled} label={`${def.label} enabled`} />
-          {statusLabel}
-        </span>
+    <SettingsRow icon={def.icon} title={def.label} desc={def.desc} summary={isConfigured ? summary : null} status={statusLabel} tone={tone}>
+      <SettingsToggle label={def.toggle} hint={enabled === live ? null : 'Takes effect after Save'}>
+        <Switch checked={enabled} disabled={!writable} onChange={setEnabled} label={`${def.label} enabled`} />
+      </SettingsToggle>
+      <div className="fields fields--2">
+        {def.fields.map(f => (
+          <Field key={f.key} className={wide(f.key) ? 'span-2' : undefined} htmlFor={`int-${def.kind}-${f.key}`}
+            label={<>{f.label}{f.required && <span className="t-danger"> *</span>}</>}>
+            <input id={`int-${def.kind}-${f.key}`} type={f.secret ? 'password' : 'text'} placeholder={f.placeholder || ''}
+              value={values[f.key] ?? ''} disabled={!writable} className={`input input--block${f.secret || wide(f.key) ? ' input--mono' : ''}`}
+              onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+          </Field>
+        ))}
       </div>
-      <div className="pane-body">
-        <div className="fields fields--2">
-          {def.fields.map(f => (
-            <Field key={f.key} className={wide(f.key) ? 'span-2' : undefined} htmlFor={`int-${def.kind}-${f.key}`}
-              label={<>{f.label}{f.required && <span className="t-danger"> *</span>}</>}>
-              <input id={`int-${def.kind}-${f.key}`} type={f.secret ? 'password' : 'text'} placeholder={f.placeholder || ''}
-                value={values[f.key] ?? ''} disabled={!writable} className="input input--block"
-                onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
-            </Field>
-          ))}
-        </div>
-        <div className="row">
-          {writable && (
-            <button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
-          )}
-          <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={test}>{busy === 'test' ? 'Testing…' : 'Test connection'}</button>
-          <span className="grow" />
-          {isConfigured && writable && (
-            <button type="button" disabled={!!busy} onClick={remove} className="btn btn-ghost btn-tone-danger">{busy === 'del' ? 'Removing…' : 'Remove'}</button>
-          )}
-        </div>
-        {record?.updated_at && <div className="field-hint mt-8">Last updated {new Date(record.updated_at).toLocaleString()}</div>}
-      </div>
-    </section>
+      <SettingsActions aside={<>
+        <button type="button" className="btn btn-outline" disabled={!!busy} onClick={test}>{busy === 'test' ? 'Testing…' : 'Test connection'}</button>
+        {isConfigured && writable && (
+          <button type="button" disabled={!!busy} onClick={remove} className="btn btn-ghost btn-tone-danger">{busy === 'del' ? 'Removing…' : 'Remove'}</button>
+        )}
+      </>}>
+        {record?.updated_at && <span className="set-actions-note">Updated {new Date(record.updated_at).toLocaleString()}</span>}
+        {writable && (
+          <button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
+        )}
+      </SettingsActions>
+    </SettingsRow>
   );
 }
 
@@ -179,29 +173,36 @@ export function IntegrationsSection({ toast }) {
 
   useEffect(() => { reload(); }, []);
 
-  if (error) {
-    return (
-      <div>
-        <AuditLogSourceCard toast={toast} />
-        <AuditRetentionCard toast={toast} />
-        <Notice tone="danger" className="settings-section">
+  const audit = (
+    <SettingsGroup title="Kubernetes audit" desc="Where audit events come from and how long they are kept.">
+      <AuditLogSourceCard toast={toast} />
+      <AuditRetentionCard toast={toast} />
+    </SettingsGroup>
+  );
+  const rows = group => (items == null
+    ? <div className="set-row-loading">Loading integrations…</div>
+    : INTEGRATION_DEFS.filter(d => d.group === group).map(def => (
+      <IntegrationCard key={def.kind} def={def} record={items[def.kind]} onSaved={reload} toast={toast} />
+    )));
+
+  return (
+    <div className="set-stack">
+      {audit}
+      {error ? (
+        <Notice tone="danger">
           <div>Failed to load integrations: {error}</div>
           <button type="button" className="btn btn-ghost btn-sm mt-8" onClick={reload}>Retry</button>
         </Notice>
-      </div>
-    );
-  }
-  if (items == null) {
-    return <div className="pane empty-state empty-state--compact">Loading integrations…</div>;
-  }
-
-  return (
-    <div>
-      <AuditLogSourceCard toast={toast} />
-      <AuditRetentionCard toast={toast} />
-      {INTEGRATION_DEFS.map(def => (
-        <IntegrationCard key={def.kind} def={def} record={items[def.kind]} onSaved={reload} toast={toast} />
-      ))}
+      ) : (
+        <>
+          <SettingsGroup title="Alert destinations" desc="Where anomalies and alerts are delivered. Every enabled destination receives each alert.">
+            {rows('alerts')}
+          </SettingsGroup>
+          <SettingsGroup title="Registries" desc="Credentials the scanner uses to pull images.">
+            {rows('registry')}
+          </SettingsGroup>
+        </>
+      )}
     </div>
   );
 }

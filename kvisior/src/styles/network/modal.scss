@@ -151,7 +151,7 @@
   letter-spacing: 0.08em;
   color: var(--accent);
   padding: 4px 0 2px;
-  border-bottom: 1px solid rgba(0,200,255,0.12);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.12);
   margin-top: 4px;
 }
 
@@ -236,9 +236,9 @@
     &:hover { border-color: var(--accent); color: var(--accent); }
   }
   &--primary {
-    background: var(--accent);
-    color: var(--bg-base);
-    &:hover { background: #00e0ff; }
+    background: var(--accent-solid);
+    color: #fff;
+    &:hover { background: var(--accent-solid-hover); }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   }
   &--danger {

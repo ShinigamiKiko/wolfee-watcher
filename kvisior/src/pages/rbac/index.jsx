@@ -347,8 +347,6 @@ export function RBAC() {
 
       <div className="rbac-header">
         <div className="rbac-header-left">
-          <span className="rbac-title">RBAC Audit</span>
-          <span className="rbac-header-sep">·</span>
           <span className="rbac-header-sub">{stats.total} roles · refresh every 5m</span>
         </div>
         <div className="rbac-header-right">

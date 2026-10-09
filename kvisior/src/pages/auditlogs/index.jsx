@@ -91,7 +91,6 @@ export function AuditLogs() {
   return (
     <div className="page active aul-page">
       <div className="page-header aul-header">
-        <div className="page-title">Audit logs</div>
         <div className="aul-sources">
           <span className="aul-source">
             <span className={`aul-dot${admissionSeen ? '' : ' off'}`} />

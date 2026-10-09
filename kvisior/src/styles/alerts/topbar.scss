@@ -108,7 +108,7 @@
   &--high   { border-color: rgba(239,68,68,.3);  &:hover { border-color: var(--danger); } }
   &--medium { border-color: rgba(245,158,11,.3); &:hover { border-color: var(--warning); } }
   &--total  { border-color: var(--border);       &:hover { border-color: var(--accent); } }
-  &--active { border-color: var(--accent); background: rgba(0,200,255,.07); }
+  &--active { border-color: var(--accent); background: rgba(59, 130, 246, .07); }
 }
 
 .al-counter-n {

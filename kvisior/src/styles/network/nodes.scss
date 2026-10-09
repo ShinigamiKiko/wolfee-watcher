@@ -12,7 +12,7 @@
 
   &:hover {
     border-color: var(--accent);
-    box-shadow: 0 0 0 1px rgba(0,200,255,0.15), 0 4px 20px rgba(0,0,0,0.4);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15), 0 4px 20px rgba(0,0,0,0.4);
   }
 
   &--virtual {
@@ -22,7 +22,7 @@
 
   &--selected {
     border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px rgba(0,200,255,0.25), 0 4px 24px rgba(0,0,0,0.5) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25), 0 4px 24px rgba(0,0,0,0.5) !important;
   }
 }
 
@@ -81,11 +81,11 @@
 
   .rn-node:hover & {
     border-color: var(--accent);
-    box-shadow: 0 0 16px rgba(0,200,255,0.2);
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.2);
   }
   .rn-node--selected & {
     border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px rgba(0,200,255,0.2), 0 0 24px rgba(0,200,255,0.25) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), 0 0 24px rgba(59, 130, 246, 0.25) !important;
   }
   .rn-node--external & { color: var(--danger); border-color: rgba(239,68,68,0.4); }
   .rn-node--recon &    { color: var(--warning); border-color: rgba(245,158,11,0.6); animation: rn-pulse 2s ease-in-out infinite; }

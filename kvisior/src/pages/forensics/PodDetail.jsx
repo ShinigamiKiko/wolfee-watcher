@@ -616,7 +616,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
             <span className="fns-section-title">Runtime events</span>
             <span className="fns-section-count">{visibleEvents.length} events{activeContainer ? ` · ${activeContainer}` : ''}</span>
           </div>
-          <DataWindow label="Runtime events" deps={[contentTab, windowH, activeContainer]}
+          <DataWindow label="Runtime events" fit={false} className="fns-events-window" deps={[contentTab, windowH, activeContainer]}
             footer={<Pager total={visibleEvents.length} page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} />}>
           <div className="fns-etable">
             <div className="fns-etable-hdr dw-sticky">

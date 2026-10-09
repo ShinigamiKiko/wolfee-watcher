@@ -118,7 +118,7 @@
 .rbac-subj {
   padding: 1px 5px; border-radius: 4px; font-size: 9px;
   font-family: 'JetBrains Mono', monospace; border: 1px solid; white-space: nowrap;
-  &--sa    { background: rgba(0,200,255,.08); color: #67e8f9; border-color: rgba(0,200,255,.2); }
+  &--sa    { background: rgba(59, 130, 246, .08); color: #67e8f9; border-color: rgba(59, 130, 246, .2); }
   &--user  { background: rgba(124,58,237,.1); color: #c4b5fd; border-color: rgba(124,58,237,.25); }
   &--group { background: rgba(16,185,129,.08); color: #6ee7b7; border-color: rgba(16,185,129,.2); }
 }
@@ -131,7 +131,7 @@
   &--ok       { background: rgba(16,185,129,.12); color: #10b981; border-color: rgba(16,185,129,.3); }
   &--critical { background: rgba(239,68,68,.1); color: #ef4444; border-color: rgba(239,68,68,.25); }
   &--high     { background: rgba(245,158,11,.1); color: #f59e0b; border-color: rgba(245,158,11,.25); }
-  &--medium   { background: rgba(0,200,255,.08); color: var(--accent); border-color: rgba(0,200,255,.2); }
+  &--medium   { background: rgba(59, 130, 246, .08); color: var(--accent); border-color: rgba(59, 130, 246, .2); }
   &--low      { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
 }
 .rbac-flag-list { display: flex; flex-wrap: wrap; gap: 3px; }
