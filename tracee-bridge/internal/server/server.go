@@ -20,12 +20,16 @@ import (
 func defaultComponents() []string {
 	return []string{
 		"tracee-bridge|Tracee Bridge|deployment|tracee-bridge",
+		"kvisior-ui|UI and API|deployment|kvisior-ui",
 		"scanner-agent|Scanner Agent|deployment|scanner-agent",
 		"tracee-ebpf|Tracee eBPF|daemonset|tracee",
 		"kafka|Kafka|statefulset|kafka",
 		"postgres|PostgreSQL|statefulset|postgres",
 		"sensor|Sensor|deployment|sensor",
-		"sentry-audit|Sentry Audit|deployment|sentry-audit",
+		"sentry-audit|Sentry Audit|statefulset|sentry-audit",
+		"sentry-audit-logtail|Audit Log Tail|daemonset|sentry-audit-logtail",
+		"kvisior-audit-ingest|Audit Ingest|deployment|kvisior-audit-ingest",
+		"kvisior-audit-processor|Audit Processor|deployment|kvisior-audit-processor",
 		"anomaly-detector|Anomaly Detector|deployment|anomaly-detector",
 		"honey-operator|Honey Operator|deployment|honey-operator",
 		"audit-runner|Audit Runner|deployment|audit-runner",

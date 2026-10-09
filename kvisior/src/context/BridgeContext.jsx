@@ -9,6 +9,26 @@ const BridgeCtx = createContext(null);
 export const useBridge = () => useContext(BridgeCtx);
 
 const MAX_EVENTS = 10_000;
+const PAGE_SIZE = 1_000;
+const HISTORY_CAP = 20_000;
+
+async function fetchPaged(url, pick) {
+  const out = [];
+  let since = 0;
+  while (out.length < HISTORY_CAP) {
+    const r = await apiFetch(url(since, PAGE_SIZE), { credentials: 'same-origin' });
+    if (!r.ok) break;
+    const rows = pick(await r.json()) || [];
+    if (!rows.length) break;
+    out.push(...rows);
+    const last = rows.reduce((m, x) => Math.max(m, Number(x.id) || 0), 0);
+    if (rows.length < PAGE_SIZE || last <= since) break;
+    since = last;
+  }
+  return out;
+}
+
+const eventKey = e => String(e.id ?? e.ts ?? '');
 const TS_WINDOW  = 60;
 
 function pushCapped(arr, item) {
@@ -72,7 +92,7 @@ export function BridgeProvider({ children }) {
 
     const connect = () => {
       if (!alive) return;
-      es = new EventSource(sseUrl(sseUrl('/v1/stream')));
+      es = new EventSource(sseUrl('/v1/stream'));
 
       es.onopen = () => {
         setConnected(true);
@@ -138,7 +158,7 @@ export function BridgeProvider({ children }) {
                 const key = `${v.id ?? v.ts}_${v._ruleId ?? ''}`;
                 if (prev.some(x => `${x.id ?? x.ts}_${x._ruleId ?? ''}` === key)) return prev;
               }
-              return [...prev, v].slice(-5_000);
+              return [...prev, v].slice(-HISTORY_CAP);
             });
             break;
           }
@@ -167,7 +187,7 @@ export function BridgeProvider({ children }) {
               if (v._fp) {
                 if (prev.some(x => x._fp === v._fp)) return prev;
               }
-              return [...prev, v].slice(-5_000);
+              return [...prev, v].slice(-HISTORY_CAP);
             });
             break;
           }
@@ -178,9 +198,9 @@ export function BridgeProvider({ children }) {
 
           case 'anomaly_event': {
             setAnomalyEvents(prev => {
-              const key = data.id ?? data.ts;
-              if (key != null && prev.some(e => (e.id ?? e.ts) === key)) return prev;
-              return [...prev, data].slice(-5_000);
+              const key = eventKey(data);
+              if (key && prev.some(e => eventKey(e) === key)) return prev;
+              return [...prev, data].slice(-HISTORY_CAP);
             });
             break;
           }
@@ -225,11 +245,10 @@ export function BridgeProvider({ children }) {
 
   useEffect(() => {
     let alive = true;
-    apiFetch('/v1/violations?type=syscall&limit=1000', { credentials: 'same-origin' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!alive || !Array.isArray(data?.violations)) return;
-        const loaded = data.violations.map(row => {
+    fetchPaged((since, limit) => `/v1/violations?type=syscall&limit=${limit}&since=${since}`, d => d?.violations)
+      .then(rows => {
+        if (!alive) return;
+        const loaded = rows.map(row => {
           const raw = (row.data && typeof row.data === 'object') ? row.data : {};
           return {
             ...raw,
@@ -248,7 +267,7 @@ export function BridgeProvider({ children }) {
             if (v._fp) seen.add(v._fp);
             merged.push(v);
           }
-          return merged.slice(-5_000);
+          return merged.slice(-HISTORY_CAP);
         });
       })
       .catch(() => {});
@@ -257,11 +276,10 @@ export function BridgeProvider({ children }) {
 
   useEffect(() => {
     let alive = true;
-    apiFetch('/v1/violations?type=audit&limit=1000', { credentials: 'same-origin' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!alive || !Array.isArray(data?.violations)) return;
-        const loaded = data.violations.map(row => {
+    fetchPaged((since, limit) => `/v1/violations?type=audit&limit=${limit}&since=${since}`, d => d?.violations)
+      .then(rows => {
+        if (!alive) return;
+        const loaded = rows.map(row => {
           const raw = (row.data && typeof row.data === 'object') ? row.data : {};
           return {
             _eventId:  raw.id,
@@ -300,7 +318,28 @@ export function BridgeProvider({ children }) {
             if (v._fp) seen.add(v._fp);
             merged.push(v);
           }
-          return merged.slice(-5_000);
+          return merged.slice(-HISTORY_CAP);
+        });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetchPaged((since, limit) => `/anomaly/api/anomalies?since=${since}&limit=${limit}`, d => d?.events)
+      .then(rows => {
+        if (!alive) return;
+        setAnomalyEvents(prev => {
+          const seen = new Set(prev.map(eventKey).filter(Boolean));
+          const merged = [...prev];
+          for (const e of rows) {
+            const key = eventKey(e);
+            if (key && seen.has(key)) continue;
+            if (key) seen.add(key);
+            merged.push(e);
+          }
+          return merged.slice(-HISTORY_CAP);
         });
       })
       .catch(() => {});

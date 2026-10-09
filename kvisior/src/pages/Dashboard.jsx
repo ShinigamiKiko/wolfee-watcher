@@ -81,6 +81,9 @@ export function Dashboard() {
   const topWorkloads = Object.entries(wlCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxWl = topWorkloads[0]?.[1] || 1;
 
+  const failedScans = (results || []).filter(r => r.status === 'error' || r.error).length;
+  const scannedImages = (results || []).length - failedScans;
+
   const images = [...(results || [])]
     .filter(r => (r.summary?.total || 0) > 0)
     .sort((a, b) => (b.summary?.critical || 0) - (a.summary?.critical || 0) || (b.summary?.total || 0) - (a.summary?.total || 0))
@@ -119,7 +122,8 @@ export function Dashboard() {
           <SectionLabel>Supply chain</SectionLabel>
           <div className="stats-grid stats-grid--3">
             <Stat label="Critical CVEs" icon="alert" tone="danger" value={num(summary?.critical)} sub={`${num(summary?.inKev)} in CISA KEV`} onClick={() => navigate('/vulnmgmt')} />
-            <Stat label="Images" icon="package" value={num(results?.length)} sub={agentOnline ? 'scanned with Trivy' : 'scanner offline'} />
+            <Stat label="Images" icon="package" value={num(scannedImages)}
+              sub={!agentOnline ? 'scanner offline' : failedScans > 0 ? `${failedScans} failed to scan` : 'scanned with Trivy'} />
             <Stat label="Fixable" icon="circle-check" tone="ok" value={num(summary?.fixable)} sub={`of ${num(cveTotal)} findings`} />
           </div>
         </section>
