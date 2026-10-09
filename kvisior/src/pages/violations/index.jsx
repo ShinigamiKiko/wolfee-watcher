@@ -23,6 +23,18 @@ import { SilencedPanel } from './SilencedPanel';
 import { LSM_NAMES } from '../lsm/lsmCatalog';
 import { TRACEPOINT_NAMES } from '../tracepoints/tracepointsCatalog';
 import { Icon } from '../../components/Icon';
+import { originOf } from '../../utils/origin';
+
+function PodCell({ v }) {
+  const origin = originOf(v);
+  if (!origin) return v.pod;
+  return (
+    <span className="row row--tight" title={origin.hint}>
+      <span className="tag tag--low">{origin.label}</span>
+      {origin.shortId && <span className="mono t-xs t-muted">{origin.shortId}</span>}
+    </span>
+  );
+}
 
 const POSTURE_REFRESH_MS = 60_000;
 
@@ -427,8 +439,8 @@ export function Violations() {
               : paginate(sortRows(rows, cols, timeOf)).map((v, i) => (
                   <tr key={i} {...rowProps(v)}>
                     <td className="t-xs t-muted">{v.ts ? when(v.ts) : v.time || '—'}</td>
-                    <td className="t-sm">{v.pod}</td>
-                    <td className="t-sm t-muted">{v.namespace}</td>
+                    <td className="t-sm"><PodCell v={v} /></td>
+                    <td className="t-sm t-muted">{originOf(v) ? '—' : v.namespace}</td>
                     <td className="mono t-xs">{v.process || '—'}</td>
                     <td className="mono t-xs t-accent clip clip--md">{v.cmdline || <span className="t-muted">—</span>}</td>
                     <td className="mono t-xs t-muted">{v.uid != null ? v.uid : '—'}</td>

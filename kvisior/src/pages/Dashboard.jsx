@@ -5,6 +5,7 @@ import { useSensor } from '../context/SensorContext';
 import { SevBadge } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PageHeader, Stat, Meter, Pane, Metrics, Ring, SevBar, SectionLabel, cx } from '../components/kit';
+import { originOf } from '../utils/origin';
 
 const SEVS = [
   ['CRITICAL', 'critical', 'var(--danger)'],
@@ -188,7 +189,7 @@ export function Dashboard() {
                 <SevBadge sev={String(v.sev || v.severity || '').toUpperCase()} />
                 <span className="issue-main">
                   <span className="issue-title">{v._ruleName || v.syscall || v.name || 'Violation'}</span>
-                  <span className="issue-sub">{v.namespace || '—'} / {v.pod || '—'}</span>
+                  <span className="issue-sub">{originOf(v) ? `${originOf(v).title}${originOf(v).shortId ? ` · ${originOf(v).shortId}` : ''}` : `${v.namespace || '—'} / ${v.pod || '—'}`}</span>
                   <span className="issue-meta mono">{[v.syscall || v.eventName, v.process || v.processName].filter(Boolean).join(' · ') || '—'}</span>
                 </span>
                 <span className="issue-end">{timeLabel(v)}</span>

@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { SevBadge } from '../../components/ui';
 import { SYSCALL_BY_NAME } from '../../data/syscalls';
-import { SidePanel, DetailSection, SubTabs, KV, Score } from '../../components/kit';
+import { SidePanel, DetailSection, SubTabs, KV, Score, Notice } from '../../components/kit';
+import { originOf, containerIdOf } from '../../utils/origin';
 import { Icon } from '../../components/Icon';
 
 const pick = (v, key) => (v[key] && v[key] !== '—' ? v[key] : (v._raw?.[key] || '—'));
@@ -18,11 +19,14 @@ export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, ru
 
   const syscallMeta = SYSCALL_BY_NAME?.[v.syscall] || null;
   const isRoot = v.uid === 0;
+  const origin = originOf(v);
+  const containerId = containerIdOf(v);
+  const originText = origin ? `${origin.label}${origin.shortId ? ` · ${origin.shortId}` : ''}` : null;
 
   return (
     <SidePanel
       title={<span className="mono">{v.syscall}</span>}
-      meta={`${v.namespace} · ${v.node}`}
+      meta={`${origin ? origin.title : v.namespace} · ${v.node}`}
       onClose={onClose}
       actions={<>
         <SevBadge sev={v.sev} />
@@ -34,6 +38,12 @@ export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, ru
       tabs={<SubTabs tabs={[{ id: 'violation', label: 'Violation' }, { id: 'deployment', label: 'Deployment' }, { id: 'policy', label: 'Policy' }]} active={tab} onChange={setTab} />}
     >
       {tab === 'violation' && <>
+        {origin && (
+          <Notice icon="info">
+            <div className="t-strong">{origin.title}{origin.shortId && <span className="mono t-muted"> · {origin.shortId}</span>}</div>
+            <div className="t-sm t-secondary mt-4">{origin.hint}</div>
+          </Notice>
+        )}
         <div className="dp-lead">
           Syscall <span className="mono t-accent">{v.syscall}</span>
           {syscallMeta && <> — {syscallMeta.desc}</>}
@@ -51,9 +61,10 @@ export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, ru
             ['Syscall', v.syscall],
             ['Severity', v._matchedRule?.sev || v.sev],
             ['Policy', v._matchedRule?.name || '—'],
-            ['Pod', pick(v, 'pod')],
-            ['Namespace', pick(v, 'namespace')],
+            ['Pod', originText || pick(v, 'pod')],
+            ['Namespace', origin ? 'not in Kubernetes' : pick(v, 'namespace')],
             ['Node', pick(v, 'node')],
+            containerId ? ['Container ID', <span className="mono" title={containerId}>{containerId.slice(0, 12)}</span>] : null,
             ['Process', pick(v, 'process')],
             ['PID', v.pid],
             ['UID', v.uid],
@@ -67,7 +78,7 @@ export function SyscallDetail({ v, onClose, onFp, onResolve, getMatchedRules, ru
       {tab === 'deployment' && <>
         <DetailSection title="Workload">
           <div className="score-grid score-grid--2">
-            {[['Pod', v.pod], ['Namespace', v.namespace], ['Node', v.node], ['Cluster', v.cluster]].map(([k, val]) => (
+            {[['Pod', originText || v.pod], ['Namespace', origin ? 'not in Kubernetes' : v.namespace], ['Node', v.node], ['Cluster', v.cluster]].map(([k, val]) => (
               <Score key={k} label={k} value={<span className="clip">{val || '—'}</span>} className="t-sm t-medium" />
             ))}
           </div>
