@@ -74,6 +74,8 @@ spec:
               value: "http://kvisior-ui.{{ include "kvisior.namespace" . }}.svc.cluster.local:80"
             - name: INTERNAL_PUSH_SECRET
               value: {{ .Values.global.internalPushSecret | quote }}
+            - name: HONEYPOT_EVENT_RETENTION_DAYS
+              value: {{ .Values.honeyOperator.eventRetentionDays | quote }}
             - name: CLUSTER_ID
               value: {{ .Values.global.clusterId | quote }}
             - name: POD_NAMESPACE

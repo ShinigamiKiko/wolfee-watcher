@@ -52,6 +52,7 @@ const (
 	KindIOUring          AnomalyKind = "io_uring"
 	KindUnexpectedBinary AnomalyKind = "unexpected_binary"
 	KindBinaryTampering  AnomalyKind = "binary_tampering"
+	KindHoneypotProbe    AnomalyKind = "honeypot_probe"
 )
 
 type AnomalyEvent struct {
@@ -59,13 +60,22 @@ type AnomalyEvent struct {
 	Ts   time.Time   `json:"ts"`
 	Kind AnomalyKind `json:"kind"`
 
-	SrcNamespace  string `json:"src_namespace"`
-	SrcDeployment string `json:"src_deployment"`
-	SrcPod        string `json:"src_pod"`
-	SrcNode       string `json:"src_node"`
-	SrcProcess    string `json:"src_process"`
-	SrcIP         string `json:"src_ip,omitempty"`
-	SrcContainer  string `json:"src_container,omitempty"`
+	SrcNamespace      string `json:"src_namespace"`
+	SrcDeployment     string `json:"src_deployment"`
+	SrcPod            string `json:"src_pod"`
+	SrcNode           string `json:"src_node"`
+	SrcProcess        string `json:"src_process"`
+	SrcIP             string `json:"src_ip,omitempty"`
+	SrcContainer      string `json:"src_container,omitempty"`
+	SrcServiceAccount string `json:"src_service_account,omitempty"`
+	SrcPID            string `json:"src_pid,omitempty"`
+	SrcUID            string `json:"src_uid,omitempty"`
+	SrcCmdline        string `json:"src_cmdline,omitempty"`
+
+	HoneypotID      string `json:"honeypot_id,omitempty"`
+	HoneypotName    string `json:"honeypot_name,omitempty"`
+	HoneypotService string `json:"honeypot_service,omitempty"`
+	HoneypotKind    string `json:"honeypot_kind,omitempty"`
 
 	DstIP      string `json:"dst_ip,omitempty"`
 	DstPort    uint32 `json:"dst_port,omitempty"`
@@ -97,6 +107,7 @@ type Consumer struct {
 	check     *checker.Checker
 	recon     *recon.Detector
 	enrich    *enricher.Enricher
+	traps     *trapIndex
 	fwd       *alertspkg.Forwarder
 	processed atomic.Int64
 	anomalies atomic.Int64
@@ -159,6 +170,7 @@ func New(ctx context.Context, brokers []string, topic string, pool *pgxpool.Pool
 		check:     chk,
 		recon:     recon.New(),
 		enrich:    enr,
+		traps:     newTrapIndex(pool),
 		fwd:       alertspkg.NewForwarder(),
 		memfdSeen: make(map[string]memfdState),
 		dedupSeen: make(map[string]time.Time),

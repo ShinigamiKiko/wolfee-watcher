@@ -1,0 +1,2 @@
+*.sh text eol=lf
+honeypot/docker-healthcheck text eol=lf

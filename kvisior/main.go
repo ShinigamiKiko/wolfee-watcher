@@ -29,6 +29,7 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	kafkaconsumer "github.com/wolfee-watcher/kvisior/internal/kafka"
 	"github.com/wolfee-watcher/kvisior/internal/podwatch"
+	"github.com/wolfee-watcher/kvisior/internal/podindex"
 	"github.com/wolfee-watcher/kvisior/internal/push"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
@@ -337,6 +338,9 @@ func main() {
 	}
 
 	pushH := push.New(uiBus, evHub, matcher, auditEng, st)
+	pods := podindex.New(podIndexKeep)
+	pushH.SetPodIndex(ctx, pods)
+	go runPodIndex(ctx, evHub, pods)
 	pushWrap := pushSecretMiddleware(os.Getenv("INTERNAL_PUSH_SECRET"))
 	mux.HandleFunc("/internal/push/events", pushWrap(pushH.HandleEvents))
 	auditReceiver := newAuditReceiver(st)
@@ -358,6 +362,8 @@ func main() {
 	mux.HandleFunc("/internal/push/sensor", pushWrap(pushH.HandleSensorSnapshot))
 	mux.HandleFunc("/internal/push/anomaly", pushWrap(pushH.HandleAnomalyEvents))
 	mux.HandleFunc("/internal/push/honeypot", pushWrap(pushH.HandleHoneypotEvents))
+	mux.HandleFunc("/internal/push/honeypot-registry", pushWrap(pushH.HandleHoneypotRegistry))
+	mux.HandleFunc("/internal/pull/honeypot-registry", pushWrap(pushH.HandleHoneypotRegistryPull))
 	mux.HandleFunc("/internal/push/scan", pushWrap(pushH.HandleScan))
 	mux.HandleFunc("/internal/push/audit-run", pushWrap(pushH.HandleAuditRun))
 	mux.HandleFunc("/internal/push/histories", pushWrap(pushH.HandleHistories))

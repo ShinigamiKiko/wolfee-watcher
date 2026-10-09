@@ -110,6 +110,8 @@ spec:
               value: {{ .Values.global.mtlsRequired | quote }}
             - name: INTERNAL_PUSH_SECRET
               value: {{ .Values.global.internalPushSecret | quote }}
+            - name: HONEYPOT_EVENT_RETENTION_DAYS
+              value: {{ .Values.honeyOperator.eventRetentionDays | quote }}
             - name: INTEGRATIONS_ALLOW_INTERNAL
               value: {{ .Values.global.integrations.allowInternal | quote }}
             - name: INTEGRATIONS_ALLOWED_CIDRS

@@ -18,6 +18,7 @@ import (
 
 	"github.com/wolfee-watcher/honey-operator/internal/api"
 	"github.com/wolfee-watcher/honey-operator/internal/k8s"
+	"github.com/wolfee-watcher/honey-operator/internal/registry"
 	"github.com/wolfee-watcher/honey-operator/internal/watcher"
 	"github.com/wolfee-watcher/pkg/logging"
 )
@@ -49,13 +50,14 @@ func main() {
 
 	manager := k8s.New(client)
 
-	w := watcher.New(manager, os.Getenv("KVISIOR_PUSH_URL"), os.Getenv("INTERNAL_PUSH_SECRET"))
+	reg := registry.New(os.Getenv("KVISIOR_PUSH_URL"), os.Getenv("INTERNAL_PUSH_SECRET"))
+	w := watcher.New(manager, reg, os.Getenv("KVISIOR_PUSH_URL"), os.Getenv("INTERNAL_PUSH_SECRET"))
 	go w.Run(ctx, 5*time.Second)
 	slog.Info("honeypot_watcher_started",
 		"component", "honey-operator/main",
 		"interval", (5 * time.Second).String())
 
-	srv := api.New(ctx, *addr, manager, w)
+	srv := api.New(ctx, *addr, manager, w, reg)
 	err = srv.Run()
 
 	w.Close()

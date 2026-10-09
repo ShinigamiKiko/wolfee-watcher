@@ -211,3 +211,26 @@
   }
 }
 
+.hp-kind-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--accent-2);
+  border: 1px solid currentColor;
+  opacity: 0.9;
+
+  &--legacy { color: var(--text-muted); border-style: dashed; }
+}
+
+.hp-state {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+
+  &--warn { background: var(--warning-tint); color: var(--warning-text); }
+  &--danger { background: var(--danger-tint); color: var(--danger-text); }
+}
+
+.hp-dot--off { background: var(--text-muted); }

@@ -128,12 +128,6 @@ func (s *Server) proxyToForensicWatcher(w http.ResponseWriter, r *http.Request, 
 	s.mu.RLock()
 	nodeName, ok := s.podNode[ns+"/"+pod]
 	podCount := s.podCount
-	if !ok && !strings.HasPrefix(pod, "h-") {
-		if aliasNode, aliasOK := s.podNode[ns+"/h-"+pod]; aliasOK {
-			pod = "h-" + pod
-			nodeName, ok = aliasNode, true
-		}
-	}
 	s.mu.RUnlock()
 	if !ok {
 		w.WriteHeader(http.StatusServiceUnavailable)

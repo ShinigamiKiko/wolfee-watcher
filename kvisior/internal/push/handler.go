@@ -15,6 +15,7 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/auditengine"
 	"github.com/wolfee-watcher/kvisior/internal/clusterctx"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
+	"github.com/wolfee-watcher/kvisior/internal/podindex"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
 )
@@ -42,6 +43,29 @@ type Handler struct {
 	audit    *auditengine.Engine
 	store    *store.Store
 	writeSem chan struct{}
+	pods     *podindex.Index
+	pending  *clientQueue
+}
+
+func (h *Handler) SetPodIndex(ctx context.Context, idx *podindex.Index) {
+	h.pods = idx
+	h.pending = newClientQueue()
+	go h.resolveLater(ctx)
+}
+
+func (h *Handler) resolveClient(cluster, ip string, at time.Time) *podindex.Client {
+	if h.pods == nil || ip == "" {
+		return nil
+	}
+	if c, ok := h.pods.Lookup(cluster, ip, at); ok {
+		return &c
+	}
+	if !clusterctx.Hub() && cluster != clusterctx.Local() {
+		if c, ok := h.pods.Lookup(clusterctx.Local(), ip, at); ok {
+			return &c
+		}
+	}
+	return nil
 }
 
 func New(pub, local hub.Publisher, m *rules.Matcher, audit *auditengine.Engine, st *store.Store) *Handler {
@@ -244,6 +268,7 @@ func (h *Handler) HandleHoneypotEvents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		ev.ID = honeypotEventID(ev)
+		ev.ClientSnapshot = h.resolveClient(clusterctx.ForPush(r), ev.SrcIP, time.Now())
 
 		enriched, err := json.Marshal(ev)
 		if err != nil {
@@ -256,6 +281,9 @@ func (h *Handler) HandleHoneypotEvents(w http.ResponseWriter, r *http.Request) {
 				return h.cluster(r).WriteHoneypotEvent(ctx, ns, name, id, ts, data)
 			}) {
 				return
+			}
+			if ev.ClientSnapshot == nil && ev.SrcIP != "" && h.pending != nil {
+				h.pending.add(pendingClient{cluster: clusterctx.ForPush(r), ns: ns, honeypot: name, id: id, ip: ev.SrcIP, at: time.Now()})
 			}
 		}
 		h.hub.Publish(hub.Event{Cluster: clusterctx.ForPush(r), Type: "honeypot_event", Data: enriched})
@@ -270,8 +298,12 @@ func (h *Handler) HandleHoneypotEvents(w http.ResponseWriter, r *http.Request) {
 
 type honeypotEvent struct {
 	ID           string `json:"id"`
+	HoneypotID   string `json:"honeypotId,omitempty"`
 	HoneypotName string `json:"honeypotName"`
 	Namespace    string `json:"namespace"`
+	Kind         string `json:"kind,omitempty"`
+	Service      string `json:"service,omitempty"`
+	Pod          string `json:"pod,omitempty"`
 	Timestamp    string `json:"timestamp"`
 	Server       string `json:"server"`
 	SrcIP        string `json:"src_ip"`
@@ -283,6 +315,8 @@ type honeypotEvent struct {
 	Data         string `json:"data,omitempty"`
 	Username     string `json:"username,omitempty"`
 	Password     string `json:"password,omitempty"`
+
+	ClientSnapshot *podindex.Client `json:"client_snapshot,omitempty"`
 }
 
 func honeypotEventID(ev honeypotEvent) string {
@@ -762,4 +796,63 @@ func (h *Handler) HandleScannerStatePull(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
+}
+
+func (h *Handler) HandleHoneypotRegistry(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var body struct {
+		Op     string               `json:"op"`
+		ID     string               `json:"id"`
+		Record store.HoneypotRecord `json:"record"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), writeRequestTimout)
+	defer cancel()
+	var err error
+	switch body.Op {
+	case "register":
+		if body.Record.ID == "" || body.Record.Namespace == "" || body.Record.Name == "" || body.Record.WorkloadUID == "" {
+			http.Error(w, "record needs id, namespace, name and workloadUid", http.StatusBadRequest)
+			return
+		}
+		err = h.cluster(r).RegisterHoneypot(ctx, body.Record)
+	case "unregister":
+		if body.ID == "" {
+			http.Error(w, "id is required", http.StatusBadRequest)
+			return
+		}
+		err = h.cluster(r).UnregisterHoneypot(ctx, body.ID)
+	default:
+		http.Error(w, "op must be register or unregister", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		slog.Error("honeypot_registry_write_failed", "component", "kvisior/push", "op", body.Op, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slog.Info("honeypot_registry_updated", "component", "kvisior/push", "op", body.Op,
+		"cluster", clusterctx.ForPush(r), "namespace", body.Record.Namespace, "name", body.Record.Name)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) HandleHoneypotRegistryPull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	items, err := h.cluster(r).ListHoneypotRegistry(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
 }
