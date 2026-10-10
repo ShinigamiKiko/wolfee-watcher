@@ -60,3 +60,24 @@ postgres://{{ .creds.user }}:{{ .creds.password }}@{{ include "kvisior.pgAppHost
     capabilities:
       drop: ["ALL"]
 {{- end -}}
+
+{{- define "kvisior.componentList" -}}
+{{- $c := list
+  "tracee-bridge|Tracee Bridge|deployment|tracee-bridge"
+  "kvisior-ui|UI and API|deployment|kvisior-ui"
+  "scanner-agent|Scanner Agent|deployment|scanner-agent"
+  "tracee-ebpf|Tracee eBPF|daemonset|tracee"
+  "kafka|Kafka|statefulset|kafka"
+  "sensor|Sensor|deployment|sensor"
+  (printf "sentry-audit|Sentry Audit|%s|sentry-audit" (ternary "statefulset" "deployment" .Values.sentryAudit.delivery.persistence.enabled))
+  "sentry-audit-logtail|Audit Log Tail|daemonset|sentry-audit-logtail"
+  "anomaly-detector|Anomaly Detector|deployment|anomaly-detector"
+  "honey-operator|Honey Operator|deployment|honey-operator"
+  "audit-runner|Audit Runner|deployment|audit-runner"
+  "forensic-watcher|Forensic Watcher|daemonset|forensic-watcher"
+  "cert-server|Cert Server|deployment|cert-server" -}}
+{{- if .Values.auditDelivery.ingest.enabled }}{{ $c = append $c "kvisior-audit-ingest|Audit Ingest|deployment|kvisior-audit-ingest" }}{{ end }}
+{{- if .Values.auditDelivery.processor.enabled }}{{ $c = append $c "kvisior-audit-processor|Audit Processor|deployment|kvisior-audit-processor" }}{{ end }}
+{{- if .Values.postgres.enabled }}{{ $c = append $c "postgres|PostgreSQL|statefulset|postgres" }}{{ end }}
+{{- join "," $c -}}
+{{- end }}

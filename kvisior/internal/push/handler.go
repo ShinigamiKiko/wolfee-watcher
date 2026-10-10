@@ -1,6 +1,7 @@
 package push
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -627,15 +628,50 @@ func (h *Handler) HandleLogsPull(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"ns, pod, container and sinceSeconds required"}`, http.StatusBadRequest)
 		return
 	}
+	if q.Get("stream") == "1" {
+		h.streamLogs(w, r, ns, pod, container, sinceSeconds)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	lines, err := h.cluster(r).QueryContainerLogs(ctx, ns, pod, container, sinceSeconds)
+	lines, truncated, err := h.cluster(r).QueryContainerLogs(ctx, ns, pod, container, sinceSeconds)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"lines": lines})
+	json.NewEncoder(w).Encode(map[string]any{"lines": lines, "truncated": truncated})
+}
+
+const logStreamTimeout = 5 * time.Minute
+
+var logLineEscaper = strings.NewReplacer("\r", `\r`, "\n", `\n`)
+
+func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request, ns, pod, container string, sinceSeconds int64) {
+	ctx, cancel := context.WithTimeout(r.Context(), logStreamTimeout)
+	defer cancel()
+	scope := h.cluster(r)
+	now := time.Now()
+	start, truncated, err := scope.ContainerLogStart(ctx, ns, pod, container, now.Add(-time.Duration(sinceSeconds)*time.Second), store.MaxStreamedLogLines)
+	if err != nil {
+		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Logs-Truncated", strconv.FormatBool(truncated))
+	bw := bufio.NewWriterSize(w, 64<<10)
+	err = scope.StreamContainerLogs(ctx, ns, pod, container, start, now, func(l store.ContainerLogLine) error {
+		bw.WriteString(l.Timestamp)
+		bw.WriteByte(' ')
+		logLineEscaper.WriteString(bw, l.Log)
+		return bw.WriteByte('\n')
+	})
+	if flushErr := bw.Flush(); err == nil {
+		err = flushErr
+	}
+	if err != nil && r.Context().Err() == nil {
+		slog.Warn("log_stream_failed", "component", "kvisior/push", "ns", ns, "pod", pod, "container", container, "error", err)
+	}
 }
 
 func (h *Handler) HandleLogCursors(w http.ResponseWriter, r *http.Request) {

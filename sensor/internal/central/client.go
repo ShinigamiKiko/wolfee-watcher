@@ -77,18 +77,40 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body interface
 	return nil
 }
 
-func (c *Client) PullLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) ([]LogLine, error) {
+func (c *Client) PullLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) ([]LogLine, bool, error) {
 	q := url.Values{
 		"ns": {ns}, "pod": {pod}, "container": {container},
 		"sinceSeconds": {strconv.FormatInt(sinceSeconds, 10)},
 	}
 	var out struct {
-		Lines []LogLine `json:"lines"`
+		Lines     []LogLine `json:"lines"`
+		Truncated bool      `json:"truncated"`
 	}
 	if err := c.doJSON(ctx, http.MethodGet, "/internal/pull/logs?"+q.Encode(), nil, &out); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return out.Lines, nil
+	return out.Lines, out.Truncated, nil
+}
+
+func (c *Client) StreamLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) (io.ReadCloser, bool, error) {
+	q := url.Values{
+		"ns": {ns}, "pod": {pod}, "container": {container},
+		"sinceSeconds": {strconv.FormatInt(sinceSeconds, 10)},
+		"stream":       {"1"},
+	}
+	req, err := c.newReq(ctx, http.MethodGet, "/internal/pull/logs?"+q.Encode(), nil)
+	if err != nil {
+		return nil, false, err
+	}
+	resp, err := (&http.Client{Transport: c.hc.Transport}).Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	if resp.StatusCode >= 400 {
+		resp.Body.Close()
+		return nil, false, fmt.Errorf("kvisior responded %d", resp.StatusCode)
+	}
+	return resp.Body, resp.Header.Get("X-Logs-Truncated") == "true", nil
 }
 
 func (c *Client) PushSnapshotCache(ctx context.Context, gz []byte, etag string) error {

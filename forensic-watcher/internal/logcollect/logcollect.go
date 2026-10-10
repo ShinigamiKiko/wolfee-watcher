@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	pollInterval     = 2 * time.Minute
+	pollInterval     = 30 * time.Second
 	seedRetry        = 15 * time.Second
 	maxLinesPerBatch = 5_000
 
@@ -118,10 +118,12 @@ func (c *Collector) poll(ctx context.Context) {
 	containers := c.discover()
 
 	seen := make(map[string]bool)
+	keys := make(map[string]bool)
 	for _, ct := range containers {
 		seen[ct.dir] = true
+		keys[ct.ns+"/"+ct.pod+"/"+ct.name] = true
 	}
-	c.pruneFiles(seen)
+	c.pruneFiles(seen, keys)
 
 	sem := make(chan struct{}, pollConcurrency)
 	var wg sync.WaitGroup
@@ -181,11 +183,10 @@ func (c *Collector) collectContainer(ctx context.Context, ct container) error {
 	cursor := c.cursors[key]
 	c.mu.Unlock()
 
-	files, err := filepath.Glob(filepath.Join(ct.dir, "*.log"))
-	if err != nil || len(files) == 0 {
+	files := logFiles(ct.dir)
+	if len(files) == 0 {
 		return nil
 	}
-	sort.Strings(files)
 
 	var entries []fswatch.LogEntry
 	for _, path := range files {
@@ -196,10 +197,10 @@ func (c *Collector) collectContainer(ctx context.Context, ct container) error {
 		entries = append(entries, fe...)
 	}
 	if len(entries) == 0 {
-
 		c.commitFiles(files)
 		return nil
 	}
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].Ts.Before(entries[j].Ts) })
 
 	for start := 0; start < len(entries); {
 		end, chunkBytes := start, 0
@@ -337,7 +338,7 @@ func (c *Collector) rollbackFiles(files []string) {
 	}
 }
 
-func (c *Collector) pruneFiles(liveDirs map[string]bool) {
+func (c *Collector) pruneFiles(liveDirs, liveKeys map[string]bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for p := range c.files {
@@ -345,4 +346,26 @@ func (c *Collector) pruneFiles(liveDirs map[string]bool) {
 			delete(c.files, p)
 		}
 	}
+	for k := range c.cursors {
+		if !liveKeys[k] {
+			delete(c.cursors, k)
+		}
+	}
+}
+
+func logFiles(dir string) []string {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		name := e.Name()
+		if e.IsDir() || !strings.Contains(name, ".log") || strings.HasSuffix(name, ".gz") || strings.HasSuffix(name, ".tmp") {
+			continue
+		}
+		out = append(out, filepath.Join(dir, name))
+	}
+	sort.Strings(out)
+	return out
 }

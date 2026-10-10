@@ -1,6 +1,9 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -30,6 +33,10 @@ func (s *Server) handlePodLogs(w http.ResponseWriter, r *http.Request) {
 	previous := q.Get("previous") == "true"
 	sinceSeconds := parseSinceSeconds(q.Get("sinceSeconds"))
 
+	if q.Get("format") == "text" {
+		s.serveLogsText(w, r, ns, name, container, previous, sinceSeconds)
+		return
+	}
 	if s.tryServeLogsFromStore(w, r, ns, name, container, previous, sinceSeconds) {
 		return
 	}
@@ -46,11 +53,13 @@ func parseSinceSeconds(secStr string) int64 {
 	return 0
 }
 
+const maxKubeletTailLines = 10000
+
 func (s *Server) tryServeLogsFromStore(w http.ResponseWriter, r *http.Request, ns, name, container string, previous bool, sinceSeconds int64) bool {
 	if s.ls == nil || previous || sinceSeconds <= 0 {
 		return false
 	}
-	lines, err := s.ls.Get(r.Context(), ns, name, container, sinceSeconds)
+	lines, truncated, err := s.ls.Get(r.Context(), ns, name, container, sinceSeconds)
 	if err != nil {
 		log.Printf("[sensor] logstore.Get %s/%s/%s: %v — falling back to kubelet", ns, name, container, err)
 		return false
@@ -58,36 +67,92 @@ func (s *Server) tryServeLogsFromStore(w http.ResponseWriter, r *http.Request, n
 	if len(lines) == 0 {
 		return false
 	}
-	rawLines := make([]string, 0, len(lines))
-	limitedLines := make([]logstore.LogLine, 0, len(lines))
-	var totalBytes int
-	for _, l := range lines {
-		if l.Log == "" {
-			continue
-		}
+	lines = append(lines, s.freshKubeletLines(r.Context(), ns, name, container, lines[len(lines)-1].Timestamp)...)
+	kept, cut := keepNewestWithin(lines, maxPodLogBytes)
+	rawLines := make([]string, 0, len(kept))
+	for _, l := range kept {
 		text := l.Log
 		if l.Timestamp != "" {
 			text = l.Timestamp + " " + text
 		}
-		if totalBytes+len(text)+1 > maxPodLogBytes {
-			w.WriteHeader(http.StatusRequestEntityTooLarge)
-			json.NewEncoder(w).Encode(map[string]any{"error": "pod logs exceed size limit"})
-			return true
-		}
-		totalBytes += len(text) + 1
 		rawLines = append(rawLines, text)
-		limitedLines = append(limitedLines, l)
 	}
 	json.NewEncoder(w).Encode(map[string]any{
 		"namespace": ns,
 		"pod":       name,
 		"container": container,
 		"source":    "postgres",
-		"lines":     limitedLines,
+		"lines":     kept,
 		"logs":      strings.Join(rawLines, "\n"),
+		"truncated": truncated || cut,
 		"fetchedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	})
 	return true
+}
+
+func (s *Server) freshKubeletLines(ctx context.Context, ns, name, container, lastTS string) []logstore.LogLine {
+	last, err := time.Parse(time.RFC3339Nano, lastTS)
+	if err != nil || s.client == nil {
+		return nil
+	}
+	since := metav1.NewTime(last)
+	opts := &corev1.PodLogOptions{Container: container, Timestamps: true, SinceTime: &since}
+	opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	stream, err := s.client.CoreV1().Pods(ns).GetLogs(name, opts).Stream(opCtx)
+	if err != nil {
+		return nil
+	}
+	defer stream.Close()
+	var out []logstore.LogLine
+	sc := bufio.NewScanner(io.LimitReader(stream, maxPodLogBytes))
+	sc.Buffer(make([]byte, 64*1024), 1<<20)
+	for sc.Scan() {
+		ts, msg, ok := strings.Cut(sc.Text(), " ")
+		if !ok {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil || t.Before(last.Add(time.Microsecond)) || strings.TrimSpace(msg) == "" {
+			continue
+		}
+		out = append(out, logstore.LogLine{Timestamp: t.UTC().Format(time.RFC3339Nano), Log: msg})
+	}
+	return out
+}
+
+func keepNewestWithin(lines []logstore.LogLine, limit int) ([]logstore.LogLine, bool) {
+	total := 0
+	start := len(lines)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i].Log == "" {
+			continue
+		}
+		size := len(lines[i].Log) + len(lines[i].Timestamp) + 2
+		if total+size > limit {
+			break
+		}
+		total += size
+		start = i
+	}
+	out := make([]logstore.LogLine, 0, len(lines)-start)
+	for _, l := range lines[start:] {
+		if l.Log != "" {
+			out = append(out, l)
+		}
+	}
+	return out, start > 0
+}
+
+func tailWithin(raw []byte, limit int) ([]byte, bool) {
+	if len(raw) <= limit {
+		return raw, false
+	}
+	cut := raw[len(raw)-limit:]
+	if i := bytes.IndexByte(cut, '\n'); i >= 0 {
+		cut = cut[i+1:]
+	}
+	return cut, true
 }
 
 func (s *Server) serveLogsFromKubelet(w http.ResponseWriter, r *http.Request, ns, name, container string, previous bool, sinceSeconds int64) {
@@ -96,6 +161,10 @@ func (s *Server) serveLogsFromKubelet(w http.ResponseWriter, r *http.Request, ns
 		opts.Container = container
 	}
 	applyLogTimeFilters(r, opts, sinceSeconds)
+	if opts.TailLines == nil && (opts.SinceSeconds != nil || opts.SinceTime != nil) {
+		tail := int64(maxKubeletTailLines)
+		opts.TailLines = &tail
+	}
 	stream, err := s.client.CoreV1().Pods(ns).GetLogs(name, opts).Stream(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -103,25 +172,98 @@ func (s *Server) serveLogsFromKubelet(w http.ResponseWriter, r *http.Request, ns
 		return
 	}
 	defer stream.Close()
-	raw, err := io.ReadAll(io.LimitReader(stream, maxPodLogBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(stream, 4*maxPodLogBytes))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 		return
 	}
-	if len(raw) > maxPodLogBytes {
-		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		json.NewEncoder(w).Encode(map[string]any{"error": "pod logs exceed size limit"})
-		return
-	}
+	raw, truncated := tailWithin(raw, maxPodLogBytes)
 	json.NewEncoder(w).Encode(map[string]any{
 		"namespace": ns,
 		"pod":       name,
 		"container": container,
 		"source":    "kubelet",
 		"logs":      string(raw),
+		"truncated": truncated,
 		"fetchedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	})
+}
+
+const (
+	logStreamTimeout = 5 * time.Minute
+	maxTextLogBytes  = 512 << 20
+)
+
+func (s *Server) serveLogsText(w http.ResponseWriter, r *http.Request, ns, name, container string, previous bool, sinceSeconds int64) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(logStreamTimeout))
+	ctx, cancel := context.WithTimeout(r.Context(), logStreamTimeout)
+	defer cancel()
+	if s.ls != nil && !previous && sinceSeconds > 0 && s.streamLogsFromStore(ctx, w, ns, name, container, sinceSeconds) {
+		return
+	}
+	s.streamLogsFromKubelet(ctx, w, r, ns, name, container, previous, sinceSeconds)
+}
+
+func (s *Server) streamLogsFromStore(ctx context.Context, w http.ResponseWriter, ns, name, container string, sinceSeconds int64) bool {
+	body, truncated, err := s.ls.Stream(ctx, ns, name, container, sinceSeconds)
+	if err != nil {
+		log.Printf("[sensor] logstore.Stream %s/%s/%s: %v — falling back to kubelet", ns, name, container, err)
+		return false
+	}
+	defer body.Close()
+	br := bufio.NewReaderSize(body, 64<<10)
+	if _, err := br.Peek(1); err != nil {
+		return false
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Logs-Source", "postgres")
+	w.Header().Set("X-Logs-Truncated", strconv.FormatBool(truncated))
+	bw := bufio.NewWriterSize(w, 64<<10)
+	defer bw.Flush()
+	var last []byte
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			last = line
+			if _, werr := bw.Write(line); werr != nil {
+				return true
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("[sensor] log stream %s/%s/%s interrupted: %v", ns, name, container, err)
+			bw.WriteString("WOLFEE: log export interrupted: " + err.Error() + "\n")
+			return true
+		}
+	}
+	lastTS, _, _ := strings.Cut(string(last), " ")
+	for _, l := range s.freshKubeletLines(ctx, ns, name, container, lastTS) {
+		bw.WriteString(l.Timestamp)
+		bw.WriteByte(' ')
+		bw.WriteString(l.Log)
+		bw.WriteByte('\n')
+	}
+	return true
+}
+
+func (s *Server) streamLogsFromKubelet(ctx context.Context, w http.ResponseWriter, r *http.Request, ns, name, container string, previous bool, sinceSeconds int64) {
+	opts := &corev1.PodLogOptions{Previous: previous, Timestamps: true, Container: container}
+	applyLogTimeFilters(r, opts, sinceSeconds)
+	stream, err := s.client.CoreV1().Pods(ns).GetLogs(name, opts).Stream(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		return
+	}
+	defer stream.Close()
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Logs-Source", "kubelet")
+	if _, err := io.Copy(w, io.LimitReader(stream, maxTextLogBytes)); err != nil && ctx.Err() == nil {
+		log.Printf("[sensor] kubelet log stream %s/%s/%s: %v", ns, name, container, err)
+	}
 }
 
 func applyLogTimeFilters(r *http.Request, opts *corev1.PodLogOptions, sinceSeconds int64) {

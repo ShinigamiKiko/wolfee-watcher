@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -67,7 +68,8 @@ func (s *Server) Run(ctx context.Context) error {
 		log.Printf("[forensic] START watch ns=%s pod=%s", ns, pod)
 		if err := s.watcher.StartWatch(r.Context(), ns, pod, r.URL.Query().Get("source")); err != nil {
 			log.Printf("[forensic] START watch error ns=%s pod=%s: %v", ns, pod, err)
-			w.WriteHeader(http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(watchErrorStatus(err))
 			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 			return
 		}
@@ -143,13 +145,21 @@ func (s *Server) Run(ctx context.Context) error {
 		case <-r.Context().Done():
 			return
 		}
-		log.Printf("[forensic] TAR streaming upperDir=%s", upperDir)
+		plan := planTar(r.Context(), upperDir)
+		if plan.err != nil {
+			log.Printf("[forensic] TAR refused ns=%s pod=%s: %v", ns, pod, plan.err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			json.NewEncoder(w).Encode(map[string]any{"error": plan.err.Error(), "entries": plan.entries, "bytes": plan.bytes})
+			return
+		}
+		log.Printf("[forensic] TAR streaming upperDir=%s entries=%d bytes=%d deleted=%d", upperDir, plan.entries, plan.bytes, len(plan.deleted))
 
 		filename := fmt.Sprintf("fs-diff-%s-%s-%d.tar.gz", ns, pod, time.Now().Unix())
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 
-		if err := streamTar(r.Context(), w, upperDir); err != nil {
+		if err := streamTar(r.Context(), w, upperDir, plan.deleted); err != nil {
 			log.Printf("[forensic] TAR stream error ns=%s pod=%s: %v", ns, pod, err)
 		} else {
 			log.Printf("[forensic] TAR done ns=%s pod=%s", ns, pod)
@@ -233,16 +243,87 @@ var skipDirs = []string{
 const maxTarFileBytes = 128 << 20
 const maxTarTotalBytes = 512 << 20
 const maxTarEntries = 10000
+const deletedListName = "WOLFEE-DELETED-FILES.txt"
 
 var tarSlots = make(chan struct{}, 2)
 
-func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
+type tarPlan struct {
+	entries int
+	bytes   int64
+	deleted []string
+	err     error
+}
+
+func watchErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, fswatch.ErrPodGone):
+		return http.StatusNotFound
+	case errors.Is(err, fswatch.ErrNotRunning), errors.Is(err, fswatch.ErrOtherNode):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func tarName(upperDir, path string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(path, upperDir), "/")
+}
+
+func skippedDir(name string) bool {
+	for _, skip := range skipDirs {
+		skip = strings.TrimPrefix(skip, "/")
+		if name == skip || strings.HasPrefix(name, skip+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isWhiteout(info os.FileInfo) bool {
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	return ok && st.Rdev == 0
+}
+
+func planTar(ctx context.Context, upperDir string) tarPlan {
+	var p tarPlan
+	p.err = filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || path == upperDir {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		name := tarName(upperDir, path)
+		if info.IsDir() && skippedDir(name) {
+			return filepath.SkipDir
+		}
+		if isWhiteout(info) {
+			p.deleted = append(p.deleted, "/"+name)
+			return nil
+		}
+		p.entries++
+		if p.entries > maxTarEntries {
+			return fmt.Errorf("container layer has more than %d entries", maxTarEntries)
+		}
+		if info.Mode().IsRegular() && info.Size() <= maxTarFileBytes {
+			p.bytes += info.Size()
+			if p.bytes > maxTarTotalBytes {
+				return fmt.Errorf("container layer is larger than %d MiB", maxTarTotalBytes>>20)
+			}
+		}
+		return nil
+	})
+	return p
+}
+
+func streamTar(ctx context.Context, w io.Writer, upperDir string, deleted []string) error {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
-	var totalBytes int64
-	var entryCount int
 	walkErr := filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err != nil || path == upperDir {
 			return nil
 		}
 		select {
@@ -250,37 +331,25 @@ func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 			return ctx.Err()
 		default:
 		}
-		entryCount++
-		if entryCount > maxTarEntries {
-			return fmt.Errorf("tar entry limit exceeded")
-		}
-
-		rel := strings.TrimPrefix(path, upperDir)
-		if rel == "" {
-			rel = "/"
-		}
-
+		name := tarName(upperDir, path)
 		if info.IsDir() {
-			for _, skip := range skipDirs {
-				if rel == skip || strings.HasPrefix(rel, skip+"/") {
-					return filepath.SkipDir
-				}
+			if skippedDir(name) {
+				return filepath.SkipDir
 			}
 			return tw.WriteHeader(&tar.Header{
-				Name:     rel + "/",
+				Name:     name + "/",
 				Typeflag: tar.TypeDir,
-				Mode:     int64(info.Mode()),
+				Mode:     int64(info.Mode().Perm()),
 				ModTime:  info.ModTime(),
 			})
 		}
-
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, lerr := os.Readlink(path)
 			if lerr != nil {
 				return nil
 			}
 			return tw.WriteHeader(&tar.Header{
-				Name:     rel,
+				Name:     name,
 				Typeflag: tar.TypeSymlink,
 				Linkname: target,
 				Mode:     int64(info.Mode().Perm()),
@@ -290,39 +359,39 @@ func streamTar(ctx context.Context, w io.Writer, upperDir string) error {
 		if !info.Mode().IsRegular() {
 			return nil
 		}
+		if info.Size() > maxTarFileBytes {
+			log.Printf("[streamTar] skip oversized %s (> %d bytes)", name, maxTarFileBytes)
+			return nil
+		}
 		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 		if err != nil {
 			return nil
 		}
-
 		data, readErr := io.ReadAll(io.LimitReader(f, maxTarFileBytes+1))
 		f.Close()
 		if readErr != nil {
 			log.Printf("[streamTar] read %s: %v", path, readErr)
 			return nil
 		}
-		if int64(len(data)) > maxTarFileBytes {
-			log.Printf("[streamTar] skip oversized %s (> %d bytes)", rel, maxTarFileBytes)
-			return nil
-		}
-		if totalBytes+int64(len(data)) > maxTarTotalBytes {
-			return fmt.Errorf("tar total size limit exceeded")
-		}
-
-		hdr := &tar.Header{
-			Name:    rel,
+		if err := tw.WriteHeader(&tar.Header{
+			Name:    name,
 			Size:    int64(len(data)),
 			Mode:    int64(info.Mode().Perm()),
 			ModTime: info.ModTime(),
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
+		}); err != nil {
 			return err
 		}
 		_, err = tw.Write(data)
-		totalBytes += int64(len(data))
 		return err
 	})
-
+	if walkErr == nil && len(deleted) > 0 {
+		body := []byte(strings.Join(deleted, "\n") + "\n")
+		if err := tw.WriteHeader(&tar.Header{Name: deletedListName, Size: int64(len(body)), Mode: 0o644, ModTime: time.Now()}); err == nil {
+			_, walkErr = tw.Write(body)
+		} else {
+			walkErr = err
+		}
+	}
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("tar close: %w", err)
 	}

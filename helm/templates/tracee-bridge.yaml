@@ -89,7 +89,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: COMPONENTS
-              value: {{ .Values.traceeBridge.components | default "" | quote }}
+              value: {{ .Values.traceeBridge.components | default (include "kvisior.componentList" .) | quote }}
           readinessProbe:
             httpGet:
               path: /health

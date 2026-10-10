@@ -60,7 +60,8 @@ type Aggregator struct {
 
 	anomalyCursor  string
 	anomalyErrN    int
-	pendingWatches map[string]struct{}
+	pendingWatches map[string]*pendingWatch
+	pods           podPhases
 }
 
 func New(
@@ -74,7 +75,7 @@ func New(
 		anomaly:        bk{anomalyCl, anomalyBase},
 		sensor:         bk{sensorCl, sensorBase},
 		store:          st,
-		pendingWatches: make(map[string]struct{}),
+		pendingWatches: make(map[string]*pendingWatch),
 	}
 }
 
@@ -107,16 +108,7 @@ func logPollErr(tag string, n *int, err error) {
 }
 
 func (a *Aggregator) pollAnomaly(ctx context.Context) {
-	for key := range a.pendingWatches {
-		parts := strings.SplitN(key, "/", 2)
-		if len(parts) != 2 {
-			delete(a.pendingWatches, key)
-			continue
-		}
-		if a.startForensicWatch(ctx, parts[0], parts[1]) == nil {
-			delete(a.pendingWatches, key)
-		}
-	}
+	defer a.processWatches(ctx, time.Now())
 
 	var resp struct {
 		Events []json.RawMessage `json:"events"`
@@ -134,9 +126,7 @@ func (a *Aggregator) pollAnomaly(ctx context.Context) {
 			SrcPod       string `json:"src_pod"`
 		}
 		if json.Unmarshal(raw, &ev) == nil && validWatchTarget(ev.Kind, ev.SrcNamespace, ev.SrcPod) {
-			if err := a.startForensicWatch(ctx, ev.SrcNamespace, ev.SrcPod); err != nil {
-				a.pendingWatches[ev.SrcNamespace+"/"+ev.SrcPod] = struct{}{}
-			}
+			a.queueWatch(ev.SrcNamespace, ev.SrcPod)
 		}
 		a.hub.Publish(hub.Event{Cluster: clusterctx.Local(), Type: "anomaly_event", Data: raw})
 		if json.Unmarshal(raw, &ev) == nil && ev.ID != "" {
@@ -153,11 +143,7 @@ func (a *Aggregator) startForensicWatch(ctx context.Context, ns, pod string) err
 	watchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	path := "/api/forensic/watch/" + url.PathEscape(ns) + "/" + url.PathEscape(pod) + "?source=anomaly"
-	if err := a.sensor.post(watchCtx, path); err != nil {
-		log.Printf("[collector/anomaly] start forensic watch %s/%s: %v", ns, pod, err)
-		return err
-	}
-	return nil
+	return a.sensor.post(watchCtx, path)
 }
 
 func (a *Aggregator) pollSensor(ctx context.Context) {
@@ -165,6 +151,9 @@ func (a *Aggregator) pollSensor(ctx context.Context) {
 	if err := a.sensor.get(ctx, "/api/snapshot", &snapshot); err != nil {
 		log.Printf("[collector/sensor] fetch failed: %v", err)
 		return
+	}
+	if err := a.pods.update(snapshot); err != nil {
+		log.Printf("[collector/sensor] snapshot pods unreadable: %v", err)
 	}
 	a.hub.Publish(hub.Event{Cluster: clusterctx.Local(), Type: "sensor_snapshot", Data: snapshot})
 	log.Printf("[collector/sensor] snapshot published: %d bytes, %s", len(snapshot), summarizeSnapshot(snapshot))

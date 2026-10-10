@@ -32,8 +32,11 @@ const WATCHABLE_EVENT_NAMES = new Set([
   ...TP_NAME_SET,
 ]);
 
-const MAX_PULLED_EVENTS = 99_999;
+const MAX_PULLED_EVENTS = 50_000;
 const MAX_CATCHUP_PAGES = 5;
+const MAX_OLDER_PAGES = 20;
+
+const fmtSize = n => !n || n <= 0 ? '—' : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 const LIVE_ONLY_HINT = 'Unavailable: the pod was removed from the cluster';
 const SEV_RANK = { anomaly: 5, critical: 4, high: 3, medium: 2, low: 1, none: 0, syscall: 0 };
@@ -60,7 +63,8 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const [logsOpen,        setLogsOpen]        = useState(false);
   const [logsHours,       setLogsHours]       = useState(6);
   const [logsLoading,     setLogsLoading]     = useState(false);
-  const [logsError,       setLogsError]       = useState(null);
+  const [logsProgress,    setLogsProgress]    = useState(0);
+  const [logsError,      setLogsError]       = useState(null);
   const [watching,        setWatching]        = useState(false);
   const [watchSource,     setWatchSource]     = useState(null);
   const [upperLoading,    setUpperLoading]    = useState(false);
@@ -72,6 +76,9 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const [pulledEvents,    setPulledEvents]    = useState([]);
   const eventCursorRef   = useRef(0);
   const seenRowIdsRef    = useRef(new Set());
+  const olderRef         = useRef({ has: false, cursor: 0, oldest: 0 });
+  const [coverage,        setCoverage]        = useState({ has: false, oldest: 0, loading: false });
+  const [logsNote,        setLogsNote]        = useState(null);
   const [watchNoStore,    setWatchNoStore]    = useState(false);
   const [watchLoaded,     setWatchLoaded]     = useState(false);
   const [clearLoading,    setClearLoading]    = useState(false);
@@ -148,11 +155,65 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
     return () => { cancelled = true; };
   }, [pNS, pName]);
 
+  const oldestTs = events => events.reduce((m, e) => {
+    const t = eventTimeMs(e.ts);
+    return t > 0 && (m === 0 || t < m) ? t : m;
+  }, 0);
+
+  const mergePulled = (fresh, prepend) => {
+    setPulledEvents(prev => {
+      const merged = prepend ? [...fresh, ...prev] : [...prev, ...fresh];
+      if (merged.length <= MAX_PULLED_EVENTS) return merged;
+      const trimmed = prepend ? merged.slice(0, MAX_PULLED_EVENTS) : merged.slice(-MAX_PULLED_EVENTS);
+      seenRowIdsRef.current = new Set(trimmed.map(e => e._rid).filter(id => id != null));
+      return trimmed;
+    });
+  };
+
+  const keepUnseen = events => {
+    const seen = seenRowIdsRef.current;
+    return events.filter(e => {
+      if (e._rid == null) return true;
+      if (seen.has(e._rid)) return false;
+      seen.add(e._rid);
+      return true;
+    });
+  };
+
+  const loadOlder = async (alive) => {
+    const windowStart = Date.now() - windowH * 3600 * 1000;
+    setCoverage(c => ({ ...c, loading: true }));
+    try {
+      for (let page = 0; page < MAX_OLDER_PAGES && alive(); page++) {
+        const o = olderRef.current;
+        if (!o.has || !o.cursor || (o.oldest && o.oldest <= windowStart) || seenRowIdsRef.current.size >= MAX_PULLED_EVENTS) break;
+        const podUID = pUID ? `&pod_uid=${encodeURIComponent(pUID)}` : '';
+        const container = pContainerID ? `&container_id=${encodeURIComponent(pContainerID)}` : '';
+        const res = await apiFetch(`/v1/forensic-events?ns=${encodeURIComponent(pNS)}&pod=${encodeURIComponent(pName)}${podUID}${container}&before_id=${o.cursor}`, { credentials: 'same-origin' });
+        if (!res.ok) break;
+        const data = await res.json();
+        const events = data.events || [];
+        const pageOldest = oldestTs(events);
+        olderRef.current = {
+          has: Boolean(data.has_older),
+          cursor: data.older_cursor || 0,
+          oldest: pageOldest && (!o.oldest || pageOldest < o.oldest) ? pageOldest : o.oldest,
+        };
+        const fresh = keepUnseen(events);
+        if (fresh.length) mergePulled(fresh, true);
+        if (!events.length) break;
+      }
+    } catch {}
+    if (alive()) setCoverage({ has: olderRef.current.has, oldest: olderRef.current.oldest, loading: false });
+  };
+
   useEffect(() => {
     if (!watchLoaded) return;
     let alive = true;
     eventCursorRef.current = 0;
     seenRowIdsRef.current = new Set();
+    olderRef.current = { has: false, cursor: 0, oldest: 0 };
+    setCoverage({ has: false, oldest: 0, loading: false });
     setPulledEvents([]);
 
     const fetchPage = async () => {
@@ -164,22 +225,11 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
       const data = await res.json();
       if (!alive) return false;
 
-      const seen = seenRowIdsRef.current;
-      const fresh = (data.events || []).filter(e => {
-        if (e._rid == null) return true;
-        if (seen.has(e._rid)) return false;
-        seen.add(e._rid);
-        return true;
-      });
-      if (fresh.length) {
-        setPulledEvents(prev => {
-          const merged = [...prev, ...fresh];
-          if (merged.length <= MAX_PULLED_EVENTS) return merged;
-          const trimmed = merged.slice(-MAX_PULLED_EVENTS);
-          seenRowIdsRef.current = new Set(trimmed.map(e => e._rid).filter(id => id != null));
-          return trimmed;
-        });
+      if (eventCursorRef.current === 0) {
+        olderRef.current = { has: Boolean(data.has_older), cursor: data.older_cursor || 0, oldest: oldestTs(data.events || []) };
       }
+      const fresh = keepUnseen(data.events || []);
+      if (fresh.length) mergePulled(fresh, false);
       if (data.next_since_id > 0) eventCursorRef.current = data.next_since_id;
       return Boolean(data.has_more);
     };
@@ -191,11 +241,18 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         }
       } catch {}
     };
-    load();
+    load().then(() => alive && loadOlder(() => alive));
     if (gone) return () => { alive = false; };
     const t = setInterval(load, 10_000);
     return () => { alive = false; clearInterval(t); };
   }, [pNS, pName, pUID, gone, watchLoaded, watchedSyscalls.join(',')]);
+
+  useEffect(() => {
+    if (!watchLoaded) return;
+    let alive = true;
+    loadOlder(() => alive);
+    return () => { alive = false; };
+  }, [windowH]);
 
   const saveWatch = async (next) => {
     setWatchedSyscalls(next);
@@ -377,47 +434,54 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
 
   const doLogs = async (h) => {
     const hours = h || logsHours;
-    setLogsOpen(false); setLogsError(null); setLogsLoading(true);
+    setLogsOpen(false); setLogsError(null); setLogsNote(null); setLogsProgress(0); setLogsLoading(true);
     const sinceSeconds = hours * 3600;
     const safeContainer = activeContainer?.includes(':') ? activeContainer.split(':')[0] : activeContainer;
     const qs       = safeContainer ? `&container=${encodeURIComponent(safeContainer)}` : '';
-    const base     = `/sensor/api/pods/${pNS}/${pName}/logs?sinceSeconds=${sinceSeconds}${qs}`;
-    const prevBase = `/sensor/api/pods/${pNS}/${pName}/logs?previous=true&sinceSeconds=${sinceSeconds}${qs}`;
-    try {
-      const [curRes, prevRes] = await Promise.all([
-        apiFetch(base, { credentials: 'same-origin' }).catch(() => null),
-        gone ? null : apiFetch(prevBase, { credentials: 'same-origin' }).catch(() => null),
-      ]);
-      const parseLines = (json, isPrev) => {
-        if (!json) return [];
-
-        if (typeof json.logs === 'string') {
-          return json.logs.split('\n').filter(l => l.trim()).map(l => ({
-            timestamp: l.match(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z/)?.[0] || null,
-            pod: json.pod, namespace: json.namespace, container: json.container,
-            containerId: isPrev ? 'previous' : 'current',
-            log: l.replace(/\x1b\[[0-9;]*m/g, '').trim(),
+    const base     = `/sensor/api/pods/${pNS}/${pName}/logs?format=text&sinceSeconds=${sinceSeconds}${qs}`;
+    const prevBase = `/sensor/api/pods/${pNS}/${pName}/logs?format=text&previous=true&sinceSeconds=${sinceSeconds}${qs}`;
+    const parts = ['[\n'];
+    let count = 0;
+    const collect = async (res, containerId) => {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let rest = '';
+      const take = (text, final) => {
+        const lines = (rest + text).split('\n');
+        rest = final ? '' : lines.pop();
+        const out = [];
+        for (const l of lines) {
+          if (!l.trim()) continue;
+          const ts = l.match(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z/)?.[0] || null;
+          out.push(JSON.stringify({
+            timestamp: ts, pod: pName, namespace: pNS, container: safeContainer || null, containerId,
+            log: (ts ? l.slice(ts.length) : l).replace(/\x1b\[[0-9;]*m/g, '').trim(),
           }));
         }
-
-        if (Array.isArray(json.lines)) {
-          return json.lines
-            .filter(x => x && typeof x.log === 'string' && x.log.trim())
-            .map(x => ({
-              timestamp: x.timestamp || null,
-              pod: json.pod, namespace: json.namespace, container: json.container,
-              containerId: isPrev ? 'previous' : 'current',
-              log: String(x.log).replace(/\x1b\[[0-9;]*m/g, '').trim(),
-            }));
-        }
-
-        return [];
+        if (!out.length) return;
+        parts.push((count ? ',\n' : '') + out.join(',\n'));
+        count += out.length;
       };
-      const curJson  = curRes?.ok  ? await curRes.json().catch(() => null)  : null;
-      const prevJson = prevRes?.ok ? await prevRes.json().catch(() => null) : null;
-      if (!curJson && !prevJson) { setLogsError('Sensor is unavailable or the pod was not found'); return; }
-      const lines = [...(prevJson ? parseLines(prevJson, true) : []), ...(curJson ? parseLines(curJson, false) : [])];
-      const blob  = new Blob([JSON.stringify(lines, null, 2)], { type: 'application/json' });
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        take(decoder.decode(value, { stream: true }), false);
+        setLogsProgress(count);
+      }
+      take(decoder.decode(), true);
+    };
+    try {
+      const open = url => apiFetch(url, { credentials: 'same-origin' }).then(r => (r.ok ? r : null)).catch(() => null);
+      const prevRes = gone ? null : await open(prevBase);
+      if (prevRes) await collect(prevRes, 'previous');
+      const curRes = await open(base);
+      if (curRes) await collect(curRes, 'current');
+      if (!curRes && !prevRes) { setLogsError('Sensor is unavailable or the pod was not found'); return; }
+      if (curRes?.headers.get('X-Logs-Truncated') === 'true') {
+        setLogsNote(`The ${hours}h window is larger than the export limit; the file has its most recent lines.`);
+      }
+      parts.push('\n]\n');
+      const blob  = new Blob(parts, { type: 'application/json' });
       const url   = URL.createObjectURL(blob);
       const a     = document.createElement('a');
       a.href = url; a.download = `logs-${pName}-${activeContainer || 'all'}-${hours}h.json`;
@@ -469,10 +533,13 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           <div className="fns-snap-wrap" ref={logsWrapRef}>
             <button className="fns-btn" disabled={logsLoading}
               onClick={() => { setLogsOpen(o => !o); setLogsError(null); }}>
-              {logsLoading ? <><Icon name="loader" /> Loading…</> : <><Icon name="download" /> Logs · {logsHours}h</>}
+              {logsLoading
+                ? <><Icon name="loader" /> {logsProgress ? `${logsProgress.toLocaleString()} lines…` : 'Loading…'}</>
+                : <><Icon name="download" /> Logs · {logsHours}h</>}
               {!logsLoading && <span className="fns-arrow"><Icon name="chevron-down" /></span>}
             </button>
             {logsError && <div className="fns-snap-error">{logsError}</div>}
+            {logsNote && <div className="fns-snap-note">{logsNote}</div>}
             {logsOpen && (
               <div className="fns-snap-menu">
                 <div className="fns-snap-pod">logs · {pName.slice(0, 28)}</div>
@@ -499,8 +566,7 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           <button className={`fns-ctab${contentTab==='syscalls'?' active':''}`}
             onClick={() => setContentTab('syscalls')}>Runtime Events</button>
           <button className={`fns-ctab${contentTab==='fsdiff'?' active':''}`}
-            disabled={gone} title={gone ? LIVE_ONLY_HINT : undefined}
-            onClick={() => { setContentTab('fsdiff'); if (watching) fetchDiff(); }}>
+            onClick={() => { setContentTab('fsdiff'); fetchDiff(); }}>
             FS Diff {watching && <span className="fns-ctab-dot"/>}
             {diff.length > 0 && <span className="fns-ctab-cnt">{diff.length}</span>}
           </button>
@@ -524,7 +590,11 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         {contentTab === 'fsdiff' && (
           <div className="fns-fsdiff">
             {!watching && diff.length === 0 && (
-              <div className="fns-empty">Press Watch to start tracking file system changes</div>
+              <div className="fns-empty">
+                {diffLoading ? <><Icon name="loader" /> Loading…</>
+                  : gone ? 'No file system changes were recorded for this pod'
+                  : 'Press Watch to start tracking file system changes'}
+              </div>
             )}
             {watching && diff.length === 0 && (
               <div className="fns-empty">
@@ -541,14 +611,18 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
                 </div>
                 <div className="fns-fsdiff-list">
                   <div className="fns-fsdiff-row fns-fsdiff-row--hdr">
-                    <span>Op</span><span>Path</span><span>Size</span><span>Modified</span>
+                    <span>Op</span><span>Path</span><span>Size</span><span>Modified</span><span>Container</span>
                   </div>
                   {diff.map((e, i) => (
                     <div key={i} className={`fns-fsdiff-row fns-fsdiff-row--${e.op}`}>
-                      <span className={`fns-fsdiff-op fns-fsdiff-op--${e.op}`}>{e.op}</span>
-                      <span className="fns-fsdiff-path" title={e.path}>{e.path}</span>
-                      <span className="fns-fsdiff-size">{e.size > 0 ? `${(e.size/1024).toFixed(1)}KB` : '—'}</span>
-                      <span className="fns-fsdiff-time">{e.mtime ? new Date(e.mtime).toLocaleTimeString() : '—'}</span>
+                      <span className={`fns-fsdiff-op fns-fsdiff-op--${e.op}`}>
+                        {e.op}
+                        {e.baseline && <span className="fns-fsdiff-base" title="Already in the container layer when watching started">before watch</span>}
+                      </span>
+                      <span className="fns-fsdiff-path" title={e.sha256 ? `${e.path}\nsha256 ${e.sha256}` : e.path}>{e.path}</span>
+                      <span className="fns-fsdiff-size">{fmtSize(e.size)}</span>
+                      <span className="fns-fsdiff-time">{e.mtime ? new Date(e.mtime).toLocaleString() : '—'}</span>
+                      <span className="fns-fsdiff-ctr" title={e.container_id || ''}>{e.container_id ? e.container_id.slice(0, 12) : '—'}</span>
                     </div>
                   ))}
                 </div>
@@ -614,7 +688,12 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
         <div>
           <div className="fns-section-hdr">
             <span className="fns-section-title">Runtime events</span>
-            <span className="fns-section-count">{visibleEvents.length} events{activeContainer ? ` · ${activeContainer}` : ''}</span>
+            <span className="fns-section-count">
+              {visibleEvents.length} events{activeContainer ? ` · ${activeContainer}` : ''}
+              {coverage.loading && <> · loading older events…</>}
+              {!coverage.loading && coverage.has && coverage.oldest > Date.now() - windowH * 3600 * 1000 &&
+                <span className="t-warning"> · only events since {new Date(coverage.oldest).toLocaleString()} are loaded</span>}
+            </span>
           </div>
           <DataWindow label="Runtime events" fit={false} className="fns-events-window" deps={[contentTab, windowH, activeContainer]}
             footer={<Pager total={visibleEvents.length} page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} />}>
