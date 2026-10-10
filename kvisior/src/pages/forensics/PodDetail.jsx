@@ -63,7 +63,8 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
   const [logsOpen,        setLogsOpen]        = useState(false);
   const [logsHours,       setLogsHours]       = useState(6);
   const [logsLoading,     setLogsLoading]     = useState(false);
-  const [logsError,       setLogsError]       = useState(null);
+  const [logsProgress,    setLogsProgress]    = useState(0);
+  const [logsError,      setLogsError]       = useState(null);
   const [watching,        setWatching]        = useState(false);
   const [watchSource,     setWatchSource]     = useState(null);
   const [upperLoading,    setUpperLoading]    = useState(false);
@@ -433,50 +434,54 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
 
   const doLogs = async (h) => {
     const hours = h || logsHours;
-    setLogsOpen(false); setLogsError(null); setLogsNote(null); setLogsLoading(true);
+    setLogsOpen(false); setLogsError(null); setLogsNote(null); setLogsProgress(0); setLogsLoading(true);
     const sinceSeconds = hours * 3600;
     const safeContainer = activeContainer?.includes(':') ? activeContainer.split(':')[0] : activeContainer;
     const qs       = safeContainer ? `&container=${encodeURIComponent(safeContainer)}` : '';
-    const base     = `/sensor/api/pods/${pNS}/${pName}/logs?sinceSeconds=${sinceSeconds}${qs}`;
-    const prevBase = `/sensor/api/pods/${pNS}/${pName}/logs?previous=true&sinceSeconds=${sinceSeconds}${qs}`;
-    try {
-      const [curRes, prevRes] = await Promise.all([
-        apiFetch(base, { credentials: 'same-origin' }).catch(() => null),
-        gone ? null : apiFetch(prevBase, { credentials: 'same-origin' }).catch(() => null),
-      ]);
-      const parseLines = (json, isPrev) => {
-        if (!json) return [];
-
-        if (typeof json.logs === 'string') {
-          return json.logs.split('\n').filter(l => l.trim()).map(l => ({
-            timestamp: l.match(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z/)?.[0] || null,
-            pod: json.pod, namespace: json.namespace, container: json.container,
-            containerId: isPrev ? 'previous' : 'current',
-            log: l.replace(/\x1b\[[0-9;]*m/g, '').trim(),
+    const base     = `/sensor/api/pods/${pNS}/${pName}/logs?format=text&sinceSeconds=${sinceSeconds}${qs}`;
+    const prevBase = `/sensor/api/pods/${pNS}/${pName}/logs?format=text&previous=true&sinceSeconds=${sinceSeconds}${qs}`;
+    const parts = ['[\n'];
+    let count = 0;
+    const collect = async (res, containerId) => {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let rest = '';
+      const take = (text, final) => {
+        const lines = (rest + text).split('\n');
+        rest = final ? '' : lines.pop();
+        const out = [];
+        for (const l of lines) {
+          if (!l.trim()) continue;
+          const ts = l.match(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z/)?.[0] || null;
+          out.push(JSON.stringify({
+            timestamp: ts, pod: pName, namespace: pNS, container: safeContainer || null, containerId,
+            log: (ts ? l.slice(ts.length) : l).replace(/\x1b\[[0-9;]*m/g, '').trim(),
           }));
         }
-
-        if (Array.isArray(json.lines)) {
-          return json.lines
-            .filter(x => x && typeof x.log === 'string' && x.log.trim())
-            .map(x => ({
-              timestamp: x.timestamp || null,
-              pod: json.pod, namespace: json.namespace, container: json.container,
-              containerId: isPrev ? 'previous' : 'current',
-              log: String(x.log).replace(/\x1b\[[0-9;]*m/g, '').trim(),
-            }));
-        }
-
-        return [];
+        if (!out.length) return;
+        parts.push((count ? ',\n' : '') + out.join(',\n'));
+        count += out.length;
       };
-      const curJson  = curRes?.ok  ? await curRes.json().catch(() => null)  : null;
-      const prevJson = prevRes?.ok ? await prevRes.json().catch(() => null) : null;
-      if (!curJson && !prevJson) { setLogsError('Sensor is unavailable or the pod was not found'); return; }
-      if (curJson?.truncated || prevJson?.truncated) {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        take(decoder.decode(value, { stream: true }), false);
+        setLogsProgress(count);
+      }
+      take(decoder.decode(), true);
+    };
+    try {
+      const open = url => apiFetch(url, { credentials: 'same-origin' }).then(r => (r.ok ? r : null)).catch(() => null);
+      const prevRes = gone ? null : await open(prevBase);
+      if (prevRes) await collect(prevRes, 'previous');
+      const curRes = await open(base);
+      if (curRes) await collect(curRes, 'current');
+      if (!curRes && !prevRes) { setLogsError('Sensor is unavailable or the pod was not found'); return; }
+      if (curRes?.headers.get('X-Logs-Truncated') === 'true') {
         setLogsNote(`The ${hours}h window is larger than the export limit; the file has its most recent lines.`);
       }
-      const lines = [...(prevJson ? parseLines(prevJson, true) : []), ...(curJson ? parseLines(curJson, false) : [])];
-      const blob  = new Blob([JSON.stringify(lines, null, 2)], { type: 'application/json' });
+      parts.push('\n]\n');
+      const blob  = new Blob(parts, { type: 'application/json' });
       const url   = URL.createObjectURL(blob);
       const a     = document.createElement('a');
       a.href = url; a.download = `logs-${pName}-${activeContainer || 'all'}-${hours}h.json`;
@@ -528,7 +533,9 @@ export function PodDetail({ pod, ns, allEvents = [], activeWatches = [], getSev,
           <div className="fns-snap-wrap" ref={logsWrapRef}>
             <button className="fns-btn" disabled={logsLoading}
               onClick={() => { setLogsOpen(o => !o); setLogsError(null); }}>
-              {logsLoading ? <><Icon name="loader" /> Loading…</> : <><Icon name="download" /> Logs · {logsHours}h</>}
+              {logsLoading
+                ? <><Icon name="loader" /> {logsProgress ? `${logsProgress.toLocaleString()} lines…` : 'Loading…'}</>
+                : <><Icon name="download" /> Logs · {logsHours}h</>}
               {!logsLoading && <span className="fns-arrow"><Icon name="chevron-down" /></span>}
             </button>
             {logsError && <div className="fns-snap-error">{logsError}</div>}

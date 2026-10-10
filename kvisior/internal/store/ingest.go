@@ -640,6 +640,76 @@ func (c *Scoped) QueryContainerLogs(ctx context.Context, ns, pod, container stri
 	return lines, truncated, nil
 }
 
+const (
+	MaxStreamedLogLines = 1_000_000
+	logStreamPageSize   = 20_000
+)
+
+type ContainerLogCursor struct {
+	TS time.Time
+	ID int64
+}
+
+func (c *Scoped) ContainerLogStart(ctx context.Context, ns, pod, container string, from time.Time, maxLines int) (ContainerLogCursor, bool, error) {
+	var total int64
+	if err := c.s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM container_logs
+		 WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND container=$4 AND ts > $5`,
+		c.id, ns, pod, container, from).Scan(&total); err != nil {
+		return ContainerLogCursor{}, false, err
+	}
+	if total <= int64(maxLines) {
+		return ContainerLogCursor{TS: from, ID: -1}, false, nil
+	}
+	var cur ContainerLogCursor
+	err := c.s.pool.QueryRow(ctx,
+		`SELECT ts, id FROM container_logs
+		 WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND container=$4 AND ts > $5
+		 ORDER BY ts DESC, id DESC OFFSET $6 LIMIT 1`,
+		c.id, ns, pod, container, from, maxLines).Scan(&cur.TS, &cur.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ContainerLogCursor{TS: from, ID: -1}, false, nil
+	}
+	if err != nil {
+		return ContainerLogCursor{}, false, err
+	}
+	return cur, true, nil
+}
+
+func (c *Scoped) StreamContainerLogs(ctx context.Context, ns, pod, container string, after ContainerLogCursor, until time.Time, fn func(ContainerLogLine) error) error {
+	for {
+		rows, err := c.s.pool.Query(ctx,
+			`SELECT ts, id, log FROM container_logs
+			 WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND container=$4
+			   AND ts >= $5 AND ts <= $6 AND (ts, id) > ($5::timestamptz, $7::bigint)
+			 ORDER BY ts, id LIMIT $8`,
+			c.id, ns, pod, container, after.TS, until, after.ID, logStreamPageSize)
+		if err != nil {
+			return err
+		}
+		n := 0
+		for rows.Next() {
+			var l string
+			if err := rows.Scan(&after.TS, &after.ID, &l); err != nil {
+				rows.Close()
+				return err
+			}
+			n++
+			if err := fn(ContainerLogLine{Timestamp: after.TS.UTC().Format(time.RFC3339Nano), Log: l}); err != nil {
+				rows.Close()
+				return err
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if n < logStreamPageSize {
+			return nil
+		}
+	}
+}
+
 type ContainerLogEntry struct {
 	Ts  time.Time `json:"ts"`
 	Log string    `json:"log"`

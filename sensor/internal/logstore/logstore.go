@@ -3,6 +3,7 @@ package logstore
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
@@ -34,6 +35,14 @@ func (s *Store) Get(ctx context.Context, ns, pod, container string, sinceSeconds
 		return nil, false, nil
 	}
 	return lines, truncated, nil
+}
+
+func (s *Store) Stream(ctx context.Context, ns, pod, container string, sinceSeconds int64) (io.ReadCloser, bool, error) {
+	body, truncated, err := s.central.StreamLogs(ctx, ns, pod, container, sinceSeconds)
+	if err != nil {
+		return nil, false, fmt.Errorf("stream logs from kvisior: %w", err)
+	}
+	return body, truncated, nil
 }
 
 func (s *Store) SetSnapshotCache(ctx context.Context, gz []byte, etag string) error {
