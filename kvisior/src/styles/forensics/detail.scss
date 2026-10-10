@@ -616,7 +616,7 @@
 
 .fns-fsdiff-row {
   display: grid;
-  grid-template-columns: 80px 1fr 80px 100px;
+  grid-template-columns: 150px minmax(0, 1fr) 80px 160px 110px;
   gap: 8px;
   padding: 7px 12px;
   font-size: 12px;
@@ -626,6 +626,7 @@
   &--added    { background: rgba(16,185,129,0.04); }
   &--modified { background: rgba(234,179,8,0.04); }
   &--deleted  { background: rgba(239,68,68,0.04); }
+  &--replaced { background: rgba(239,68,68,0.04); }
 }
 
 .fns-fsdiff-op {
@@ -635,6 +636,33 @@
   &--added    { color: var(--ok-text); }
   &--modified { color: var(--warning); }
   &--deleted  { color: var(--danger); }
+  &--replaced { color: var(--danger); }
+  &--restored { color: var(--text-secondary); }
+}
+
+.fns-fsdiff-base {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.fns-fsdiff-ctr {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fns-snap-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--warning-text);
 }
 
 .fns-fsdiff-path {

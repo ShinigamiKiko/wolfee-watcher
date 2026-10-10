@@ -629,13 +629,13 @@ func (h *Handler) HandleLogsPull(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	lines, err := h.cluster(r).QueryContainerLogs(ctx, ns, pod, container, sinceSeconds)
+	lines, truncated, err := h.cluster(r).QueryContainerLogs(ctx, ns, pod, container, sinceSeconds)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"lines": lines})
+	json.NewEncoder(w).Encode(map[string]any{"lines": lines, "truncated": truncated})
 }
 
 func (h *Handler) HandleLogCursors(w http.ResponseWriter, r *http.Request) {

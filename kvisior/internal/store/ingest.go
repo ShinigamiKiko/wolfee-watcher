@@ -123,12 +123,14 @@ func (c *Scoped) QueryAuditEventsSince(ctx context.Context, since string, limit 
 }
 
 type ForensicEntry struct {
-	Path      string `json:"path"`
-	Op        string `json:"op"`
-	Size      int64  `json:"size"`
-	Mtime     string `json:"mtime"`
-	SHA256    string `json:"sha256,omitempty"`
-	SnappedAt string `json:"snapped_at"`
+	Path        string `json:"path"`
+	Op          string `json:"op"`
+	Size        int64  `json:"size"`
+	Mtime       string `json:"mtime"`
+	SHA256      string `json:"sha256,omitempty"`
+	SnappedAt   string `json:"snapped_at"`
+	ContainerID string `json:"container_id,omitempty"`
+	Baseline    bool   `json:"baseline,omitempty"`
 }
 
 type BinaryExecQuery struct {
@@ -239,6 +241,7 @@ type ForensicEventQuery struct {
 	ContainerID string
 	Syscalls    []string
 	SinceID     int64
+	BeforeID    int64
 	Limit       int
 }
 
@@ -257,9 +260,11 @@ func withRowID(data json.RawMessage, id int64) json.RawMessage {
 }
 
 type ForensicEventPage struct {
-	Events  []json.RawMessage
-	NextID  int64
-	HasMore bool
+	Events      []json.RawMessage
+	NextID      int64
+	HasMore     bool
+	HasOlder    bool
+	OlderCursor int64
 }
 
 const (
@@ -269,9 +274,10 @@ const (
 )
 
 func (c *Scoped) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQuery) (ForensicEventPage, error) {
-	initial := q.SinceID == 0
+	initial := q.SinceID == 0 && q.BeforeID <= 0
+	older := q.BeforeID > 0
 	if q.Limit <= 0 {
-		if initial {
+		if initial || older {
 			q.Limit = initialPageLimit
 		} else {
 			q.Limit = incrementalPageSize
@@ -332,9 +338,12 @@ func (c *Scoped) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQ
 	}
 	comparison, order := ">", "ASC"
 	bound := watermark
-	if initial {
+	switch {
+	case older:
+		comparison, order, bound = "<", "DESC", q.BeforeID
+	case initial:
 		comparison, order = "<=", "DESC"
-	} else {
+	default:
 		bound -= cursorOverlap
 		if bound < 0 {
 			bound = 0
@@ -367,16 +376,38 @@ func (c *Scoped) QueryFilteredBinaryEvents(ctx context.Context, q ForensicEventQ
 	if err := rows.Err(); err != nil {
 		return ForensicEventPage{}, err
 	}
-	if initial {
+	if initial || older {
+		var oldest int64
+		for _, raw := range page.Events {
+			if id := rowIDOf(raw); id > 0 && (oldest == 0 || id < oldest) {
+				oldest = id
+			}
+		}
 		for i, j := 0, len(page.Events)-1; i < j; i, j = i+1, j-1 {
 			page.Events[i], page.Events[j] = page.Events[j], page.Events[i]
 		}
-		page.NextID = watermark
+		page.HasOlder = page.HasMore
+		page.OlderCursor = oldest
 		page.HasMore = false
+		if initial {
+			page.NextID = watermark
+		} else {
+			page.NextID = q.SinceID
+		}
 	} else if page.NextID < q.SinceID {
 		page.NextID = q.SinceID
 	}
 	return page, nil
+}
+
+func rowIDOf(raw json.RawMessage) int64 {
+	var v struct {
+		RID int64 `json:"_rid"`
+	}
+	if json.Unmarshal(raw, &v) != nil {
+		return 0
+	}
+	return v.RID
 }
 
 var AlwaysWatchedSyscalls = []string{"execve", "execveat"}
@@ -476,15 +507,18 @@ func (c *Scoped) InsertForensicEvents(ctx context.Context, ns, pod string, entri
 	mtimes := make([]string, len(entries))
 	shas := make([]string, len(entries))
 	snaps := make([]string, len(entries))
+	containers := make([]string, len(entries))
+	baselines := make([]bool, len(entries))
 	for i, e := range entries {
 		paths[i], ops[i], sizes[i] = e.Path, e.Op, e.Size
 		mtimes[i], shas[i], snaps[i] = e.Mtime, e.SHA256, e.SnappedAt
+		containers[i], baselines[i] = e.ContainerID, e.Baseline
 	}
 	_, err := c.s.pool.Exec(ctx,
-		`INSERT INTO forensic_events (cluster_id, ns, pod, path, op, size, mtime, sha256, snapped_at)
-		 SELECT $1, $2, $3, * FROM unnest($4::text[], $5::text[], $6::bigint[], $7::text[], $8::text[], $9::text[])
+		`INSERT INTO forensic_events (cluster_id, ns, pod, path, op, size, mtime, sha256, snapped_at, container_id, baseline)
+		 SELECT $1, $2, $3, * FROM unnest($4::text[], $5::text[], $6::bigint[], $7::text[], $8::text[], $9::text[], $10::text[], $11::bool[])
 		 ON CONFLICT (cluster_id, ns, pod, path, op, snapped_at) DO NOTHING`,
-		c.id, ns, pod, paths, ops, sizes, mtimes, shas, snaps)
+		c.id, ns, pod, paths, ops, sizes, mtimes, shas, snaps, containers, baselines)
 	return err
 }
 
@@ -492,14 +526,14 @@ const maxForensicEntries = 5000
 
 func (c *Scoped) QueryForensicEvents(ctx context.Context, ns, pod string) ([]ForensicEntry, error) {
 	rows, err := c.s.pool.Query(ctx,
-		`SELECT path, op, size, mtime, sha256, snapped_at FROM (
-			SELECT path, op, size, mtime, sha256, snapped_at, ts
+		`SELECT path, op, size, mtime, sha256, snapped_at, container_id, baseline FROM (
+			SELECT path, op, size, mtime, sha256, snapped_at, container_id, baseline, ts, id
 			FROM forensic_events
 			WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND ts > NOW() - INTERVAL '24 hours'
-			ORDER BY ts DESC
+			ORDER BY ts DESC, id DESC
 			LIMIT $4
 		 ) recent
-		 ORDER BY ts`,
+		 ORDER BY ts, id`,
 		c.id, ns, pod, maxForensicEntries)
 	if err != nil {
 		return nil, err
@@ -509,7 +543,7 @@ func (c *Scoped) QueryForensicEvents(ctx context.Context, ns, pod string) ([]For
 	for rows.Next() {
 		var e ForensicEntry
 		var sha *string
-		if err := rows.Scan(&e.Path, &e.Op, &e.Size, &e.Mtime, &sha, &e.SnappedAt); err != nil {
+		if err := rows.Scan(&e.Path, &e.Op, &e.Size, &e.Mtime, &sha, &e.SnappedAt, &e.ContainerID, &e.Baseline); err != nil {
 			continue
 		}
 		if sha != nil {
@@ -571,15 +605,17 @@ type ContainerLogLine struct {
 	Log       string `json:"log"`
 }
 
-func (c *Scoped) QueryContainerLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) ([]ContainerLogLine, error) {
+const MaxContainerLogLines = 10000
+
+func (c *Scoped) QueryContainerLogs(ctx context.Context, ns, pod, container string, sinceSeconds int64) ([]ContainerLogLine, bool, error) {
 	fromTS := time.Now().Add(-time.Duration(sinceSeconds) * time.Second)
 	rows, err := c.s.pool.Query(ctx,
 		`SELECT ts, log FROM container_logs
 		 WHERE cluster_id=$1 AND ns=$2 AND pod=$3 AND container=$4 AND ts > $5
-		 ORDER BY ts LIMIT 10000`,
-		c.id, ns, pod, container, fromTS)
+		 ORDER BY ts DESC LIMIT $6`,
+		c.id, ns, pod, container, fromTS, MaxContainerLogLines+1)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	lines := make([]ContainerLogLine, 0)
@@ -591,7 +627,17 @@ func (c *Scoped) QueryContainerLogs(ctx context.Context, ns, pod, container stri
 		}
 		lines = append(lines, ContainerLogLine{Timestamp: ts.UTC().Format(time.RFC3339Nano), Log: l})
 	}
-	return lines, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	truncated := len(lines) > MaxContainerLogLines
+	if truncated {
+		lines = lines[:MaxContainerLogLines]
+	}
+	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+		lines[i], lines[j] = lines[j], lines[i]
+	}
+	return lines, truncated, nil
 }
 
 type ContainerLogEntry struct {

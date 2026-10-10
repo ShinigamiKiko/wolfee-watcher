@@ -1,6 +1,6 @@
 package schema
 
-const Version = "0021-honeypot-registry"
+const Version = "0022-forensic-layers"
 
 var DDL = []string{
 

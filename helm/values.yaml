@@ -108,7 +108,7 @@ centralMigrate:
     repository: localhost/wolfee-watcher/central-migrate
     tag: latest
     pullPolicy: Never
-  schemaVersion: "0021-honeypot-registry"
+  schemaVersion: "0022-forensic-layers"
   adminBootstrapPassword: ""
   resources:
     requests:

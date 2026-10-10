@@ -28,8 +28,8 @@ import (
 	"github.com/wolfee-watcher/kvisior/internal/grpcserver"
 	"github.com/wolfee-watcher/kvisior/internal/hub"
 	kafkaconsumer "github.com/wolfee-watcher/kvisior/internal/kafka"
-	"github.com/wolfee-watcher/kvisior/internal/podwatch"
 	"github.com/wolfee-watcher/kvisior/internal/podindex"
+	"github.com/wolfee-watcher/kvisior/internal/podwatch"
 	"github.com/wolfee-watcher/kvisior/internal/push"
 	"github.com/wolfee-watcher/kvisior/internal/rules"
 	"github.com/wolfee-watcher/kvisior/internal/store"
@@ -474,15 +474,17 @@ func main() {
 				http.Error(w, `{"error":"ns and pod required"}`, http.StatusBadRequest)
 				return
 			}
-			selected, err := podWatchMgr.GetWatch(r.Context(), ns, pod)
+			scope := st.Cluster(clusterctx.ForRead(r))
+			selected, err := scope.GetPodWatch(r.Context(), ns, pod)
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
 			}
 			sinceID, _ := strconv.ParseInt(r.URL.Query().Get("since_id"), 10, 64)
-			page, err := st.Cluster(clusterctx.ForRead(r)).QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
+			beforeID, _ := strconv.ParseInt(r.URL.Query().Get("before_id"), 10, 64)
+			page, err := scope.QueryFilteredBinaryEvents(r.Context(), store.ForensicEventQuery{
 				Namespace: ns, Pod: pod, PodUID: podUID, ContainerID: containerID,
-				Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID,
+				Syscalls: store.WatchedSyscalls(selected), SinceID: sinceID, BeforeID: beforeID,
 			})
 			if err != nil {
 				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
@@ -491,6 +493,7 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"events": page.Events, "next_since_id": page.NextID, "has_more": page.HasMore,
+				"has_older": page.HasOlder, "older_cursor": page.OlderCursor,
 			})
 		})))
 

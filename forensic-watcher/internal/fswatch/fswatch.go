@@ -2,6 +2,7 @@ package fswatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -11,20 +12,30 @@ import (
 )
 
 const (
-	fsTTL        = 24 * time.Hour
 	pollInterval = 2 * time.Minute
 	pgOpTimeout  = 5 * time.Second
+	pushTimeout  = 15 * time.Second
 
 	maxFilesPerDiff = 10_000
 )
 
+var (
+	ErrPodGone    = errPodGone
+	ErrNotRunning = errNotRunning
+	ErrOtherNode  = errOtherNode
+)
+
 type FileEntry struct {
-	Path      string `json:"path"`
-	Op        string `json:"op"`
-	Size      int64  `json:"size"`
-	Mtime     string `json:"mtime"`
-	SHA256    string `json:"sha256,omitempty"`
-	SnappedAt string `json:"snapped_at"`
+	Path        string `json:"path"`
+	Op          string `json:"op"`
+	Size        int64  `json:"size"`
+	Mtime       string `json:"mtime"`
+	SHA256      string `json:"sha256,omitempty"`
+	SnappedAt   string `json:"snapped_at"`
+	ContainerID string `json:"container_id,omitempty"`
+	Baseline    bool   `json:"baseline,omitempty"`
+
+	kind int
 }
 
 type Watcher struct {
@@ -33,16 +44,20 @@ type Watcher struct {
 	central        *CentralClient
 	client         kubernetes.Interface
 
-	mu      sync.RWMutex
-	watches map[string]*watchState
+	mu       sync.RWMutex
+	watches  map[string]*watchState
+	starting map[string]bool
 }
 
 type watchState struct {
-	ns        string
-	pod       string
-	upperDir  string
-	startedAt time.Time
-	lastSnap  map[string]FileEntry
+	ns          string
+	pod         string
+	containerID string
+	upperDir    string
+	lowerDirs   []string
+	startedAt   time.Time
+	lastSnap    map[string]FileEntry
+	pending     []FileEntry
 }
 
 func New(nodeName, containerdRoot string, central *CentralClient, client kubernetes.Interface) *Watcher {
@@ -52,6 +67,7 @@ func New(nodeName, containerdRoot string, central *CentralClient, client kuberne
 		central:        central,
 		client:         client,
 		watches:        make(map[string]*watchState),
+		starting:       make(map[string]bool),
 	}
 }
 
@@ -64,7 +80,6 @@ func (w *Watcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			log.Printf("[fswatch] poll tick — checking %d watches", len(w.watches))
 			w.pollAll(ctx)
 		}
 	}
@@ -82,7 +97,18 @@ func (w *Watcher) RestoreWatches(ctx context.Context) {
 		return
 	}
 	for _, watch := range watches {
-		if err := w.StartWatch(ctx, watch.Namespace, watch.Pod, watch.Source); err != nil {
+		err := w.StartWatch(ctx, watch.Namespace, watch.Pod, watch.Source)
+		switch {
+		case err == nil, errors.Is(err, errOtherNode):
+		case errors.Is(err, errPodGone), errors.Is(err, errNotRunning):
+			opCtx, cancel := context.WithTimeout(ctx, pgOpTimeout)
+			if derr := w.central.DeleteWatch(opCtx, watch.Namespace, watch.Pod); derr != nil {
+				log.Printf("[fswatch] unregister finished watch %s/%s: %v", watch.Namespace, watch.Pod, derr)
+			} else {
+				log.Printf("[fswatch] restore %s/%s: %v — watch closed", watch.Namespace, watch.Pod, err)
+			}
+			cancel()
+		default:
 			log.Printf("[fswatch] restore %s/%s skipped: %v", watch.Namespace, watch.Pod, err)
 		}
 	}
@@ -92,41 +118,53 @@ func (w *Watcher) StartWatch(ctx context.Context, ns, pod, source string) error 
 	key := ns + "/" + pod
 
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	if _, ok := w.watches[key]; ok {
+	if _, ok := w.watches[key]; ok || w.starting[key] {
+		w.mu.Unlock()
 		return nil
 	}
+	w.starting[key] = true
+	w.mu.Unlock()
+	defer func() {
+		w.mu.Lock()
+		delete(w.starting, key)
+		w.mu.Unlock()
+	}()
 
-	upperDir, err := w.findUpperDir(ctx, ns, pod)
-	if err != nil {
-		return fmt.Errorf("find upperdir for %s: %w", key, err)
-	}
-	state, entries, err := w.newWatchState(upperDir, ns, pod)
+	l, err := w.resolveLayer(ctx, ns, pod, true)
 	if err != nil {
 		return err
 	}
+	state, err := w.newWatchState(ns, pod, l)
+	if err != nil {
+		return err
+	}
+
+	w.mu.Lock()
 	w.watches[key] = state
+	w.mu.Unlock()
+
 	w.persistWatch(ctx, key, ns, pod, source)
-	log.Printf("[fswatch] watching %s (upperDir=%s, baseline=%d files)", key, upperDir, len(entries))
+	w.flushPending(ctx, state)
+	log.Printf("[fswatch] watching %s container=%s (upperDir=%s, baseline=%d files)", key, short(l.containerID), l.upperDir, len(state.lastSnap))
 	return nil
 }
 
-func (w *Watcher) newWatchState(upperDir, ns, pod string) (*watchState, []FileEntry, error) {
-	state := &watchState{
-		ns:        ns,
-		pod:       pod,
-		upperDir:  upperDir,
-		startedAt: time.Now(),
-		lastSnap:  make(map[string]FileEntry),
-	}
-	entries, err := w.snapDir(upperDir)
+func (w *Watcher) newWatchState(ns, pod string, l layer) (*watchState, error) {
+	snap, err := w.snapDir(l.upperDir, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("initial snap: %w", err)
+		return nil, fmt.Errorf("initial snap: %w", err)
 	}
-	for _, e := range entries {
-		state.lastSnap[e.Path] = e
-	}
-	return state, entries, nil
+	now := time.Now()
+	return &watchState{
+		ns:          ns,
+		pod:         pod,
+		containerID: l.containerID,
+		upperDir:    l.upperDir,
+		lowerDirs:   l.lowerDirs,
+		startedAt:   now,
+		lastSnap:    snap,
+		pending:     baselineEntries(snap, lowerLookup(l.lowerDirs), now.UTC().Format(time.RFC3339), l.containerID),
+	}, nil
 }
 
 func (w *Watcher) persistWatch(ctx context.Context, key, ns, pod, source string) {

@@ -2,10 +2,22 @@ package fswatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"sort"
 	"sync"
 	"time"
+)
+
+const (
+	OpAdded    = "added"
+	OpModified = "modified"
+	OpDeleted  = "deleted"
+	OpReplaced = "replaced"
+	OpRestored = "restored"
 )
 
 func (w *Watcher) GetDiff(ctx context.Context, ns, pod string) ([]FileEntry, error) {
@@ -33,93 +45,230 @@ func (w *Watcher) pollAll(ctx context.Context) {
 		go func(s *watchState) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := w.diffAndStore(ctx, s); err != nil {
-				log.Printf("[fswatch] diff %s/%s: %v — baseline kept, retrying next poll", s.ns, s.pod, err)
-			}
+			w.pollWatch(ctx, s)
 		}(s)
 	}
 	wg.Wait()
 }
 
+func (w *Watcher) pollWatch(ctx context.Context, s *watchState) {
+	key := s.ns + "/" + s.pod
+	l, err := w.resolveLayer(ctx, s.ns, s.pod, true)
+	switch {
+	case err == nil && l.containerID == s.containerID:
+		if err := w.diffAndStore(ctx, s); err != nil {
+			log.Printf("[fswatch] diff %s: %v — baseline kept, retrying next poll", key, err)
+		}
+	case err == nil:
+		w.finalDiff(ctx, s)
+		next, err := w.newWatchState(s.ns, s.pod, l)
+		if err != nil {
+			log.Printf("[fswatch] %s restarted as %s but its layer is unreadable: %v", key, short(l.containerID), err)
+			return
+		}
+		w.mu.Lock()
+		if w.watches[key] == s {
+			w.watches[key] = next
+		}
+		w.mu.Unlock()
+		log.Printf("[fswatch] %s container restarted %s -> %s, new baseline=%d files", key, short(s.containerID), short(l.containerID), len(next.lastSnap))
+		w.flushPending(ctx, next)
+	case errors.Is(err, errPodGone), errors.Is(err, errNotRunning):
+		w.finalDiff(ctx, s)
+		w.retire(ctx, s, err)
+	case errors.Is(err, errOtherNode):
+		w.mu.Lock()
+		if w.watches[key] == s {
+			delete(w.watches, key)
+		}
+		w.mu.Unlock()
+		log.Printf("[fswatch] %s moved to another node, dropped locally", key)
+	default:
+		if err := w.diffAndStore(ctx, s); err != nil {
+			log.Printf("[fswatch] diff %s: %v — baseline kept, retrying next poll", key, err)
+		}
+	}
+}
+
+func (w *Watcher) finalDiff(ctx context.Context, s *watchState) {
+	if _, err := os.Stat(s.upperDir); err != nil {
+		return
+	}
+	if err := w.diffAndStore(ctx, s); err != nil {
+		log.Printf("[fswatch] final diff %s/%s: %v", s.ns, s.pod, err)
+	}
+}
+
+func (w *Watcher) retire(ctx context.Context, s *watchState, reason error) {
+	key := s.ns + "/" + s.pod
+	w.mu.Lock()
+	if w.watches[key] == s {
+		delete(w.watches, key)
+	}
+	w.mu.Unlock()
+	if w.central != nil {
+		opCtx, cancel := context.WithTimeout(ctx, pgOpTimeout)
+		defer cancel()
+		if err := w.central.DeleteWatch(opCtx, s.ns, s.pod); err != nil {
+			log.Printf("[fswatch] unregister finished watch %s: %v", key, err)
+		}
+	}
+	log.Printf("[fswatch] stopped watching %s: %v", key, reason)
+}
+
 func (w *Watcher) diffAndStore(ctx context.Context, s *watchState) error {
-	current, err := w.snapDir(s.upperDir)
+	w.flushPending(ctx, s)
+	prev := w.copyLastSnap(s)
+	current, err := w.snapDir(s.upperDir, prev)
 	if err != nil {
 		return err
 	}
-	currentMap := mapEntriesByPath(current)
-	prevSnap := w.copyLastSnap(s)
-	diffs := buildDiffs(currentMap, prevSnap)
+	diffs := buildDiffs(current, prev, lowerLookup(s.lowerDirs), time.Now().UTC().Format(time.RFC3339))
 	if len(diffs) == 0 {
-		w.storeLastSnap(s, currentMap)
-		log.Printf("[fswatch] %s/%s no changes (snap=%d files)", s.ns, s.pod, len(currentMap))
+		w.storeLastSnap(s, current)
 		return nil
 	}
+	for i := range diffs {
+		diffs[i].ContainerID = s.containerID
+	}
 	log.Printf("[fswatch] %s/%s diff: %d changes", s.ns, s.pod, len(diffs))
-
 	if err := w.insertDiffs(ctx, s, diffs); err != nil {
 		return err
 	}
-	w.storeLastSnap(s, currentMap)
+	w.storeLastSnap(s, current)
 	return nil
 }
 
-func mapEntriesByPath(entries []FileEntry) map[string]FileEntry {
-	currentMap := make(map[string]FileEntry, len(entries))
-	for _, e := range entries {
-		currentMap[e.Path] = e
+func (w *Watcher) flushPending(ctx context.Context, s *watchState) {
+	w.mu.RLock()
+	pending := s.pending
+	w.mu.RUnlock()
+	if len(pending) == 0 {
+		return
 	}
-	return currentMap
+	if err := w.insertDiffs(ctx, s, pending); err != nil {
+		log.Printf("[fswatch] baseline %s/%s (%d files) not stored yet: %v", s.ns, s.pod, len(pending), err)
+		return
+	}
+	w.mu.Lock()
+	s.pending = nil
+	w.mu.Unlock()
+}
+
+func lowerLookup(lowers []string) func(string) bool {
+	return func(path string) bool {
+		for _, lower := range lowers {
+			info, err := os.Lstat(filepath.Join(lower, path))
+			if err != nil {
+				continue
+			}
+			return !isOverlayWhiteout(info)
+		}
+		return false
+	}
+}
+
+func baselineEntries(current map[string]FileEntry, inLower func(string) bool, now, containerID string) []FileEntry {
+	out := make([]FileEntry, 0, len(current))
+	for path, cur := range current {
+		e := cur
+		e.SnappedAt = now
+		e.ContainerID = containerID
+		e.Baseline = true
+		switch cur.kind {
+		case kindWhiteout:
+			e.Op = OpDeleted
+		case kindOpaqueDir:
+			e.Op = OpReplaced
+		default:
+			e.Op = OpAdded
+			if inLower(path) {
+				e.Op = OpModified
+			}
+		}
+		out = append(out, e)
+	}
+	sortEntries(out)
+	return out
+}
+
+func buildDiffs(current, prev map[string]FileEntry, inLower func(string) bool, now string) []FileEntry {
+	var diffs []FileEntry
+	for path, cur := range current {
+		p, had := prev[path]
+		e := cur
+		e.SnappedAt = now
+		switch cur.kind {
+		case kindWhiteout:
+			if had && p.kind == kindWhiteout {
+				continue
+			}
+			e.Op = OpDeleted
+			if had && p.kind == kindFile {
+				e.Size, e.Mtime = p.Size, p.Mtime
+			}
+		case kindOpaqueDir:
+			if had && p.kind == kindOpaqueDir {
+				continue
+			}
+			e.Op = OpReplaced
+		default:
+			switch {
+			case !had || p.kind != kindFile:
+				e.Op = OpAdded
+				if inLower(path) {
+					e.Op = OpModified
+				}
+			case p.SHA256 != cur.SHA256 || p.Mtime != cur.Mtime || p.Size != cur.Size:
+				e.Op = OpModified
+			default:
+				continue
+			}
+		}
+		diffs = append(diffs, e)
+	}
+	for path, p := range prev {
+		if _, ok := current[path]; ok {
+			continue
+		}
+		switch p.kind {
+		case kindOpaqueDir:
+			continue
+		case kindWhiteout:
+			diffs = append(diffs, FileEntry{Path: path, Op: OpRestored, SnappedAt: now})
+		default:
+			diffs = append(diffs, FileEntry{Path: path, Op: OpDeleted, Size: p.Size, Mtime: p.Mtime, SnappedAt: now})
+		}
+	}
+	sortEntries(diffs)
+	return diffs
+}
+
+func sortEntries(entries []FileEntry) {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 }
 
 func (w *Watcher) copyLastSnap(s *watchState) map[string]FileEntry {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	prevSnap := make(map[string]FileEntry, len(s.lastSnap))
+	prev := make(map[string]FileEntry, len(s.lastSnap))
 	for k, v := range s.lastSnap {
-		prevSnap[k] = v
+		prev[k] = v
 	}
-	return prevSnap
+	return prev
 }
 
-func buildDiffs(currentMap, prevSnap map[string]FileEntry) []FileEntry {
-	now := time.Now().UTC().Format(time.RFC3339)
-	var diffs []FileEntry
-	for path, cur := range currentMap {
-		cur.SnappedAt = now
-		if prev, ok := prevSnap[path]; !ok {
-			cur.Op = "added"
-			diffs = append(diffs, cur)
-		} else if prev.SHA256 != cur.SHA256 || prev.Mtime != cur.Mtime {
-			cur.Op = "modified"
-			diffs = append(diffs, cur)
-		}
-	}
-	for path, prev := range prevSnap {
-		if _, ok := currentMap[path]; ok {
-			continue
-		}
-		diffs = append(diffs, FileEntry{
-			Path:      path,
-			Op:        "deleted",
-			Size:      prev.Size,
-			Mtime:     prev.Mtime,
-			SnappedAt: now,
-		})
-	}
-	return diffs
-}
-
-func (w *Watcher) storeLastSnap(s *watchState, currentMap map[string]FileEntry) {
+func (w *Watcher) storeLastSnap(s *watchState, current map[string]FileEntry) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	s.lastSnap = currentMap
+	s.lastSnap = current
 }
 
 func (w *Watcher) insertDiffs(ctx context.Context, s *watchState, diffs []FileEntry) error {
 	if w.central == nil {
 		return nil
 	}
-	iCtx, cancel := context.WithTimeout(ctx, pgOpTimeout)
+	iCtx, cancel := context.WithTimeout(ctx, pushTimeout)
 	defer cancel()
 	if err := w.central.PushEvents(iCtx, s.ns, s.pod, diffs); err != nil {
 		return fmt.Errorf("push forensic events: %w", err)
@@ -134,24 +283,12 @@ func (w *Watcher) getInMemDiff(ns, pod string) []FileEntry {
 	if !ok {
 		return nil
 	}
-	entries := make([]FileEntry, 0, len(s.lastSnap))
-	for _, e := range s.lastSnap {
-		entries = append(entries, e)
-	}
-	return entries
+	return baselineEntries(s.lastSnap, lowerLookup(s.lowerDirs), s.startedAt.UTC().Format(time.RFC3339), s.containerID)
 }
 
-func trimRecentDiff(entries []FileEntry, cutoff time.Time) []FileEntry {
-	out := entries[:0]
-	for _, e := range entries {
-		ts, err := time.Parse(time.RFC3339, e.SnappedAt)
-		if err != nil || ts.After(cutoff) {
-			out = append(out, e)
-		}
+func short(id string) string {
+	if len(id) > 12 {
+		return id[:12]
 	}
-	return out
-}
-
-func validateTTL(entries []FileEntry) []FileEntry {
-	return trimRecentDiff(entries, time.Now().Add(-fsTTL))
+	return id
 }
